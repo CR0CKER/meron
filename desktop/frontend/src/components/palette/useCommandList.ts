@@ -17,6 +17,7 @@ import {
   Search,
   SearchCheck,
   Settings,
+  Paperclip,
   Star,
   Sun,
   Trash2,
@@ -57,6 +58,8 @@ export function useCommandList(): Command[] {
   const customThemes = useValue(settings$.customThemes)
   const filterMode = useValue(ui$.filterMode)
   const kanbanFilterMode = useValue(kanban$.globalFilter)
+  const attachmentsOnly = useValue(ui$.attachmentsOnly)
+  const kanbanAttachmentsOnly = useValue(kanban$.globalAttachmentsOnly)
   const selectedAccount = useValue(ui$.selectedAccount)
   const selectedFolder = useValue(ui$.selectedFolder)
   const selectedThread = useValue(ui$.selectedThread)
@@ -74,6 +77,9 @@ export function useCommandList(): Command[] {
     const setActiveFilterMode = activeBoardId
       ? setGlobalKanbanFilter
       : (mode: typeof filterMode) => ui$.filterMode.set(mode)
+    const activeAttachmentsOnly = activeBoardId ? kanbanAttachmentsOnly : attachmentsOnly
+    const setActiveAttachmentsOnly = (on: boolean) =>
+      (activeBoardId ? kanban$.globalAttachmentsOnly : ui$.attachmentsOnly).set(on)
     const railShortcut = (slot: number) => RAIL_SHORTCUT_IDS[slot - 1] as ShortcutId | undefined
 
     const list: Command[] = [
@@ -189,6 +195,15 @@ export function useCommandList(): Command[] {
         icon: icon(Star),
         active: activeFilterMode === 'starred',
         run: run(() => setActiveFilterMode('starred')),
+      },
+      {
+        // A toggle on top of the filters above, not a fourth filter.
+        id: 'filter.attachments',
+        label: activeAttachmentsOnly ? 'Filter: Show all, not only with attachments' : 'Filter: Only with attachments',
+        icon: icon(Paperclip),
+        keywords: 'files has attachment toggle',
+        active: activeAttachmentsOnly,
+        run: run(() => setActiveAttachmentsOnly(!activeAttachmentsOnly)),
       },
       ...[...BUILTIN_THEMES, ...customThemes].map((theme) => ({
         id: `theme.${theme.id}`,
@@ -309,6 +324,8 @@ export function useCommandList(): Command[] {
     customThemes,
     filterMode,
     kanbanFilterMode,
+    attachmentsOnly,
+    kanbanAttachmentsOnly,
     selectedAccount,
     selectedFolder,
     selectedThread,

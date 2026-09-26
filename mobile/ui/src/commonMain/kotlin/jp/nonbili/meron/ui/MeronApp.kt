@@ -599,6 +599,7 @@ private fun MeronMobileScreenContent(
                                                 folderId = INBOX_FOLDER,
                                                 query = mailSearch.trim(),
                                                 filter = mailFilter.protocolValue(),
+                                                attachments = mailAttachmentsOnly,
                                             ),
                                         )
                                     Triple(importJson, foldersJson, threadsJson)
@@ -609,7 +610,7 @@ private fun MeronMobileScreenContent(
                                 coreThreads = withLocalDraftFlags(parseThreadListResponse(threadsJson))
                                 selectedCoreFolder = INBOX_FOLDER
                                 visibleMailboxKey =
-                                    mailboxCacheKey(accountId, INBOX_FOLDER, mailSearch, mailFilter)
+                                    mailboxCacheKey(accountId, INBOX_FOLDER, mailSearch, mailFilter, mailAttachmentsOnly)
                                 mailboxPageDepth = MAILBOX_PAGE_SIZE
                                 status = if (imported == 0) "No new feeds imported" else "Imported $imported feed(s)"
                             }.onFailure {

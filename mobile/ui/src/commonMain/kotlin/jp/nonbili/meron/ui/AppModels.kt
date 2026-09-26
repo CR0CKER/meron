@@ -122,6 +122,7 @@ internal const val KANBAN_PREFS = "kanban"
 internal const val KANBAN_BOARDS_PREF = "kanban_boards_v1"
 internal const val ACTIVE_KANBAN_BOARD_PREF = "active_kanban_board_id_v1"
 internal const val KANBAN_FILTER_PREF = "kanban_filter_v1"
+internal const val KANBAN_ATTACHMENTS_PREF = "kanban_attachments_only_v1"
 internal const val KANBAN_SEARCH_PREF = "kanban_search_v1"
 internal const val KANBAN_SEARCH_SCOPE_PREF = "kanban_search_scope_v1"
 internal const val APP_PREFS = "meron_app_prefs"
@@ -183,6 +184,7 @@ internal data class MailboxCacheKey(
     val folderId: String,
     val query: String,
     val filter: FilterMode,
+    val attachmentsOnly: Boolean = false,
 )
 
 /** See `MeronMobileState.deferredMailboxReload`. `refreshSearch` is kept so a
@@ -237,6 +239,15 @@ internal data class KanbanColumnState(
     val error: String? = null,
     val nextCursor: String = "",
     val accountCursors: Map<String, String> = emptyMap(),
+    // The search and filters the cursors were issued for: the next page must be
+    // asked for with these, not whatever the board shows by then.
+    val cursorView: KanbanColumnView = KanbanColumnView(),
+)
+
+internal data class KanbanColumnView(
+    val query: String = "",
+    val filter: FilterMode = FilterMode.All,
+    val attachmentsOnly: Boolean = false,
 )
 
 internal data class ConversationParticipant(

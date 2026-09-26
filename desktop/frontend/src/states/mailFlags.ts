@@ -20,6 +20,7 @@ import {
   restoreAccountFolders,
   restoreKanbanColumns,
   threadListViewKey,
+  listFilterKey,
   uniqueThreadItems,
   updateKanbanThread,
 } from './mail'
@@ -167,7 +168,12 @@ async function setThreadStar(threadId: string, starred: boolean, options: { refr
   const previousMessages = mail$.messages.get()
   const previousKanban = captureKeys(kanban$.threads.get(), kanbanKeysWithThread(threadId))
   const viewKey = () =>
-    threadListViewKey(ui$.selectedAccount.peek(), ui$.selectedFolder.peek(), ui$.query.peek(), ui$.filterMode.peek())
+    threadListViewKey(
+      ui$.selectedAccount.peek(),
+      ui$.selectedFolder.peek(),
+      ui$.query.peek(),
+      listFilterKey(ui$.filterMode.peek(), ui$.attachmentsOnly.peek()),
+    )
   const previousView = viewKey()
   // Restore only this action's stars, preserving concurrent changes to other
   // threads (including successful actions in the same bulk operation).
@@ -304,7 +310,12 @@ export async function markAllRead() {
     new Set([...mailAccountIds, ...unread.map((thread) => thread.account_id)].filter(Boolean)),
   )
   const viewKey = () =>
-    threadListViewKey(ui$.selectedAccount.peek(), ui$.selectedFolder.peek(), ui$.query.peek(), ui$.filterMode.peek())
+    threadListViewKey(
+      ui$.selectedAccount.peek(),
+      ui$.selectedFolder.peek(),
+      ui$.query.peek(),
+      listFilterKey(ui$.filterMode.peek(), ui$.attachmentsOnly.peek()),
+    )
   const previousView = viewKey()
   const previousMessages = mail$.messages.get()
   // What a failure puts back: only the rows and folder counts cleared here, by

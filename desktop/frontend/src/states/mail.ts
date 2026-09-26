@@ -281,7 +281,7 @@ export function getFilteredThreads() {
   if (isUnifiedStarred(ui$.selectedAccount.get(), ui$.selectedFolder.get())) return threads
   const filterMode = ui$.filterMode.get()
   const selected = ui$.selectedThread.get()
-  return filterThreads(threads, filterMode, selected, mail$.readThreads.get())
+  return filterThreads(threads, filterMode, selected, mail$.readThreads.get(), ui$.attachmentsOnly.get())
 }
 
 // Move the selection up (delta -1) or down (delta +1) through the visible
@@ -366,6 +366,12 @@ export function threadListViewKey(account: string, folder: string, query: string
   return [account, folder, query, filter].join('\n')
 }
 
+/** The list's filter inputs as one comparable value — the read-state filter
+ * plus the attachments toggle — for view keys and staleness checks. */
+export function listFilterKey(mode = ui$.filterMode.get(), attachments = ui$.attachmentsOnly.get()) {
+  return attachments ? `${mode}+attachments` : mode
+}
+
 // Encoded t. keys include the subject branch and are stable across folders.
 // Numeric IMAP UIDs and RSS item ids remain tied to their original location.
 function starredConversationIdentity(thread: Message): string {
@@ -390,7 +396,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
   const initialAccount = ui$.selectedAccount.get()
   const initialFolder = ui$.selectedFolder.get()
   const initialQuery = ui$.query.get()
-  const initialFilter = ui$.filterMode.get()
+  const initialFilter = listFilterKey()
   const activeAccount = accounts$.get().find((account) => account.id === initialAccount)
   // Starred is answered from the local cache, so there is no live stage to run.
   const canSearchLive =
@@ -406,7 +412,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
       ui$.selectedAccount.get() !== initialAccount ||
       ui$.selectedFolder.get() !== initialFolder ||
       ui$.query.get() !== initialQuery ||
-      ui$.filterMode.get() !== initialFilter
+      listFilterKey() !== initialFilter
     ) {
       return
     }
@@ -418,7 +424,9 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
   const selectedFol = ui$.selectedFolder.get()
   const q = ui$.query.get()
   const filter = ui$.filterMode.get()
-  const viewKey = threadListViewKey(selectedAcc, selectedFol, q, filter)
+  const attachments = ui$.attachmentsOnly.get()
+  const filterKey = listFilterKey(filter, attachments)
+  const viewKey = threadListViewKey(selectedAcc, selectedFol, q, filterKey)
 
   // A background refresh steps aside for a server-bound load already running for
   // the same view. Taking the version from it would throw away the fresher rows
@@ -467,7 +475,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
       ui$.selectedAccount.get() !== selectedAcc ||
       ui$.selectedFolder.get() !== selectedFol ||
       ui$.query.get() !== q ||
-      ui$.filterMode.get() !== filter
+      listFilterKey() !== filterKey
     if (stale) releasePendingRefresh()
     return stale
   }
@@ -496,6 +504,9 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
       const res = await invoke<{ items: Message[]; next_cursor?: string }>('mail.starredItems', {
         query: q,
         filter,
+        // Hidden in the starred view (no menu offers it), so a toggle left on
+        // elsewhere must not narrow this list.
+        attachments: false,
         // Re-fetch every loaded row: stars can disappear and the core can pick
         // a different folder copy of the same conversation after a flag change.
         // Keeping absent rows or merging by folder-specific thread_id duplicates it.
@@ -526,6 +537,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
         folder_role: role,
         query: q,
         filter,
+        attachments,
         refresh,
       })
       if (superseded()) return
@@ -557,6 +569,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
           folder_id: selectedFol,
           query: q,
           filter,
+          attachments,
           refresh,
         },
       )
@@ -575,7 +588,11 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
     }
   }
 
-  if (filter !== 'all' && currentSelected && !allThreads.some((thread) => thread.thread_id === currentSelected)) {
+  if (
+    (filter !== 'all' || attachments) &&
+    currentSelected &&
+    !allThreads.some((thread) => thread.thread_id === currentSelected)
+  ) {
     const selectedThread = previousThreads.find((thread) => thread.thread_id === currentSelected)
     const replacement =
       selectedThread &&
@@ -676,13 +693,15 @@ export async function loadMoreThreads() {
   const selectedFol = ui$.selectedFolder.get()
   const q = ui$.query.get()
   const filter = ui$.filterMode.get()
+  const attachments = ui$.attachmentsOnly.get()
+  const filterKey = listFilterKey(filter, attachments)
   const version = threadLoadVersion
   const stillCurrent = (cursor: string) =>
     threadLoadVersion === version &&
     ui$.selectedAccount.get() === selectedAcc &&
     ui$.selectedFolder.get() === selectedFol &&
     ui$.query.get() === q &&
-    ui$.filterMode.get() === filter &&
+    listFilterKey() === filterKey &&
     mail$.threadsCursor.get() === cursor
   // The starred filter is one unpaginated page; a search over it is paged like
   // any other, and every other view stops on an empty cursor below.
@@ -699,6 +718,9 @@ export async function loadMoreThreads() {
         // query or they'd page through items the first page never showed.
         query: q,
         filter,
+        // Hidden in the starred view (no menu offers it), so a toggle left on
+        // elsewhere must not narrow this list.
+        attachments: false,
         limit: 50,
         before_cursor: cursor,
       })
@@ -719,6 +741,7 @@ export async function loadMoreThreads() {
         folder_role: role,
         query: q,
         filter,
+        attachments,
         before_cursor: cursor,
         refresh: false,
       })
@@ -741,6 +764,7 @@ export async function loadMoreThreads() {
           folder_id: selectedFol,
           query: q,
           filter,
+          attachments,
           before_cursor: cursor,
           refresh: false,
         },

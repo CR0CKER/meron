@@ -66,7 +66,7 @@ export function mailPrintText(mail: Message | MessageTab): string {
     body = htmlToText(html.body.innerHTML)
   }
   const attachments = printAttachmentNames(mail)
-  return `${rows.join('\n')}\n\n${body}${attachments.length ? `\n\n${t('chat.printAttachments')}:\n${attachments.join('\n')}` : ''}`
+  return `${rows.join('\n')}\n\n${body}${attachments.length ? `\n\n${t('chat.attachments')}:\n${attachments.join('\n')}` : ''}`
 }
 
 export async function loadPrintThread(threadId: string): Promise<Message[]> {
@@ -150,7 +150,7 @@ export function mailPrintHtml(mail: Message | MessageTab, allowRemote: boolean):
   if (attachmentNames.length) {
     const attachments = doc.createElement('pre')
     attachments.className = 'meron-print-summary'
-    attachments.textContent = `\n${t('chat.printAttachments')}:\n${attachmentNames.join('\n')}`
+    attachments.textContent = `\n${t('chat.attachments')}:\n${attachmentNames.join('\n')}`
     doc.body.append(attachments)
   }
   const style = doc.createElement('style')

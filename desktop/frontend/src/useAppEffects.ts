@@ -51,6 +51,7 @@ export function useAppEffects() {
   const selectedThread = useValue(ui$.selectedThread)
   const query = useValue(ui$.query)
   const filterMode = useValue(ui$.filterMode)
+  const attachmentsOnly = useValue(ui$.attachmentsOnly)
   const activeBoardId = useValue(kanban$.activeBoardId)
   const startupSyncDone = useRef(false)
   const language = useValue(settings$.language)
@@ -90,12 +91,14 @@ export function useAppEffects() {
     const unsubAccount = ui$.selectedAccount.onChange(() => mail$.readThreads.set({}))
     const unsubFolder = ui$.selectedFolder.onChange(() => mail$.readThreads.set({}))
     const unsubFilter = ui$.filterMode.onChange(() => mail$.readThreads.set({}))
+    const unsubAttachments = ui$.attachmentsOnly.onChange(() => mail$.readThreads.set({}))
     const unsubBoard = kanban$.activeBoardId.onChange(() => mail$.readThreads.set({}))
     const unsubGlobalFilter = kanban$.globalFilter.onChange(() => mail$.readThreads.set({}))
     return () => {
       unsubAccount()
       unsubFolder()
       unsubFilter()
+      unsubAttachments()
       unsubBoard()
       unsubGlobalFilter()
     }
@@ -262,7 +265,7 @@ export function useAppEffects() {
       void loadThreads()
     }, SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [selectedAccount, selectedFolder, query, filterMode, activeBoardId])
+  }, [selectedAccount, selectedFolder, query, filterMode, attachmentsOnly, activeBoardId])
 
   useEffect(() => {
     if (!selectedThread) return

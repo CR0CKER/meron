@@ -182,3 +182,29 @@ pub fn spawn_body_prefetch(engine: Arc<Engine>, account: String, folder: String)
         }
     });
 }
+
+/// Rows per [`store::backfill_files_batch`] call: small enough that the store
+/// is never held long enough to stall a UI request queued behind it.
+pub const FILES_BACKFILL_BATCH: u32 = 500;
+
+/// Fill `messages.files` for mail cached before the column existed, one short
+/// batch at a time off the async runtime, releasing the store between batches.
+/// A no-op once finished; an interrupted run resumes on the next start.
+pub fn spawn_files_backfill(engine: Arc<Engine>) {
+    tokio::task::spawn_blocking(move || {
+        loop {
+            let result = {
+                let db = crate::log::timed_db_lock(&engine.db, "files_backfill");
+                store::backfill_files_batch(&db, FILES_BACKFILL_BATCH)
+            };
+            match result {
+                Ok(true) => return,
+                Ok(false) => std::thread::sleep(Duration::from_millis(20)),
+                Err(e) => {
+                    eprintln!("meron-core: attachment backfill: {e:#}");
+                    return;
+                }
+            }
+        }
+    });
+}

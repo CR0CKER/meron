@@ -41,6 +41,7 @@ export function KanbanView({ boardId }: { boardId: string }) {
   const boards = useValue(settings$.kanbanBoards)
   const lockScroll = useValue(settings$.kanbanLockScroll)
   const globalFilter = useValue(kanban$.globalFilter)
+  const attachmentsOnly = useValue(kanban$.globalAttachmentsOnly)
   const searchQuery = useValue(kanban$.searchQuery)
   const searchScope = useValue(kanban$.searchScope)
   const globalSearchFocus = useValue(ui$.globalSearchFocus)
@@ -96,7 +97,7 @@ export function KanbanView({ boardId }: { boardId: string }) {
 
   useEffect(() => {
     clearBulkSelection()
-  }, [globalFilter, searchQuery, searchScope])
+  }, [globalFilter, attachmentsOnly, searchQuery, searchScope])
 
   useEffect(() => {
     if (globalSearchFocus === 0) return
@@ -285,6 +286,8 @@ export function KanbanView({ boardId }: { boardId: string }) {
           boardId={boardId}
           filterMode={globalFilter}
           onFilterChange={setGlobalKanbanFilter}
+          attachmentsOnly={attachmentsOnly}
+          onAttachmentsOnlyChange={(on) => kanban$.globalAttachmentsOnly.set(on)}
           onAddColumn={openDialog}
         />
       </div>

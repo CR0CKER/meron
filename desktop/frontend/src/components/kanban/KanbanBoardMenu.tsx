@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Plus,
   Settings,
+  Paperclip,
   Star,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
@@ -75,18 +76,23 @@ export function FilterSwitch({ value, onChange }: { value: FilterMode; onChange:
 
 // Board overflow menu in the kanban header: the Add Column action, the board
 // layout controls (column width, drag scroll lock), shortcuts to the board's
-// settings, plus the board-wide filter options — but the filter
+// settings, plus the board-wide filter options — but the read-state filter
 // section only renders on narrow widths (@min-[640px]:hidden), where the inline
-// FilterSwitch is hidden.
+// FilterSwitch is hidden. The attachments toggle always lives here: a paperclip
+// in the header reads as "attach a file", not as a filter.
 export function BoardMenu({
   boardId,
   filterMode,
   onFilterChange,
+  attachmentsOnly,
+  onAttachmentsOnlyChange,
   onAddColumn,
 }: {
   boardId: string
   filterMode: FilterMode
   onFilterChange: (mode: FilterMode) => void
+  attachmentsOnly: boolean
+  onAttachmentsOnlyChange: (on: boolean) => void
   onAddColumn: () => void
 }) {
   const { t } = useTranslation()
@@ -103,7 +109,7 @@ export function BoardMenu({
     () => setOpen(false),
   )
 
-  const filterActive = filterMode !== 'all'
+  const filterActive = filterMode !== 'all' || attachmentsOnly
 
   const stepColumnWidth = (delta: number) =>
     settings$.kanbanColumnWidth.set(clampKanbanColumnWidth(columnWidth + delta))
@@ -149,6 +155,22 @@ export function BoardMenu({
             {filterItem('starred', t('filters.starred'), <Star size={13} className="text-secondary shrink-0" />)}
             <div className="my-1 border-t border-border" />
           </div>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={attachmentsOnly}
+            className={`${menuItemBase} flex-nowrap ${
+              attachmentsOnly ? 'bg-accent/10 dark:bg-accent/15 text-accent' : 'text-primary hover:bg-hover'
+            }`}
+            onClick={() => {
+              onAttachmentsOnlyChange(!attachmentsOnly)
+              setOpen(false)
+            }}
+          >
+            <Paperclip size={13} className="text-secondary shrink-0" />
+            <span className="whitespace-nowrap shrink-0">{t('chat.attachments')}</span>
+            <Check size={13} className={`ml-auto shrink-0 ${attachmentsOnly ? '' : 'invisible'}`} />
+          </button>
+          <div className="my-1 border-t border-border" />
           <MenuItem
             icon={<MailCheck size={13} className="text-secondary shrink-0" />}
             label={t('kanban.actions.markAllColumnsRead')}

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MarkEmailUnread
@@ -757,6 +758,60 @@ internal fun MailRow(
                     }
                 }
             }
+            if (thread.files.isNotEmpty()) {
+                MailRowAttachmentChips(thread.files, Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
+/** How many chips a row names before collapsing the rest into "+N". */
+private const val MAX_ATTACHMENT_CHIPS = 2
+
+// Gmail-style attachment chips under a mail row: the first files by name, then
+// a count of the rest. Display only — the row itself is the click target.
+@Composable
+private fun MailRowAttachmentChips(
+    files: List<MessageAttachment>,
+    modifier: Modifier = Modifier,
+) {
+    val shown = files.take(MAX_ATTACHMENT_CHIPS)
+    val rest = files.size - shown.size
+    Row(
+        modifier.padding(end = 30.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        shown.forEach { file ->
+            Row(
+                Modifier
+                    .weight(1f, fill = false)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    fileIconFor(file.filename, file.mimeType),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    file.filename,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        if (rest > 0) {
+            Text(
+                "+$rest",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

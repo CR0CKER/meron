@@ -195,7 +195,7 @@
   "chat.plainView": "Vue texte brut",
   "chat.previousImage": "Image précédente",
   "chat.previousMatch": "Correspondance précédente",
-  "chat.printAttachments": "Pièces jointes",
+  "chat.attachments": "Pièces jointes",
   "chat.remoteBlocked": "Contenu distant bloqué",
   "chat.replyTo": "Répondre à",
   "chat.retry": "Réessayer",

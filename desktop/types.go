@@ -103,6 +103,15 @@ type Message struct {
 	// oldest first; SendersTruncated marks senders left out after the first.
 	Senders          []ThreadSender `json:"senders,omitempty"`
 	SendersTruncated bool           `json:"senders_truncated,omitempty"`
+	// Files lists a thread card's attachments in thread order, for the chips
+	// under the row; only messages whose body is cached are known.
+	Files []ThreadFile `json:"files,omitempty"`
+}
+
+// ThreadFile is one attachment named on a thread card.
+type ThreadFile struct {
+	Filename string `json:"filename"`
+	Mime     string `json:"mime"`
 }
 
 // ThreadSender is one sender on a thread card: a short name, or Me for the
@@ -178,9 +187,11 @@ type ThreadListRequest struct {
 	FolderID  string `json:"folder_id"`
 	// Unified view only: the role each account answers from (its own Sent,
 	// Archive, …). Ignored for a single account, which names a real folder.
-	FolderRole   string `json:"folder_role"`
-	Query        string `json:"query"`
-	Filter       string `json:"filter"`
+	FolderRole string `json:"folder_role"`
+	Query      string `json:"query"`
+	Filter     string `json:"filter"`
+	// Attachments keeps only threads with attachments; it combines with Filter.
+	Attachments  bool   `json:"attachments"`
 	BeforeCursor string `json:"before_cursor"`
 	Refresh      bool   `json:"refresh"`
 }

@@ -442,6 +442,7 @@ internal fun KanbanScreen(
     columns: Map<String, KanbanColumnState>,
     foldersByAccount: Map<String, List<FolderSummary>>,
     filter: FilterMode,
+    attachmentsOnly: Boolean,
     search: String,
     searchScope: String,
     onOpen: (ThreadSummary, KanbanColumnSpec) -> Unit,
@@ -525,6 +526,7 @@ internal fun KanbanScreen(
                             accounts = accounts,
                             foldersByAccount = foldersByAccount,
                             filter = filter,
+                            attachmentsOnly = attachmentsOnly,
                             search = search,
                             searchScope = searchScope,
                             onOpen = onOpen,
@@ -627,6 +629,7 @@ internal fun KanbanColumn(
     accounts: List<AccountSummary>,
     foldersByAccount: Map<String, List<FolderSummary>>,
     filter: FilterMode,
+    attachmentsOnly: Boolean,
     search: String,
     searchScope: String,
     onOpen: (ThreadSummary, KanbanColumnSpec) -> Unit,
@@ -659,8 +662,9 @@ internal fun KanbanColumn(
             filter = filter,
             search = columnSearch,
             searchAlreadyApplied = columnSearch.isNotBlank(),
+            attachmentsOnly = attachmentsOnly,
         )
-    val canLoadMore = columnSearch.isBlank() && (state.nextCursor.isNotBlank() || state.accountCursors.isNotEmpty())
+    val canLoadMore = state.nextCursor.isNotBlank() || state.accountCursors.isNotEmpty()
     val accountsById = remember(accounts) { accounts.associateBy { it.id } }
     val showAccountBadge = column.accountId == UNIFIED_ACCOUNT_ID
     Card(
@@ -708,7 +712,11 @@ internal fun KanbanColumn(
                 )
             }
             if (!state.loading && visibleThreads.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.fillMaxSize().padding(18.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Text(
                         if (search.isBlank()) {
                             tr(
@@ -724,6 +732,13 @@ internal fun KanbanColumn(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                     )
+                    // A narrowed page can come back empty with older mail still
+                    // to read, and an empty column has nothing to scroll.
+                    if (canLoadMore) {
+                        TextButton(onClick = onLoadMore, enabled = !state.loadingMore) {
+                            Text(if (state.loadingMore) tr("common.loading") else tr("threads.actions.loadMore"))
+                        }
+                    }
                 }
             } else {
                 val columnListState = rememberLazyListState()

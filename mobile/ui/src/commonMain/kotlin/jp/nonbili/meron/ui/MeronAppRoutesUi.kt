@@ -335,6 +335,13 @@ internal fun KanbanRouteContent(
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                         )
+                                        AttachmentsOnlyMenuItem(
+                                            checked = kanbanAttachmentsOnly,
+                                            onCheckedChange = { on ->
+                                                persistKanbanAttachmentsOnly(on)
+                                                loadKanbanBoard(refresh = true)
+                                            },
+                                        )
                                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
                                         DropdownMenuItem(
                                             text = { Text(tr("kanban.actions.markAllColumnsRead")) },
@@ -410,6 +417,7 @@ internal fun KanbanRouteContent(
                     columns = kanbanColumns,
                     foldersByAccount = foldersByAccount,
                     filter = kanbanFilter,
+                    attachmentsOnly = kanbanAttachmentsOnly,
                     search = kanbanSearch,
                     searchScope = kanbanSearchScope,
                     onOpen = { thread, column -> readCoreThread(thread, sourceFolder = column.folderId) },
@@ -497,7 +505,7 @@ internal fun MailRouteContent(
     with(state) {
         val mailListKey =
             visibleMailboxKey
-                ?: mailboxCacheKey(selectedCoreAccountId, selectedCoreFolder, mailSearch, mailFilter)
+                ?: mailboxCacheKey(selectedCoreAccountId, selectedCoreFolder, mailSearch, mailFilter, mailAttachmentsOnly)
         val mailListPosition =
             remember(mailListKey) {
                 // Keyed by search text and filter as well as the mailbox, so every
@@ -821,6 +829,13 @@ internal fun MailRouteContent(
                                                 Modifier
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        )
+                                        AttachmentsOnlyMenuItem(
+                                            checked = mailAttachmentsOnly,
+                                            onCheckedChange = { on ->
+                                                mailAttachmentsOnly = on
+                                                syncCoreThreads(syncFirst = false)
+                                            },
                                         )
                                         if (showMarkAllRead || showAccountActions) {
                                             HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -1241,22 +1256,38 @@ internal fun MailRouteContent(
                             }
 
                             coreThreads.isEmpty() -> {
+                                val narrowed = mailSearch.isNotBlank() || mailFilter != FilterMode.All || mailAttachmentsOnly
+                                // A narrowed page can come back empty with older
+                                // mail still to read (the core stops reading on
+                                // after a few emptied pages): offer the next page
+                                // rather than a dead end.
+                                val canPageOn = narrowed && pageableCoreAccounts().isNotEmpty()
                                 EmptyState(
                                     icon = Icons.Outlined.Drafts,
                                     title =
-                                        if (mailSearch.isBlank() && mailFilter == FilterMode.All) {
+                                        if (!narrowed) {
                                             if (selectedAccountIsRss) tr("empty.noFeeds") else tr("empty.nothingHereYet")
                                         } else {
                                             tr("empty.noMatchingMail")
                                         },
                                     text =
-                                        if (mailSearch.isBlank() && mailFilter == FilterMode.All) {
+                                        if (!narrowed) {
                                             if (selectedAccountIsRss) tr("empty.addFeedToStart") else tr("empty.pullLatestMessages")
                                         } else {
                                             tr("empty.adjustSearchFilter")
                                         },
-                                    actionLabel = if (selectedAccountIsRss) null else tr("mobile.mail.syncMailbox"),
-                                    onAction = if (selectedAccountIsRss) null else ({ syncCoreThreads() }),
+                                    actionLabel =
+                                        when {
+                                            canPageOn -> tr("threads.actions.loadMore")
+                                            selectedAccountIsRss -> null
+                                            else -> tr("mobile.mail.syncMailbox")
+                                        },
+                                    onAction =
+                                        when {
+                                            canPageOn -> ({ loadMoreCoreThreads(quiet = false) })
+                                            selectedAccountIsRss -> null
+                                            else -> ({ syncCoreThreads() })
+                                        },
                                 )
                             }
 

@@ -136,6 +136,13 @@ internal fun saveKanbanFilter(
     },
 )
 
+internal fun loadKanbanAttachmentsOnly(prefs: AppPreferences): Boolean = prefs.getBoolean(KANBAN_ATTACHMENTS_PREF, false)
+
+internal fun saveKanbanAttachmentsOnly(
+    prefs: AppPreferences,
+    on: Boolean,
+) = prefs.putBoolean(KANBAN_ATTACHMENTS_PREF, on)
+
 internal fun loadKanbanSearch(prefs: AppPreferences): String = prefs.getString(KANBAN_SEARCH_PREF, "")
 
 internal fun saveKanbanSearch(

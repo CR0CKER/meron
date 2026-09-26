@@ -512,6 +512,7 @@ internal fun MeronMobileState.openNotificationThread(target: NotificationThreadT
 private fun MeronMobileState.openNotificationMailbox(target: NotificationThreadTarget) {
     mailSearch = ""
     mailFilter = FilterMode.All
+    mailAttachmentsOnly = false
     selectedCoreAccountId = target.accountId
     selectedCoreFolder = target.folder
     syncing = true

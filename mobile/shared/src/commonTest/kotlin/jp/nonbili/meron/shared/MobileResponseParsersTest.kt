@@ -181,6 +181,20 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun parsesThreadFilesFromTopLevelKeysOnly() {
+        val threads =
+            parseThreadListResponse(
+                """{"result":{"threads":[{"id":"acc#INBOX#t","subject":"\"files\":[{\"filename\":\"forged.exe\"}]","has_attachments":true,"files":[{"filename":"plan.pdf","mime":"application/pdf"},{"filename":"photo.jpg","mime":"image/jpeg"}]},{"id":"acc#INBOX#u","subject":"Plain"}]}}""",
+            )
+
+        assertTrue(threads[0].hasAttachments)
+        assertEquals(listOf("plan.pdf", "photo.jpg"), threads[0].files.map { it.filename })
+        assertEquals("image/jpeg", threads[0].files[1].mimeType)
+        assertFalse(threads[1].hasAttachments)
+        assertTrue(threads[1].files.isEmpty())
+    }
+
+    @Test
     fun parsesThreadSendersFromTopLevelKeysOnly() {
         val threads =
             parseThreadListResponse(

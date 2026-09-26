@@ -533,7 +533,7 @@ pub fn thread_message_json(
         "date": cached.map(|message| message.date).unwrap_or(header.date),
         "unread": !header.seen,
         "starred": header.starred,
-        "has_attachments": cached.map(|message| !message.attachments.is_empty()).unwrap_or(false),
+        "has_attachments": cached.is_some_and(|message| message.has_attachments()),
         "attachments": cached
             .map(|message| serde_json::to_value(&message.attachments).unwrap_or_else(|_| json!([])))
             .unwrap_or_else(|| json!([])),

@@ -195,7 +195,7 @@
   "chat.plainView": "Plain view",
   "chat.previousImage": "Previous image",
   "chat.previousMatch": "Previous match",
-  "chat.printAttachments": "Attachments",
+  "chat.attachments": "Attachments",
   "chat.remoteBlocked": "Remote content blocked",
   "chat.replyTo": "Reply-To",
   "chat.retry": "Retry",

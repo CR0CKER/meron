@@ -195,7 +195,7 @@
   "chat.plainView": "Vista de texto sin formato",
   "chat.previousImage": "Imagen anterior",
   "chat.previousMatch": "Coincidencia anterior",
-  "chat.printAttachments": "Archivos adjuntos",
+  "chat.attachments": "Archivos adjuntos",
   "chat.remoteBlocked": "Contenido remoto bloqueado",
   "chat.replyTo": "Responder a",
   "chat.retry": "Reintentar",

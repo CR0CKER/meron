@@ -195,7 +195,7 @@
   "chat.plainView": "Nur-Text-Ansicht",
   "chat.previousImage": "Vorheriges Bild",
   "chat.previousMatch": "Vorheriger Treffer",
-  "chat.printAttachments": "Anhänge",
+  "chat.attachments": "Anhänge",
   "chat.remoteBlocked": "Externe Inhalte blockiert",
   "chat.replyTo": "Antwort an",
   "chat.retry": "Wiederholen",

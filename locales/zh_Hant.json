@@ -195,7 +195,7 @@
   "chat.plainView": "純文字檢視",
   "chat.previousImage": "上一張圖片",
   "chat.previousMatch": "上一個相符項",
-  "chat.printAttachments": "附件",
+  "chat.attachments": "附件",
   "chat.remoteBlocked": "已封鎖遠端內容",
   "chat.replyTo": "回覆",
   "chat.retry": "重試",

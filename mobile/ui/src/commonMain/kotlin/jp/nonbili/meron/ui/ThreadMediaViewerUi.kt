@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -524,7 +523,7 @@ internal fun AttachmentRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Filled.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(fileIconFor(attachment.filename, attachment.mimeType), contentDescription = null, modifier = Modifier.size(18.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     attachment.filename.ifBlank { "Attachment" },

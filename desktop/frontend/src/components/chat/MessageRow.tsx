@@ -232,6 +232,7 @@ export function MessageRow({
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[0.65625rem] text-secondary/80">
           {draftBadge}
+          {message.has_attachments && <Paperclip size={12} />}
           {message.starred && <Star size={12} className="fill-amber-500 text-amber-500" />}
           <BlockedRemoteButton
             messageId={message.id}

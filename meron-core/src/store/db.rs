@@ -525,6 +525,9 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
     if version < 10 {
         migrate_v10(&tx)?;
     }
+    if version < 11 {
+        migrate_v11(&tx)?;
+    }
 
     tx.commit()?;
     Ok(())
@@ -692,6 +695,22 @@ fn migrate_v10(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// `messages.files`: the cached body's real attachments as a JSON array of
+/// `{filename, mime}`, NULL when it has none, so list cards can name them and
+/// the attachments filter can page without parsing every row's `json`. Written
+/// with the body (see `save_cached_message`), so it stays NULL for rows whose
+/// body is not cached.
+///
+/// Rows cached before this are filled by [`super::backfill_files_batch`] after
+/// startup, not here: deriving them parses every row's `json` (HTML bodies
+/// included), which on a large cache holds the store long enough for the
+/// frontend's first requests to time out.
+fn migrate_v11(conn: &Connection) -> Result<()> {
+    conn.execute_batch("ALTER TABLE messages ADD COLUMN files TEXT;")?;
+    conn.execute_batch("PRAGMA user_version = 11;")?;
+    Ok(())
+}
+
 #[cfg(test)]
 pub(super) fn migrate_to_v8(conn: &Connection) -> Result<()> {
     migrate_to_v5(conn)?;
@@ -723,7 +742,7 @@ fn backfill_recipients(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>> {
+pub(super) fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>> {
     Ok(conn
         .query_row(
             "SELECT value FROM meta WHERE key = ?1",

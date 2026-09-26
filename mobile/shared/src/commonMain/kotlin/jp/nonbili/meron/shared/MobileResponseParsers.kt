@@ -343,6 +343,20 @@ fun parseThreadListPage(responseJson: String): ThreadListPage {
                 starred = item.findJsonBooleanProperty("starred") ?: false,
                 hasStarredItems = item.findJsonBooleanProperty("has_starred_items") ?: false,
                 hasDraft = item.findJsonBooleanProperty("has_draft") ?: false,
+                hasAttachments = item.jsonObjectEntries().firstOrNull { it.first == "has_attachments" }?.second == "true",
+                // Top-level key, like senders: filenames are sender-written text.
+                files =
+                    item
+                        .jsonObjectEntries()
+                        .firstOrNull { it.first == "files" }
+                        ?.second
+                        ?.takeIf { it.startsWith("[") }
+                        ?.jsonArrayElements()
+                        ?.mapNotNull { file ->
+                            val filename = file.findJsonStringProperty("filename").orEmpty()
+                            if (filename.isBlank()) return@mapNotNull null
+                            MessageAttachment(filename = filename, mimeType = file.findJsonStringProperty("mime").orEmpty())
+                        }.orEmpty(),
                 dateEpochSeconds = item.findJsonLongProperty("date") ?: item.findJsonLongProperty("date_epoch_seconds") ?: 0,
                 feedUrl = item.findJsonStringProperty("feed_url").orEmpty(),
             )

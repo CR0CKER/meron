@@ -26,6 +26,11 @@ internal fun MeronMobileState.persistKanbanFilter(next: FilterMode) {
     saveKanbanFilter(kanbanPrefs, next)
 }
 
+internal fun MeronMobileState.persistKanbanAttachmentsOnly(next: Boolean) {
+    kanbanAttachmentsOnly = next
+    saveKanbanAttachmentsOnly(kanbanPrefs, next)
+}
+
 internal fun MeronMobileState.persistKanbanSearch(next: String) {
     kanbanSearch = next
     saveKanbanSearch(kanbanPrefs, next)
@@ -42,6 +47,13 @@ internal fun MeronMobileState.kanbanColumnSearchQuery(column: KanbanColumnSpec):
     val scope = kanbanSearchScope.ifBlank { "all" }
     return if (scope == "all" || scope == kanbanColumnKey(column)) query else ""
 }
+
+internal fun MeronMobileState.currentKanbanColumnView(column: KanbanColumnSpec): KanbanColumnView =
+    KanbanColumnView(
+        query = kanbanColumnSearchQuery(column),
+        filter = kanbanFilter,
+        attachmentsOnly = kanbanAttachmentsOnly,
+    )
 
 internal fun isUnifiedStarredColumn(column: KanbanColumnSpec): Boolean = column.accountId == UNIFIED_ACCOUNT_ID && column.folderId.equals(STARRED_FOLDER, ignoreCase = true)
 
@@ -119,10 +131,11 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
     client: MobileMailCommandClient,
     column: KanbanColumnSpec,
     refresh: Boolean,
+    view: KanbanColumnView,
     beforeCursor: String? = null,
     accountCursors: Map<String, String> = emptyMap(),
 ): MailboxLoadResult {
-    val columnQuery = kanbanColumnSearchQuery(column)
+    val columnQuery = view.query
     if (isUnifiedStarredColumn(column)) {
         // The column applies its own filter to the loaded cards, so the load
         // itself asks for all of them.
@@ -130,6 +143,7 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             client = client,
             query = columnQuery,
             filter = FilterMode.All,
+            attachmentsOnly = false,
             beforeCursor = beforeCursor,
         )
     }
@@ -139,7 +153,8 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             client = client,
             accounts = unifiedAccounts,
             query = columnQuery,
-            filter = kanbanFilter,
+            filter = view.filter,
+            attachmentsOnly = view.attachmentsOnly,
             syncFirst = refresh,
             beforeCursor = beforeCursor,
             folderRole = column.folderId,
@@ -153,7 +168,8 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             account,
             column.folderId,
             query = columnQuery,
-            filter = kanbanFilter,
+            filter = view.filter,
+            attachmentsOnly = view.attachmentsOnly,
             syncFirst = refresh,
             beforeCursor = beforeCursor,
         )
@@ -169,7 +185,8 @@ internal fun MeronMobileState.loadKanbanColumn(
         return
     }
     val key = kanbanColumnKey(column)
-    val query = kanbanColumnSearchQuery(column)
+    val view = currentKanbanColumnView(column)
+    val query = view.query
     val token = (kanbanColumnLoadTokens[key] ?: 0L) + 1
     kanbanColumnLoadTokens[key] = token
     updateKanbanColumn(key) { it.copy(loading = true, error = null) }
@@ -178,9 +195,9 @@ internal fun MeronMobileState.loadKanbanColumn(
         runCatching {
             withContext(ioDispatcher) {
                 val client = MobileMailCommandClient(core)
-                val cached = fetchKanbanColumn(client, column, refresh)
+                val cached = fetchKanbanColumn(client, column, refresh, view)
                 if (shouldSyncUnfetchedKanbanColumn(column, refresh, query, cached, coreAccounts)) {
-                    fetchKanbanColumn(client, column, refresh = true)
+                    fetchKanbanColumn(client, column, refresh = true, view = view)
                 } else {
                     cached
                 }
@@ -189,7 +206,6 @@ internal fun MeronMobileState.loadKanbanColumn(
             // A newer load of this column is out or has landed; its rows are the
             // answer, and it clears the loading flag itself.
             if (kanbanColumnLoadTokens[key] != token) return@onSuccess
-            val columnQuery = kanbanColumnSearchQuery(column)
             if (result.folders.isNotEmpty()) {
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
             }
@@ -200,8 +216,12 @@ internal fun MeronMobileState.loadKanbanColumn(
                     loading = false,
                     loadingMore = false,
                     error = null,
-                    nextCursor = if (columnQuery.isBlank()) result.nextCursor else "",
-                    accountCursors = if (columnQuery.isBlank()) result.accountCursors else emptyMap(),
+                    // A searched column keeps its cursor too: the attachments
+                    // toggle can leave a search page empty with matches further
+                    // back, and paging on with the same query reaches them.
+                    nextCursor = result.nextCursor,
+                    accountCursors = result.accountCursors,
+                    cursorView = view,
                 )
             }
         }.onFailure {
@@ -213,11 +233,14 @@ internal fun MeronMobileState.loadKanbanColumn(
 }
 
 internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
-    if (!coreLoaded || kanbanColumnSearchQuery(column).isNotBlank()) return
+    if (!coreLoaded) return
     val key = kanbanColumnKey(column)
     val state = kanbanColumns[key] ?: return
     val hasCursor = state.nextCursor.isNotBlank()
-    if (state.loadingMore || !hasCursor) return
+    // A reload in flight is about to replace the list and the cursor with it.
+    if (state.loading || state.loadingMore || !hasCursor) return
+    // A reload started since (new query, filter or sync) owns the list instead.
+    val token = kanbanColumnLoadTokens[key] ?: 0L
     updateKanbanColumn(key) { it.copy(loadingMore = true, error = null) }
     scope.launch {
         val folderReadVersion = folderReadGuard.version
@@ -228,6 +251,7 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
                     client = client,
                     column = column,
                     refresh = false,
+                    view = state.cursorView,
                     beforeCursor = state.nextCursor,
                     accountCursors = state.accountCursors,
                 )
@@ -235,6 +259,10 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
         }.onSuccess { result ->
             if (result.folders.isNotEmpty()) {
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
+            }
+            if ((kanbanColumnLoadTokens[key] ?: 0L) != token) {
+                updateKanbanColumn(key) { it.copy(loadingMore = false) }
+                return@onSuccess
             }
             updateKanbanColumn(key) { current ->
                 val existingIds = current.threads.map { it.id }.toSet()

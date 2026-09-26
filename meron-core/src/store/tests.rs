@@ -7,6 +7,15 @@ use std::collections::BTreeMap;
 use crate::imap::Folder;
 use crate::parse::Message;
 
+const UNREAD: RecentFilter = RecentFilter {
+    unread_only: true,
+    attachments_only: false,
+};
+const ATTACHMENTS: RecentFilter = RecentFilter {
+    unread_only: false,
+    attachments_only: true,
+};
+
 fn test_conn() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     db::run_migrations(&conn).unwrap();
@@ -905,7 +914,7 @@ fn card_message_counts_span_the_folder_not_the_page() {
 
     // The unread view hands grouping only the two unread messages, so the cards
     // it produces tally one message each.
-    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 50, None, true).unwrap();
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 50, None, UNREAD).unwrap();
     let cards = group_thread_cards(page, "INBOX");
     let keys = cards
         .iter()
@@ -1028,11 +1037,12 @@ fn get_recent_page_can_return_only_unread_messages() {
     // insert_message stamps every row with the same date, so the date-ordered
     // list ties break on uid DESC and the cursor carries that shared date.
     const D: i64 = 1779580800;
-    let (all, all_cursor) = get_recent_page(&conn, "acct", "INBOX", 2, None, false).unwrap();
+    let (all, all_cursor) =
+        get_recent_page(&conn, "acct", "INBOX", 2, None, RecentFilter::default()).unwrap();
     assert_eq!(all.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![5, 4]);
     assert_eq!(all_cursor.as_deref(), Some(format!("date:{D}:4").as_str()));
 
-    let (unread, unread_cursor) = get_recent_page(&conn, "acct", "INBOX", 2, None, true).unwrap();
+    let (unread, unread_cursor) = get_recent_page(&conn, "acct", "INBOX", 2, None, UNREAD).unwrap();
     assert_eq!(unread.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![5, 3]);
     assert_eq!(
         unread_cursor.as_deref(),
@@ -1041,7 +1051,7 @@ fn get_recent_page_can_return_only_unread_messages() {
     assert!(unread.iter().all(|m| !m.seen));
 
     let (next_unread, next_cursor) =
-        get_recent_page(&conn, "acct", "INBOX", 2, Some((D, 3)), true).unwrap();
+        get_recent_page(&conn, "acct", "INBOX", 2, Some((D, 3)), UNREAD).unwrap();
     assert_eq!(
         next_unread.iter().map(|m| m.uid).collect::<Vec<_>>(),
         vec![2]
@@ -2179,7 +2189,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 10);
+    assert_eq!(version, 11);
 
     for table in [
         "accounts",
@@ -2213,7 +2223,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 10);
+    assert_eq!(version, 11);
 }
 
 #[test]
@@ -2241,7 +2251,7 @@ fn concurrent_first_open_runs_migrations_once() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 10);
+    assert_eq!(version, 11);
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -3873,7 +3883,7 @@ fn tasks_tables_arrive_on_an_existing_install() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 10);
+    assert_eq!(version, 11);
 
     // Cached mail is untouched, and the new tables are writable.
     let messages: i64 = conn
@@ -3883,4 +3893,246 @@ fn tasks_tables_arrive_on_an_existing_install() {
     insert_task_list(&conn, "list1", "My Tasks").unwrap();
     insert_task(&conn, "task1", "list1", "Write it down", "", 0, "", "", "").unwrap();
     assert_eq!(tasks_for_list(&conn, "list1", false).unwrap().len(), 1);
+}
+
+/// A cached body carrying `attachments` (and optionally HTML that shows some of
+/// them inline), saved the way the body fetch saves it.
+fn save_body_with_attachments(conn: &Connection, uid: u32, keys: &[&str], html: Option<&str>) {
+    let message = Message {
+        subject: "Hi".into(),
+        body: "body".into(),
+        body_html: html.map(str::to_string),
+        attachments: keys
+            .iter()
+            .map(|key| crate::parse::Attachment {
+                filename: key.rsplit('/').next().unwrap().into(),
+                mime: "application/octet-stream".into(),
+                size: 1,
+                key: Some(key.to_string()),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    save_cached_message(conn, "acct", "INBOX", uid, &message).unwrap();
+}
+
+#[test]
+fn get_recent_page_can_return_only_messages_with_attachments() {
+    let conn = test_conn();
+    for uid in 1..=4 {
+        insert_message(&conn, uid, "Hi", "Aki", "aki@example.com", None);
+    }
+    save_body_with_attachments(&conn, 1, &["acct/INBOX/1/0.pdf"], None);
+    // Only a logo the HTML draws inline: not an attachment.
+    save_body_with_attachments(
+        &conn,
+        2,
+        &["acct/INBOX/2/0.png"],
+        Some("<img src=\"/media/acct/INBOX/2/0.png\">"),
+    );
+    save_body_with_attachments(&conn, 3, &["acct/INBOX/3/0.zip"], None);
+    // uid 4 keeps no cached body, so nothing is known about its parts.
+
+    let (page, cursor) = get_recent_page(&conn, "acct", "INBOX", 1, None, ATTACHMENTS).unwrap();
+    assert_eq!(page.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![3]);
+    let (rest, cursor) = get_recent_page(
+        &conn,
+        "acct",
+        "INBOX",
+        1,
+        parse_cursor(cursor.as_deref()),
+        ATTACHMENTS,
+    )
+    .unwrap();
+    assert_eq!(rest.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![1]);
+    assert_eq!(cursor, None);
+
+    // The two narrowings combine: reading uid 3 drops it from "unread with
+    // attachments" but not from "with attachments".
+    conn.execute("UPDATE messages SET seen = 1 WHERE uid = 3", [])
+        .unwrap();
+    let both = RecentFilter {
+        unread_only: true,
+        attachments_only: true,
+    };
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 10, None, both).unwrap();
+    assert_eq!(page.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![1]);
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 10, None, ATTACHMENTS).unwrap();
+    assert_eq!(page.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![3, 1]);
+
+    // Re-caching a body without the file clears the flag.
+    save_body_with_attachments(&conn, 3, &[], None);
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 10, None, ATTACHMENTS).unwrap();
+    assert_eq!(page.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![1]);
+}
+
+fn parse_cursor(cursor: Option<&str>) -> Option<(i64, u32)> {
+    let (date, uid) = cursor?.strip_prefix("date:")?.split_once(':')?;
+    Some((date.parse().ok()?, uid.parse().ok()?))
+}
+
+#[test]
+fn card_attachments_span_the_thread_not_the_page() {
+    let conn = test_conn();
+    for (uid, key) in [
+        (1, "a@example.com"),
+        (2, "a@example.com"),
+        (3, "b@example.com"),
+    ] {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, date, thread_key)
+             VALUES('acct', 'INBOX', ?1, ?2, 'Hi', 1779580800, ?3)",
+            params![uid.to_string(), uid, key],
+        )
+        .unwrap();
+    }
+    // The file sits on the thread's first message; a page holding only the
+    // newest reply still marks the card.
+    save_body_with_attachments(&conn, 1, &["acct/INBOX/1/0.pdf"], None);
+
+    let header = |thread_key: &str| crate::imap::MessageHeader {
+        subject: "Hi".into(),
+        thread_key: thread_key.into(),
+        ..Default::default()
+    };
+    let (a, b) = (
+        card_thread_key(&header("a@example.com")),
+        card_thread_key(&header("b@example.com")),
+    );
+    let files = card_attachments(&conn, "acct", "INBOX", &[a.clone(), b]).unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[&a],
+        vec![CardFile {
+            filename: "0.pdf".into(),
+            mime: "application/octet-stream".into()
+        }]
+    );
+}
+
+#[test]
+fn files_backfill_runs_in_batches_after_the_migration() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::migrate_to_v8(&conn).unwrap();
+    let insert = |uid: u32, json: Value| {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, date, body, json)
+             VALUES('acct', 'INBOX', ?1, ?2, 'Hi', 1779580800, 'body', ?3)",
+            params![uid.to_string(), uid, json.to_string()],
+        )
+        .unwrap();
+    };
+    let file = |key: Option<&str>| json!({"filename": "f", "mime": "x/y", "size": 1, "key": key});
+    insert(
+        1,
+        json!({"attachments": [file(Some("acct/INBOX/1/0.pdf"))]}),
+    );
+    insert(
+        2,
+        json!({
+            "body_html": "<img src=\"/media/acct/INBOX/2/0.png\">",
+            "attachments": [file(Some("acct/INBOX/2/0.png"))],
+        }),
+    );
+    insert(3, json!({"attachments": [file(None)]}));
+    insert(4, json!({"attachments": []}));
+    insert(5, json!({}));
+
+    db::run_migrations(&conn).unwrap();
+    let filled = || -> i64 {
+        conn.query_row(
+            "SELECT count(*) FROM messages WHERE files IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    // The migration itself stays cheap: nothing is derived at startup.
+    assert_eq!(filled(), 0);
+
+    // Two rows per batch: three calls cover five rows, the fourth finds none.
+    let mut calls = 0;
+    while !backfill_files_batch(&conn, 2).unwrap() {
+        calls += 1;
+        assert!(calls < 10, "backfill never finished");
+    }
+    assert_eq!(calls, 3);
+    assert!(backfill_files_batch(&conn, 2).unwrap(), "stays done");
+
+    let mut stmt = conn
+        .prepare("SELECT uid, files FROM messages WHERE files IS NOT NULL ORDER BY uid")
+        .unwrap();
+    let flagged: Vec<(u32, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    let file = json!([{"filename": "f", "mime": "x/y"}]);
+    assert_eq!(
+        flagged
+            .into_iter()
+            .map(|(uid, files)| (uid, serde_json::from_str::<Value>(&files).unwrap()))
+            .collect::<Vec<_>>(),
+        vec![(1, file.clone()), (3, file)]
+    );
+}
+
+#[test]
+fn attachments_filter_spans_the_thread_not_the_row() {
+    let conn = test_conn();
+    // A read message that carried the file, and an unread plain reply to it.
+    for (uid, seen) in [(1, 1), (2, 0)] {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, thread_key)
+             VALUES('acct', 'INBOX', ?1, ?2, 'Hi', 'Aki', 'aki@example.com', ?3, ?4, 'root@example.com')",
+            params![uid.to_string(), uid, 1779580800 + uid as i64, seen],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "UPDATE messages SET files = '[{\"filename\":\"plan.pdf\",\"mime\":\"application/pdf\"}]' WHERE uid = 1",
+        [],
+    )
+    .unwrap();
+
+    let both = RecentFilter {
+        unread_only: true,
+        attachments_only: true,
+    };
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 10, None, both).unwrap();
+    assert_eq!(page.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![2]);
+}
+
+#[test]
+fn card_attachments_prefer_the_cached_copy_of_a_folded_message() {
+    let conn = test_conn();
+    // One message filed twice: the Inbox copy (read first) has no cached body,
+    // the Sent copy does.
+    for (folder, files) in [
+        ("INBOX", None),
+        (
+            "Sent",
+            Some("[{\"filename\":\"plan.pdf\",\"mime\":\"application/pdf\"}]"),
+        ),
+    ] {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, date, thread_key, json, files)
+             VALUES('acct', ?1, '1', 1, 'Hi', 1779580800, 'root@example.com',
+                    '{\"message_id\":\"root@example.com\"}', ?2)",
+            params![folder, files],
+        )
+        .unwrap();
+    }
+    let key = card_thread_key(&crate::imap::MessageHeader {
+        subject: "Hi".into(),
+        thread_key: "root@example.com".into(),
+        ..Default::default()
+    });
+    let files = card_attachments(&conn, "acct", "INBOX", &[key.clone()]).unwrap();
+    assert_eq!(files[&key].len(), 1, "one message, listed once");
+    // Folding still counts the message once.
+    assert_eq!(
+        card_message_counts(&conn, "acct", "INBOX", &[key.clone()]).unwrap()[&key],
+        1
+    );
 }

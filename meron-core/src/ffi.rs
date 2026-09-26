@@ -552,6 +552,35 @@ fn init_mobile_core(data_dir: &str, db_key: Option<&str>) -> serde_json::Value {
     // so the host never sees a Kotlin/Swift exception. The hook runs first and
     // gets the panic into the diagnostic log before the abort.
     crate::log::install_panic_hook();
+    // After the log sink, so a failure reaches the platform log. List cards
+    // name attachments from a column older caches lack. Fill it on
+    // its own connection, a batch at a time, so commands opening the store in
+    // the meantime only ever wait on one short transaction. Once per process.
+    static FILES_BACKFILL_STARTED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    if !FILES_BACKFILL_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        let data_dir = data_dir.to_string();
+        std::thread::spawn(move || {
+            let result = crate::protocol::with_mobile_db(&data_dir, |conn| {
+                while !crate::store::backfill_files_batch(
+                    &conn,
+                    crate::engine::FILES_BACKFILL_BATCH,
+                )
+                .map_err(|err| format!("{err:#}"))?
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Ok(json!({ "ok": true }))
+            });
+            if let Err(err) = result {
+                crate::mlog!(
+                    crate::log::Level::Warn,
+                    "store",
+                    "attachment backfill: {err}"
+                );
+            }
+        });
+    }
     serde_json::json!({
         "ok": true,
         "protocol": PROTOCOL_VERSION,

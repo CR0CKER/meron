@@ -1929,7 +1929,9 @@ describe('thread list view identity', () => {
 
     await loadThreads(false)
 
-    expect(calls).toEqual([{ command: 'mail.starredItems', payload: { query: '', filter: 'all', limit: 75 } }])
+    expect(calls).toEqual([
+      { command: 'mail.starredItems', payload: { query: '', filter: 'all', attachments: false, limit: 75 } },
+    ])
     expect(mail$.threads.get()).toEqual(rows.slice(1))
     expect(mail$.threadsCursor.get()).toBe('new-cursor')
   })

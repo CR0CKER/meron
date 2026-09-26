@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
+import { Calendar, Contact, File, FileImage, FileKey, FileText, Mail } from 'lucide-react'
 import {
   bodyContentKey,
   extractAddr,
+  fileIconFor,
   formatFileSize,
   formatMessageStamp,
   formatRecipientSummary,
@@ -257,5 +259,27 @@ describe('readerAttachmentImages', () => {
   it('skips images the body already renders', () => {
     const html = '<img src="/media/inline.png">'
     expect(readerAttachmentImages(attachments, html, true).map((a) => a.filename)).toEqual(['pasted.png', 'pixel.png'])
+  })
+})
+
+describe('fileIconFor', () => {
+  it('names invites, contact cards, forwarded mail and signatures by extension', () => {
+    expect(fileIconFor('invite.ics', '')).toBe(Calendar)
+    expect(fileIconFor('Dana Evans.vcf', '')).toBe(Contact)
+    expect(fileIconFor('Fwd.eml', '')).toBe(Mail)
+    expect(fileIconFor('smime.p7s', '')).toBe(FileKey)
+    expect(fileIconFor('IMG_0001.HEIC', '')).toBe(FileImage)
+  })
+
+  it('checks specific text types before the text/ catch-all', () => {
+    expect(fileIconFor('invite', 'text/calendar; method=REQUEST')).toBe(Calendar)
+    expect(fileIconFor('card', 'text/x-vcard')).toBe(Contact)
+    expect(fileIconFor('notes', 'text/plain')).toBe(FileText)
+    expect(fileIconFor('forwarded', 'message/rfc822')).toBe(Mail)
+  })
+
+  it('falls back to a generic file, and ignores a name with no extension', () => {
+    expect(fileIconFor('mystery.bin', 'application/octet-stream')).toBe(File)
+    expect(fileIconFor('ics', 'application/octet-stream')).toBe(File)
   })
 })

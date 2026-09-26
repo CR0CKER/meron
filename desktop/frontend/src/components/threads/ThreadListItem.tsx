@@ -6,6 +6,7 @@ import { formatThreadDate } from '../../lib/date'
 import { clsx } from '../../lib/utils'
 import { useTranslation } from '../../lib/i18n'
 import { isDraftFolder } from '../../states/mailFolders'
+import { AttachmentChips } from './AttachmentChips'
 
 export function ThreadListItem({
   thread,
@@ -171,6 +172,7 @@ export function ThreadListItem({
               </span>
             ) : null}
           </div>
+          {!!thread.files?.length && <AttachmentChips files={thread.files} />}
         </div>
       </button>
     </div>

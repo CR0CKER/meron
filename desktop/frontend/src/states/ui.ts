@@ -57,6 +57,9 @@ export const ui$ = observable({
   bulkAnchorKey: '',
   query: '',
   filterMode: 'all' as FilterMode,
+  /** Keep only threads with attachments. Independent of `filterMode`, so it
+   * combines with unread and starred. */
+  attachmentsOnly: false,
   // Modals / panels.
   setupOpen: false,
   setupMode: 'gmail' as SetupMode,
@@ -250,6 +253,9 @@ export function focusQuickReply() {
 const filterSession = persistedField(ui$.filterMode, 'session_filter_mode', (raw) =>
   isFilterMode(raw) ? raw : undefined,
 )
+const attachmentsSession = persistedField(ui$.attachmentsOnly, 'session_attachments_only', (raw) =>
+  typeof raw === 'boolean' ? raw : undefined,
+)
 
 let restoringNav = false
 function persistNav(key: string, value: string) {
@@ -281,9 +287,10 @@ ui$.selectedAccount.onChange(() => clearBulkSelection())
 ui$.selectedFolder.onChange(() => clearBulkSelection())
 ui$.query.onChange(() => clearBulkSelection())
 ui$.filterMode.onChange(() => clearBulkSelection())
+ui$.attachmentsOnly.onChange(() => clearBulkSelection())
 
 /** Prefs keys this module owns; boot requests them in its single prefsGet. */
-export const UI_SESSION_KEYS = ['session_account', 'session_folder', filterSession.key]
+export const UI_SESSION_KEYS = ['session_account', 'session_folder', filterSession.key, attachmentsSession.key]
 
 /**
  * Seed ui$ navigation from the persisted last session. Call once at boot after
@@ -310,4 +317,5 @@ export function restoreUiSession(prefs: Record<string, unknown>, accounts: Accou
     restoringNav = false
   }
   filterSession.restore(prefs)
+  attachmentsSession.restore(prefs)
 }

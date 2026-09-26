@@ -195,7 +195,7 @@
   "chat.plainView": "텍스트 보기",
   "chat.previousImage": "이전 이미지",
   "chat.previousMatch": "이전 검색 결과",
-  "chat.printAttachments": "첨부 파일",
+  "chat.attachments": "첨부 파일",
   "chat.remoteBlocked": "원격 콘텐츠가 차단됨",
   "chat.replyTo": "회신",
   "chat.retry": "재시도",

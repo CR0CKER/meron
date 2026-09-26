@@ -48,19 +48,21 @@ internal fun mailboxCacheKey(
     folderId: String,
     query: String,
     filter: FilterMode,
+    attachmentsOnly: Boolean = false,
 ): MailboxCacheKey =
     MailboxCacheKey(
         accountId = accountId.ifBlank { UNIFIED_ACCOUNT_ID },
         folderId = folderId.ifBlank { INBOX_FOLDER }.lowercase(),
         query = query.trim(),
         filter = filter,
+        attachmentsOnly = attachmentsOnly,
     )
 
 private fun MeronMobileState.cacheVisibleMailbox() {
     if (!initialThreadsLoaded) return
     val accountId = selectedCoreAccountId.ifBlank { UNIFIED_ACCOUNT_ID }
     val folderId = selectedCoreFolder.ifBlank { INBOX_FOLDER }
-    val key = visibleMailboxKey ?: mailboxCacheKey(accountId, folderId, mailSearch, mailFilter)
+    val key = visibleMailboxKey ?: mailboxCacheKey(accountId, folderId, mailSearch, mailFilter, mailAttachmentsOnly)
     mailboxCache =
         mailboxCache +
         (
@@ -80,7 +82,7 @@ private fun MeronMobileState.restoreCachedMailbox(
     accountId: String,
     folderId: String,
 ): Boolean {
-    val key = mailboxCacheKey(accountId, folderId, mailSearch, mailFilter)
+    val key = mailboxCacheKey(accountId, folderId, mailSearch, mailFilter, mailAttachmentsOnly)
     val cached = mailboxCache[key] ?: return false
     coreFolders = reconcileFolderUnread(cached.folders, folderReadGuard.version)
     if (cached.folders.isNotEmpty()) {
@@ -218,6 +220,7 @@ internal fun MeronMobileState.syncCoreThreads(
     val unifiedStarred = accountId == UNIFIED_ACCOUNT_ID && isUnifiedStarredFolder(requestedFolder)
     val query = mailSearch
     val filter = mailFilter
+    val attachmentsOnly = mailAttachmentsOnly
     val selectedAccounts =
         if (accountId == UNIFIED_ACCOUNT_ID) {
             coreAccounts.filter { it.includedInUnified }
@@ -230,7 +233,7 @@ internal fun MeronMobileState.syncCoreThreads(
         initialThreadsLoaded = true
         return
     }
-    val requestKey = mailboxCacheKey(accountId, requestedFolder, query, filter)
+    val requestKey = mailboxCacheKey(accountId, requestedFolder, query, filter, attachmentsOnly)
     if (syncing && activeMailboxLoadKey == requestKey) {
         Log.i("MailLoad", "sync skipped duplicate account=$accountId folder=$requestedFolder")
         deferredMailboxReload =
@@ -278,13 +281,14 @@ internal fun MeronMobileState.syncCoreThreads(
                     // The starred listing spans folders, so there is no mailbox
                     // to sync first: the core reads whatever the accounts'
                     // own syncs have already starred.
-                    loadUnifiedStarred(client = client, query = query, filter = filter, limit = listLimit)
+                    loadUnifiedStarred(client = client, query = query, filter = filter, attachmentsOnly = attachmentsOnly, limit = listLimit)
                 } else if (accountId == UNIFIED_ACCOUNT_ID) {
                     loadUnifiedInbox(
                         client = client,
                         accounts = selectedAccounts,
                         query = query,
                         filter = filter,
+                        attachmentsOnly = attachmentsOnly,
                         syncFirst = syncFirst,
                         syncLimit = syncLimit,
                         listLimit = listLimit,
@@ -298,6 +302,7 @@ internal fun MeronMobileState.syncCoreThreads(
                         requestedFolder,
                         query = query,
                         filter = filter,
+                        attachmentsOnly = attachmentsOnly,
                         syncFirst = syncFirst,
                         syncLimit = syncLimit,
                         listLimit = listLimit,
@@ -306,7 +311,7 @@ internal fun MeronMobileState.syncCoreThreads(
                 }
             }
         }.onSuccess { result ->
-            val resultKey = mailboxCacheKey(accountId, result.folder, query, filter)
+            val resultKey = mailboxCacheKey(accountId, result.folder, query, filter, attachmentsOnly)
             mailboxCache =
                 mailboxCache +
                 (
@@ -544,6 +549,7 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
     val requestedFolder = selectedCoreFolder.ifBlank { INBOX_FOLDER }
     val query = mailSearch
     val filter = mailFilter
+    val attachmentsOnly = mailAttachmentsOnly
     val selectedAccounts = pageableCoreAccounts()
     if (selectedAccounts.isEmpty()) return
     loadingMoreThreads = true
@@ -553,13 +559,14 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
             withContext(ioDispatcher) {
                 val client = MobileMailCommandClient(core)
                 if (accountId == UNIFIED_ACCOUNT_ID && isUnifiedStarredFolder(requestedFolder)) {
-                    loadUnifiedStarred(client = client, query = query, filter = filter, beforeCursor = mailboxCursor)
+                    loadUnifiedStarred(client = client, query = query, filter = filter, attachmentsOnly = attachmentsOnly, beforeCursor = mailboxCursor)
                 } else if (accountId == UNIFIED_ACCOUNT_ID) {
                     loadUnifiedInbox(
                         client = client,
                         accounts = selectedAccounts,
                         query = query,
                         filter = filter,
+                        attachmentsOnly = attachmentsOnly,
                         syncFirst = false,
                         beforeCursor = mailboxCursor,
                         folderRole = requestedFolder,
@@ -571,6 +578,7 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
                         requestedFolder,
                         query = query,
                         filter = filter,
+                        attachmentsOnly = attachmentsOnly,
                         syncFirst = false,
                         beforeCursor = mailboxCursor,
                     )
@@ -609,6 +617,7 @@ internal suspend fun MeronMobileState.loadAccountInbox(
     requestedFolder: String,
     query: String = mailSearch,
     filter: FilterMode = mailFilter,
+    attachmentsOnly: Boolean = mailAttachmentsOnly,
     syncFirst: Boolean = true,
     beforeCursor: String? = null,
     syncLimit: Int = MAILBOX_SYNC_LIMIT,
@@ -665,6 +674,7 @@ internal suspend fun MeronMobileState.loadAccountInbox(
                 folderId = folder,
                 query = query.trim(),
                 filter = filter.protocolValue(),
+                attachments = attachmentsOnly,
                 beforeCursor = beforeCursor,
                 refresh = refreshSearch,
                 // Paging forward always fetches a single page; only a reload of
@@ -702,6 +712,7 @@ internal suspend fun MeronMobileState.loadUnifiedInbox(
     accounts: List<AccountSummary>,
     query: String = mailSearch,
     filter: FilterMode = mailFilter,
+    attachmentsOnly: Boolean = mailAttachmentsOnly,
     syncFirst: Boolean = true,
     beforeCursor: String? = null,
     syncLimit: Int = MAILBOX_SYNC_LIMIT,
@@ -784,6 +795,7 @@ internal suspend fun MeronMobileState.loadUnifiedInbox(
                     folderRole = role,
                     query = query.trim(),
                     filter = filter.protocolValue(),
+                    attachments = attachmentsOnly,
                     beforeCursor = beforeCursor,
                     refresh = refreshSearch,
                     // The core fans this out per account, so the limit is a
@@ -815,6 +827,7 @@ internal suspend fun MeronMobileState.loadUnifiedStarred(
     client: MobileMailCommandClient,
     query: String = mailSearch,
     filter: FilterMode = mailFilter,
+    attachmentsOnly: Boolean = mailAttachmentsOnly,
     beforeCursor: String? = null,
     limit: Int = MAILBOX_PAGE_SIZE,
 ): MailboxLoadResult {
@@ -824,6 +837,7 @@ internal suspend fun MeronMobileState.loadUnifiedStarred(
                 StarredItemsParams(
                     query = query.trim(),
                     filter = filter.protocolValue(),
+                    attachments = attachmentsOnly,
                     limit = limit,
                     beforeCursor = beforeCursor,
                 ),

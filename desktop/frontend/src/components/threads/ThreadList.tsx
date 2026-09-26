@@ -17,7 +17,15 @@ import {
   type BulkSelectionItem,
 } from '../../states/ui'
 import { thread$ } from '../../states/thread'
-import { mail$, getFilteredThreads, syncMail, loadMoreThreads, loadThreads, threadListViewKey } from '../../states/mail'
+import {
+  mail$,
+  getFilteredThreads,
+  syncMail,
+  loadMoreThreads,
+  loadThreads,
+  threadListViewKey,
+  listFilterKey,
+} from '../../states/mail'
 import { markAllRead } from '../../states/mailFlags'
 import {
   isDraftFolder,
@@ -59,6 +67,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   const system = useValue(ui$.system)
   const filteredThreads = useValue(getFilteredThreads)
   const filterMode = useValue(ui$.filterMode)
+  const attachmentsOnly = useValue(ui$.attachmentsOnly)
   const threadsCursor = useValue(mail$.threadsCursor)
   const threadsLoadingMore = useValue(mail$.threadsLoadingMore)
   // The rows on hand belong to the view they were loaded for. Until that is the
@@ -66,7 +75,9 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   // true from the first paint of a navigation, which is a frame or more before
   // the effect that starts the load.
   const threadsLoadedKey = useValue(mail$.threadsLoadedKey)
-  const threadsLoading = threadsLoadedKey !== threadListViewKey(selectedAccount, selectedFolder, query, filterMode)
+  const threadsLoading =
+    threadsLoadedKey !==
+    threadListViewKey(selectedAccount, selectedFolder, query, listFilterKey(filterMode, attachmentsOnly))
   const threadMenu = useThreadContextMenu(accounts)
   // Starred is a folder of the unified view whose rows span every account. It
   // lists ordinary threads, so it shares this list's selection, context menu and
@@ -132,7 +143,8 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
     : folderUnread(folders, selectedFolder) > 0 || filteredThreads.some((thread) => thread.unread)
   // A search pages on the cursor the core mints for it, whatever the filter chip
   // says — a query is answered by a search, not by a filtered listing. Without a
-  // cursor (feeds, starred) there is nothing more to load.
+  // cursor (feeds, starred) there is nothing more to load. The attachments
+  // toggle narrows the same cursor-paged listing, so it does not stop paging.
   const canLoadMore = !!threadsCursor && (!!query.trim() || filterMode === 'all')
   const feedRowsDraggable = !isStarredView && isRSSAccount
   // The folder switcher needs a folder list to offer. That is an account's real
@@ -145,7 +157,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   // wording holds while a search or filter is hiding the threads that are there.
   const inboxFolder = folders.find((folder) => folder.role === 'inbox' || folder.id === 'inbox')
   const inInbox = selectedFolder === (inboxFolder?.id ?? 'inbox')
-  const narrowed = !!query.trim() || filterMode !== 'all'
+  const narrowed = !!query.trim() || filterMode !== 'all' || attachmentsOnly
   const emptyStateTitle = narrowed
     ? t('empty.noMatchingMail')
     : isRSSAccount
@@ -162,6 +174,15 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
         : inInbox
           ? t('empty.inboxEmpty')
           : t('empty.pullLatestMessages')
+  const loadMoreButton = (
+    <button
+      className="mx-3 my-3 flex h-9 shrink-0 items-center justify-center rounded-lg border border-border text-xs font-semibold text-secondary hover:bg-hover disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer transition-colors"
+      disabled={threadsLoadingMore}
+      onClick={() => void loadMoreThreads()}
+    >
+      {threadsLoadingMore ? t('common.loading') : t('threads.actions.loadMore')}
+    </button>
+  )
   const desktopBulk = isWailsDesktopRuntime() || !!system
   const bulkItems = selectedBulkItems()
   const bulkGroupKey = `thread-list:${selectedAccount}:${selectedFolder}`
@@ -314,6 +335,8 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                   <ThreadActionsMenu
                     filterMode={filterMode}
                     onFilterChange={(mode) => ui$.filterMode.set(mode)}
+                    attachmentsOnly={attachmentsOnly}
+                    onAttachmentsOnlyChange={(on) => ui$.attachmentsOnly.set(on)}
                     hasUnread={hasUnread}
                     onMarkAllRead={() => markAllRead()}
                     onEmptyFolder={
@@ -408,7 +431,14 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
           ) : isStarredView ? (
             <EmptyState title={t('empty.noStarredItems')} text={t('empty.noStarredItemsText')} />
           ) : (
-            <EmptyState title={emptyStateTitle} text={emptyStateText} />
+            // A narrowed page can come back empty with older mail still to read
+            // (the core stops reading on after a few emptied pages), so an empty
+            // list is not the end while the cursor says otherwise.
+            <EmptyState
+              title={emptyStateTitle}
+              text={emptyStateText}
+              action={canLoadMore ? loadMoreButton : undefined}
+            />
           )
         ) : (
           <>
@@ -475,15 +505,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                 />
               )
             })}
-            {canLoadMore && (
-              <button
-                className="mx-3 my-3 flex h-9 shrink-0 items-center justify-center rounded-lg border border-border text-xs font-semibold text-secondary hover:bg-hover disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer transition-colors"
-                disabled={threadsLoadingMore}
-                onClick={() => void loadMoreThreads()}
-              >
-                {threadsLoadingMore ? t('common.loading') : t('threads.actions.loadMore')}
-              </button>
-            )}
+            {canLoadMore && loadMoreButton}
           </>
         )}
       </div>

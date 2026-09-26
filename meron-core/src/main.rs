@@ -98,6 +98,10 @@ async fn main() {
         }
     };
 
+    // List cards name attachments from a column older caches lack; fill it
+    // behind the UI rather than in the migration that added it.
+    spawn_files_backfill(engine.clone());
+
     // Resume IDLE for accounts whose credentials persisted across restarts.
     let known: Vec<String> = engine.accounts.lock().await.keys().cloned().collect();
     for account in known {

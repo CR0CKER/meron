@@ -181,13 +181,27 @@ pub(super) fn reconcile_thread_keys_from(
     Ok(())
 }
 
+/// Which cached rows a newest-first page keeps. The two narrowings combine.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RecentFilter {
+    pub unread_only: bool,
+    /// Messages whose *thread* has a cached message with a real attachment —
+    /// thread-wide, like the card's paperclip, so an unread plain reply to a
+    /// read message that carried the file still lists its thread under
+    /// "unread with attachments". A subject-branched thread shares one key, so
+    /// this is a superset; the card-level narrowing
+    /// (`ThreadListQuery::retain_attachment_threads`) trims it to the branch.
+    /// Only cached bodies are known.
+    pub attachments_only: bool,
+}
+
 pub fn get_recent_page(
     conn: &Connection,
     account: &str,
     folder: &str,
     limit: u32,
     before_cursor: Option<(i64, u32)>,
-    unread_only: bool,
+    filter: RecentFilter,
 ) -> Result<(Vec<MessageHeader>, Option<String>)> {
     let probe = limit.saturating_add(1);
     // Newest-first by send time. The cursor is the (date, uid) of the last row of
@@ -198,6 +212,12 @@ pub fn get_recent_page(
                 json_extract(json, '$.to') FROM messages
          WHERE account = ?1 AND folder = ?2
            AND (?6 = 0 OR seen = 0)
+           AND (?7 = 0 OR files IS NOT NULL
+                OR (COALESCE(thread_key, '') <> '' AND EXISTS (
+                      SELECT 1 FROM messages t
+                      WHERE t.account = messages.account
+                        AND lower(COALESCE(t.thread_key, '')) = lower(COALESCE(messages.thread_key, ''))
+                        AND t.files IS NOT NULL)))
            AND (?3 IS NULL
                 OR date < ?3
                 OR (date = ?3 AND uid < ?4))
@@ -212,7 +232,8 @@ pub fn get_recent_page(
             cursor_date,
             cursor_uid,
             probe as i64,
-            unread_only as i64
+            filter.unread_only as i64,
+            filter.attachments_only as i64
         ],
         |row| {
             let uid = row.get(0)?;
@@ -791,6 +812,63 @@ pub fn get_cached_message(
     }))
 }
 
+/// The `files` column for `message`: its real attachments as the list cards
+/// name them, or NULL when there are none (see the v11 migration).
+fn files_json(message: &Message) -> Option<String> {
+    let files: Vec<Value> = message
+        .file_attachments()
+        .map(|attachment| json!({ "filename": attachment.filename, "mime": attachment.mime }))
+        .collect();
+    (!files.is_empty()).then(|| Value::Array(files).to_string())
+}
+
+/// Progress of [`backfill_files_batch`] in `meta`: the last `messages.id`
+/// done, or `done`.
+const FILES_BACKFILL_KEY: &str = "files_backfill";
+
+/// Fill `messages.files` for up to `batch` rows cached before the column
+/// existed (see the v11 migration), resuming where the last call stopped.
+/// Returns true once every row has been visited. Each call is one short
+/// transaction, so the caller can release the store between batches.
+///
+/// Mirrors [`Message::file_attachments`] in SQL: an attachment counts unless the
+/// stored HTML shows it inline.
+pub fn backfill_files_batch(conn: &Connection, batch: u32) -> Result<bool> {
+    let cursor = match super::db::meta_get(conn, FILES_BACKFILL_KEY)?.as_deref() {
+        Some("done") => return Ok(true),
+        Some(id) => id.parse::<i64>().unwrap_or(0),
+        None => 0,
+    };
+    let tx = conn.unchecked_transaction()?;
+    let last: Option<i64> = tx.query_row(
+        "SELECT max(id) FROM (SELECT id FROM messages WHERE id > ?1 ORDER BY id LIMIT ?2)",
+        params![cursor, batch],
+        |row| row.get(0),
+    )?;
+    let Some(last) = last else {
+        super::db::meta_set(&tx, FILES_BACKFILL_KEY, "done")?;
+        tx.commit()?;
+        return Ok(true);
+    };
+    tx.execute(
+        "UPDATE messages SET files = (
+           SELECT CASE WHEN count(*) = 0 THEN NULL ELSE json_group_array(json_object(
+             'filename', json_extract(attachment.value, '$.filename'),
+             'mime', json_extract(attachment.value, '$.mime'))) END
+           FROM json_each(messages.json, '$.attachments') AS attachment
+           WHERE json_extract(attachment.value, '$.key') IS NULL
+              OR instr(COALESCE(json_extract(messages.json, '$.body_html'), ''),
+                       '/media/' || json_extract(attachment.value, '$.key')) = 0
+         )
+         WHERE id > ?1 AND id <= ?2 AND uid <> 0
+           AND json_extract(json, '$.attachments') IS NOT NULL",
+        params![cursor, last],
+    )?;
+    super::db::meta_set(&tx, FILES_BACKFILL_KEY, &last.to_string())?;
+    tx.commit()?;
+    Ok(false)
+}
+
 pub fn save_cached_message(
     conn: &Connection,
     account: &str,
@@ -815,15 +893,16 @@ pub fn save_cached_message(
     .to_string();
 
     conn.execute(
-        "INSERT INTO messages (account, folder, msg_id, uid, subject, from_name, from_addr, date, body, json)
-         VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "INSERT INTO messages (account, folder, msg_id, uid, subject, from_name, from_addr, date, body, json, files)
+         VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(account, folder, msg_id) DO UPDATE SET
            subject = excluded.subject,
            from_name = excluded.from_name,
            from_addr = excluded.from_addr,
            date = excluded.date,
            body = excluded.body,
-           json = json_patch(messages.json, excluded.json)",
+           json = json_patch(messages.json, excluded.json),
+           files = excluded.files",
         params![
             account,
             folder,
@@ -833,7 +912,8 @@ pub fn save_cached_message(
             message.from_addr,
             message.date,
             message.body,
-            extra_json
+            extra_json,
+            files_json(message)
         ],
     )?;
 

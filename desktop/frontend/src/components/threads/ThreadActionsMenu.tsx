@@ -1,6 +1,19 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { MoreHorizontal, Inbox, Mail, Star, CheckCheck, EyeOff, FolderX, RefreshCw, Search, Trash2 } from 'lucide-react'
+import {
+  MoreHorizontal,
+  Inbox,
+  Mail,
+  Star,
+  Paperclip,
+  Check,
+  CheckCheck,
+  EyeOff,
+  FolderX,
+  RefreshCw,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import type { FilterMode } from '../../states/ui'
 import { useDismissOnOutside } from '../menu/useDismissOnOutside'
@@ -10,6 +23,9 @@ import { menuItemBase } from '../menu/menuStyles'
 export type ThreadActionsMenuItemsProps = {
   filterMode: FilterMode
   onFilterChange: (mode: FilterMode) => void
+  /** The attachments toggle, independent of `filterMode`; hidden unless wired. */
+  attachmentsOnly?: boolean
+  onAttachmentsOnlyChange?: (on: boolean) => void
   hasUnread: boolean
   onMarkAllRead: () => void
   /** Only wired for a per-account Trash or Junk folder; the item is hidden otherwise. */
@@ -33,6 +49,8 @@ export type ThreadActionsMenuItemsProps = {
 export function ThreadActionsMenuItems({
   filterMode,
   onFilterChange,
+  attachmentsOnly = false,
+  onAttachmentsOnlyChange,
   hasUnread,
   onMarkAllRead,
   onEmptyFolder,
@@ -73,6 +91,28 @@ export function ThreadActionsMenuItems({
           {filterItem('all', allLabel ?? t('filters.all'), <Inbox size={13} className="text-secondary shrink-0" />)}
           {filterItem('unread', t('filters.unread'), <Mail size={13} className="text-secondary shrink-0" />)}
           {filterItem('starred', t('filters.starred'), <Star size={13} className="text-secondary shrink-0" />)}
+          {onAttachmentsOnlyChange && (
+            <>
+              {/* An on/off narrowing on top of the choice above, not a fourth
+                  choice: unread mail with attachments is a view of its own. */}
+              <div className="my-1 border-t border-border" />
+              <button
+                role="menuitemcheckbox"
+                aria-checked={attachmentsOnly}
+                className={`${menuItemBase} flex-nowrap ${
+                  attachmentsOnly ? 'bg-accent/10 dark:bg-accent/15 text-accent' : 'text-primary hover:bg-hover'
+                }`}
+                onClick={() => {
+                  onAttachmentsOnlyChange(!attachmentsOnly)
+                  closeMenu()
+                }}
+              >
+                <Paperclip size={13} className="text-secondary shrink-0" />
+                <span className="whitespace-nowrap shrink-0">{t('chat.attachments')}</span>
+                <Check size={13} className={`ml-auto shrink-0 ${attachmentsOnly ? '' : 'invisible'}`} />
+              </button>
+            </>
+          )}
           <div className="my-1 border-t border-border" />
         </>
       )}
@@ -173,6 +213,8 @@ export function ThreadActionsMenuItems({
 export function ThreadActionsMenu({
   filterMode,
   onFilterChange,
+  attachmentsOnly = false,
+  onAttachmentsOnlyChange,
   hasUnread,
   onMarkAllRead,
   onEmptyFolder,
@@ -191,6 +233,8 @@ export function ThreadActionsMenu({
 }: {
   filterMode: FilterMode
   onFilterChange: (mode: FilterMode) => void
+  attachmentsOnly?: boolean
+  onAttachmentsOnlyChange?: (on: boolean) => void
   hasUnread: boolean
   onMarkAllRead: () => void
   onEmptyFolder?: () => void
@@ -217,7 +261,7 @@ export function ThreadActionsMenu({
     () => setOpen(false),
   )
 
-  const filterActive = filterMode !== 'all'
+  const filterActive = filterMode !== 'all' || attachmentsOnly
 
   return (
     <div ref={rootRef} className="relative">
@@ -241,6 +285,8 @@ export function ThreadActionsMenu({
           <ThreadActionsMenuItems
             filterMode={filterMode}
             onFilterChange={onFilterChange}
+            attachmentsOnly={attachmentsOnly}
+            onAttachmentsOnlyChange={onAttachmentsOnlyChange}
             hasUnread={hasUnread}
             onMarkAllRead={onMarkAllRead}
             onEmptyFolder={onEmptyFolder}

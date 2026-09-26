@@ -105,12 +105,19 @@ func TestThreadsJSONKeepsSendersFromCoreThreads(t *testing.T) {
 					map[string]any{"name": "Dana", "me": false},
 				},
 				"senders_truncated": true,
+				"has_attachments":   true,
+				"files": []any{
+					map[string]any{"filename": "plan.pdf", "mime": "application/pdf"},
+				},
 			},
 		},
 	}
 	thread := threadsByID(t, threadsJSON("acc", "INBOX", raw))["t1"]
 	if len(thread.Senders) != 3 || thread.Senders[2].Name != "Dana" || !thread.SendersTruncated {
 		t.Errorf("senders dropped from core thread row: %#v", thread)
+	}
+	if !thread.HasAttachments || len(thread.Files) != 1 || thread.Files[0].Filename != "plan.pdf" {
+		t.Errorf("attachments dropped from core thread row: %#v", thread)
 	}
 }
 

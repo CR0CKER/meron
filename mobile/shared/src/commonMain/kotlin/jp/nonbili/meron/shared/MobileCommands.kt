@@ -614,6 +614,8 @@ data class ThreadListParams(
     val folderId: String = "inbox",
     val query: String = "",
     val filter: String = "all",
+    // Keep only threads with attachments; combines with `filter`.
+    val attachments: Boolean = false,
     val beforeCursor: String? = null,
     val refresh: Boolean = false,
     // Header rows to return, per account (the unified fan-out applies it to each
@@ -633,6 +635,7 @@ data class ThreadListParams(
             "folder_id" to folderId.jsonString(),
             "query" to query.jsonString(),
             "filter" to filter.jsonString(),
+            "attachments" to attachments.toString(),
             "before_cursor" to beforeCursor?.jsonString(),
             "refresh" to refresh.toString(),
             "limit" to limit?.toString(),
@@ -643,6 +646,7 @@ data class ThreadListParams(
 data class StarredItemsParams(
     val query: String = "",
     val filter: String = "all",
+    val attachments: Boolean = false,
     val limit: Int = 50,
     val beforeCursor: String? = null,
 ) {
@@ -650,6 +654,7 @@ data class StarredItemsParams(
         jsonObject(
             "query" to query.jsonString(),
             "filter" to filter.jsonString(),
+            "attachments" to attachments.toString(),
             "limit" to limit.toString(),
             "before_cursor" to beforeCursor?.jsonString(),
         )

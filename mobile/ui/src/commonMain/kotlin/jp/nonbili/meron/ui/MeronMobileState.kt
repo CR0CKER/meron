@@ -131,6 +131,9 @@ internal class MeronMobileState(
     var selectedCoreFolder by mutableStateOf(loadLastMailFolder(prefs))
     var mailSearch by mutableStateOf("")
     var mailFilter by mutableStateOf(FilterMode.All)
+
+    /** Keep only threads with attachments; combines with [mailFilter]. */
+    var mailAttachmentsOnly by mutableStateOf(false)
     var coreThreads by mutableStateOf(emptyList<ThreadSummary>())
     var mailboxCache by mutableStateOf(emptyMap<MailboxCacheKey, MailboxLoadResult>())
 
@@ -198,6 +201,7 @@ internal class MeronMobileState(
      *  stale card back. */
     val kanbanColumnLoadTokens = mutableMapOf<String, Long>()
     var kanbanFilter by mutableStateOf(loadKanbanFilter(kanbanPrefs))
+    var kanbanAttachmentsOnly by mutableStateOf(loadKanbanAttachmentsOnly(kanbanPrefs))
     var kanbanSearch by mutableStateOf(loadKanbanSearch(kanbanPrefs))
     var kanbanSearchScope by mutableStateOf(loadKanbanSearchScope(kanbanPrefs))
     var kanbanActionThread by mutableStateOf<ThreadSummary?>(null)

@@ -123,6 +123,10 @@ data class ThreadSummary(
     val starred: Boolean = false,
     val hasStarredItems: Boolean = false,
     val hasDraft: Boolean = false,
+    val hasAttachments: Boolean = false,
+    /** The thread's attachments in thread order, for the chips under the row;
+     *  only messages whose body is cached are known. Name and type only. */
+    val files: List<MessageAttachment> = emptyList(),
     val dateEpochSeconds: Long = 0,
     val feedUrl: String = "",
     val threadId: String = "",

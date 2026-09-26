@@ -1,13 +1,19 @@
 import { splitAddressList } from '../../lib/address'
 import {
+  Calendar,
+  Contact,
   File,
   FileArchive,
   FileAudio,
   FileCode,
   FileImage,
+  FileKey,
   FileSpreadsheet,
   FileText,
+  FileType,
   FileVideo,
+  Mail,
+  Package,
   Presentation,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
@@ -37,61 +43,59 @@ export function formatFileSize(bytes: number): string {
   return `${rounded} ${units[unit]}`
 }
 
-const EXT_ICONS: Record<string, FileIconComponent> = {
-  pdf: PdfIcon,
-  doc: FileText,
-  docx: FileText,
-  rtf: FileText,
-  odt: FileText,
-  txt: FileText,
-  md: FileText,
-  xls: FileSpreadsheet,
-  xlsx: FileSpreadsheet,
-  csv: FileSpreadsheet,
-  ods: FileSpreadsheet,
-  ppt: Presentation,
-  pptx: Presentation,
-  odp: Presentation,
-  key: Presentation,
-  zip: FileArchive,
-  rar: FileArchive,
-  '7z': FileArchive,
-  tar: FileArchive,
-  gz: FileArchive,
-  bz2: FileArchive,
-  js: FileCode,
-  ts: FileCode,
-  jsx: FileCode,
-  tsx: FileCode,
-  json: FileCode,
-  html: FileCode,
-  css: FileCode,
-  py: FileCode,
-  rs: FileCode,
-  go: FileCode,
-  java: FileCode,
-  c: FileCode,
-  cpp: FileCode,
-  sh: FileCode,
-  xml: FileCode,
-  yml: FileCode,
-  yaml: FileCode,
-}
+/** Extensions sharing one icon, flattened into `EXT_ICONS` below. */
+const EXT_GROUPS: [FileIconComponent, string[]][] = [
+  [PdfIcon, ['pdf']],
+  [FileText, ['doc', 'docx', 'rtf', 'odt', 'pages', 'txt', 'md', 'log']],
+  [FileSpreadsheet, ['xls', 'xlsx', 'xlsm', 'csv', 'tsv', 'ods', 'numbers']],
+  [Presentation, ['ppt', 'pptx', 'odp', 'key']],
+  [FileArchive, ['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst']],
+  [FileImage, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'svg', 'avif']],
+  [FileVideo, ['mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'wmv']],
+  [FileAudio, ['mp3', 'm4a', 'wav', 'flac', 'ogg', 'oga', 'opus', 'aac']],
+  // Meeting invites and contact cards, the two structured files mail carries most.
+  [Calendar, ['ics', 'ical', 'ifb', 'vcs']],
+  [Contact, ['vcf', 'vcard']],
+  // A forwarded message attached whole.
+  [Mail, ['eml', 'msg']],
+  // Signatures and keys: S/MIME's smime.p7s rides on every signed message.
+  [FileKey, ['p7s', 'p7m', 'p7c', 'asc', 'sig', 'gpg', 'pgp', 'pem', 'crt', 'cer']],
+  [Package, ['apk', 'dmg', 'exe', 'msi', 'deb', 'rpm', 'pkg', 'appimage', 'iso']],
+  [FileType, ['ttf', 'otf', 'woff', 'woff2']],
+  // prettier-ignore
+  [FileCode, [
+    'js', 'ts', 'jsx', 'tsx', 'json', 'html', 'htm', 'css', 'py', 'rs', 'go', 'java', 'kt', 'swift',
+    'c', 'h', 'cpp', 'rb', 'php', 'sh', 'sql', 'xml', 'yml', 'yaml', 'toml',
+  ]],
+]
+
+const EXT_ICONS: Record<string, FileIconComponent> = Object.fromEntries(
+  EXT_GROUPS.flatMap(([icon, exts]) => exts.map((ext) => [ext, icon])),
+)
 
 /** Pick a file icon from extension first, then mime, falling back to a generic file. */
 export function fileIconFor(filename: string, mime: string): FileIconComponent {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() ?? '') : ''
   if (EXT_ICONS[ext]) return EXT_ICONS[ext]
 
-  const m = (mime ?? '').toLowerCase()
+  // Specific types before the `text/` catch-all: invites and contact cards are
+  // text/calendar and text/vcard.
+  const m = (mime ?? '').toLowerCase().split(';')[0].trim()
+  if (m === 'text/calendar' || m === 'application/ics') return Calendar
+  if (m === 'text/vcard' || m === 'text/x-vcard' || m === 'text/directory') return Contact
+  if (m === 'message/rfc822' || m === 'application/vnd.ms-outlook') return Mail
+  if (m.includes('pkcs7') || m.includes('pgp') || m.includes('x509')) return FileKey
   if (m.startsWith('image/')) return FileImage
   if (m.startsWith('video/')) return FileVideo
   if (m.startsWith('audio/')) return FileAudio
+  if (m.startsWith('font/')) return FileType
   if (m.startsWith('text/')) return FileText
   if (m === 'application/pdf') return PdfIcon
   if (m.includes('spreadsheet') || m.includes('excel')) return FileSpreadsheet
   if (m.includes('presentation') || m.includes('powerpoint')) return Presentation
+  if (m.includes('wordprocessing') || m.includes('msword') || m.includes('opendocument.text')) return FileText
   if (m.includes('zip') || m.includes('compressed') || m.includes('tar')) return FileArchive
+  if (m.includes('android.package') || m.includes('x-msdownload') || m.includes('diskimage')) return Package
   if (m.includes('json') || m.includes('javascript') || m.includes('xml')) return FileCode
   return File
 }

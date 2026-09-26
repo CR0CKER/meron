@@ -16,6 +16,10 @@ export const KANBAN_COLUMN_MINIMIZED_WIDTH = 48
 export const SEARCH_DEBOUNCE_MS = 300
 
 const columnLoadVersions = new Map<string, number>()
+// The query and filters each column's stored cursor was issued for. A cursor only
+// continues the listing that produced it, so the next page is asked for with this
+// view rather than whatever the search box or filters say by then.
+const columnCursorViews = new Map<string, ColumnView>()
 const KANBAN_SYNC_TIMEOUT_MS = 130_000
 // A first look at a folder that was never synced answers from an empty cache, so
 // the column waits this long for the background sync the read kicked off rather
@@ -363,18 +367,26 @@ export function columnEmptyText(
   searchActive: boolean,
   hasRawThreads: boolean,
   isRss = false,
+  attachmentsOnly = false,
 ): string {
   // RSS columns list feed subscriptions rather than mail threads, so the noun
   // shifts to match the user's mental model of the column.
   const noun = isRss ? 'feeds' : 'threads'
+  // The attachments toggle narrows whatever the read-state filter shows.
+  const withFiles = attachmentsOnly ? ' with attachments' : ''
   if (searchActive) {
-    if (filterMode === 'unread') return hasRawThreads ? 'Matches hidden by Unread filter' : 'No unread matches'
-    if (filterMode === 'starred') return hasRawThreads ? 'Matches hidden by Starred filter' : 'No starred matches'
-    return 'No matches'
+    if (hasRawThreads && (filterMode !== 'all' || attachmentsOnly)) {
+      if (filterMode === 'unread') return 'Matches hidden by Unread filter'
+      if (filterMode === 'starred') return 'Matches hidden by Starred filter'
+      return 'Matches hidden by Attachments filter'
+    }
+    if (filterMode === 'unread') return `No unread matches${withFiles}`
+    if (filterMode === 'starred') return `No starred matches${withFiles}`
+    return `No matches${withFiles}`
   }
-  if (filterMode === 'unread') return `No unread ${noun}`
-  if (filterMode === 'starred') return `No starred ${noun}`
-  return `No ${noun}`
+  if (filterMode === 'unread') return `No unread ${noun}${withFiles}`
+  if (filterMode === 'starred') return `No starred ${noun}${withFiles}`
+  return `No ${noun}${withFiles}`
 }
 
 // The sidecar reports the canonical IMAP folder ("INBOX", actual name); match it
@@ -430,21 +442,40 @@ export function activeKanbanColumnFilter(column: KanbanColumn): FilterMode {
   return kanban$.filters[kanbanColumnKey(column)].peek() ?? kanban$.globalFilter.peek()
 }
 
+// The board search as it applies to this column: the query when the column is in
+// the search's scope, '' otherwise. A reload triggered by anything other than the
+// search itself (a filter toggle, the next page) must keep the column searched.
+export function activeKanbanColumnQuery(column: KanbanColumn): string {
+  const key = kanbanColumnKey(column)
+  const query = kanban$.searchQuery.peek()
+  return columnSearchActive(key, query, kanban$.searchScope.peek()) ? query.trim() : ''
+}
+
+type ColumnView = { query: string; filter: FilterMode; attachments: boolean }
+
+function currentColumnView(column: KanbanColumn, query: string): ColumnView {
+  return {
+    query: query.trim(),
+    filter: activeKanbanColumnFilter(column),
+    attachments: kanban$.globalAttachmentsOnly.peek(),
+  }
+}
+
 // Fetch one page of a column's threads. `before` carries the cursors from the
 // previous page; omit it for the first page. Unified columns page each account's
 // inbox independently and only re-request accounts that still have a cursor.
 async function fetchColumnThreads(
   column: KanbanColumn,
-  refresh = false,
-  query = '',
+  refresh: boolean,
+  view: ColumnView,
   before?: { single?: string; unified?: Record<string, string> },
 ): Promise<ColumnPage> {
-  const trimmedQuery = query.trim()
-  const filter = activeKanbanColumnFilter(column)
+  const { query: trimmedQuery, filter, attachments } = view
   if (isUnifiedStarredColumn(column)) {
     const result = await invoke<{ items: Message[]; next_cursor?: string }>('mail.starredItems', {
       query: trimmedQuery,
       filter,
+      attachments,
       limit: COLUMN_LIMIT,
       before_cursor: before?.single,
     })
@@ -472,6 +503,7 @@ async function fetchColumnThreads(
       folder_role: role,
       query: trimmedQuery,
       filter,
+      attachments,
       refresh,
       limit: COLUMN_LIMIT,
       before_cursor: before?.single,
@@ -496,6 +528,7 @@ async function fetchColumnThreads(
     folder_id: column.folderId,
     query: trimmedQuery,
     filter,
+    attachments,
     refresh,
     limit: COLUMN_LIMIT,
     before_cursor: before?.single,
@@ -532,13 +565,14 @@ function keepReadThreads(column: KanbanColumn, key: string, fetched: Message[]):
 
 export async function loadKanbanColumn(column: KanbanColumn, refresh = false, query = '') {
   const key = kanbanColumnKey(column)
-  const trimmedQuery = query.trim()
+  const view = currentColumnView(column, query)
+  const trimmedQuery = view.query
   const version = (columnLoadVersions.get(key) ?? 0) + 1
   columnLoadVersions.set(key, version)
   kanban$.loading[key].set(true)
   try {
     const { threads, folderUnread, folderUnreadByAccount, folderSynced, nextSingle, nextUnified } =
-      await fetchColumnThreads(column, refresh, trimmedQuery)
+      await fetchColumnThreads(column, refresh, view)
     if (columnLoadVersions.get(key) !== version) return
     // Only Inbox totals back the side-nav badges. A unified column on another
     // role reports that role's per-account unreads, which must not be written
@@ -553,8 +587,9 @@ export async function loadKanbanColumn(column: KanbanColumn, refresh = false, qu
     }
     kanban$.threads[key].set(keepReadThreads(column, key, threads))
     if (folderUnread !== undefined) kanban$.unreadCounts[key].set(folderUnread)
-    kanban$.cursors[key].set(trimmedQuery ? '' : nextSingle)
-    kanban$.accountCursors[key].set(trimmedQuery ? {} : nextUnified)
+    kanban$.cursors[key].set(nextSingle)
+    kanban$.accountCursors[key].set(nextUnified)
+    columnCursorViews.set(key, view)
 
     // A folder nobody has opened yet has nothing cached, so this read served an
     // empty page and only kicked off the background sync. Stay in the loading
@@ -570,7 +605,7 @@ export async function loadKanbanColumn(column: KanbanColumn, refresh = false, qu
         completion.cancel()
       }
       if (columnLoadVersions.get(key) !== version) return
-      const synced = await fetchColumnThreads(column, false, trimmedQuery)
+      const synced = await fetchColumnThreads(column, false, view)
       if (columnLoadVersions.get(key) !== version) return
       kanban$.threads[key].set(keepReadThreads(column, key, synced.threads))
       if (synced.folderUnread !== undefined) kanban$.unreadCounts[key].set(synced.folderUnread)
@@ -644,17 +679,24 @@ function columnHasMore(key: string, _unified: boolean): boolean {
 }
 
 // Append the next page of older threads to a column, de-duping by thread id. The
-// scroll handler drives this; it no-ops once the cursors are exhausted.
+// scroll handler drives this; it no-ops once the cursors are exhausted. The page
+// is asked for with the query and filters the stored cursor was issued for, and
+// not at all while a reload is replacing the list (and the cursor with it).
 export async function loadMoreKanbanColumn(column: KanbanColumn) {
   const key = kanbanColumnKey(column)
   const unified = column.accountId === 'unified'
-  if (kanban$.loadingMore[key].get() || !columnHasMore(key, unified)) return
+  if (kanban$.loadingMore[key].get() || kanban$.loading[key].peek() || !columnHasMore(key, unified)) return
+  const version = columnLoadVersions.get(key) ?? 0
+  const view = columnCursorViews.get(key) ?? currentColumnView(column, activeKanbanColumnQuery(column))
   kanban$.loadingMore[key].set(true)
   try {
-    const { threads, folderUnreadByAccount, nextSingle, nextUnified } = await fetchColumnThreads(column, false, '', {
+    const { threads, folderUnreadByAccount, nextSingle, nextUnified } = await fetchColumnThreads(column, false, view, {
       single: kanban$.cursors[key].get(),
       unified: kanban$.accountCursors[key].get(),
     })
+    // A reload (new query, filter or sync) replaced the list meanwhile; this page
+    // continues the old one and must not be appended to it.
+    if ((columnLoadVersions.get(key) ?? 0) !== version) return
     const existing = kanban$.threads[key].get() ?? []
     const seen = new Set(existing.map((thread) => thread.thread_id))
     const merged = [...existing, ...threads.filter((thread) => !seen.has(thread.thread_id))]

@@ -9,6 +9,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.filled.AllInbox
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Outbox
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewKanban
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -178,6 +181,7 @@ internal fun List<ThreadSummary>.filteredKanbanThreads(
     filter: FilterMode,
     search: String,
     searchAlreadyApplied: Boolean = false,
+    attachmentsOnly: Boolean = false,
 ): List<ThreadSummary> {
     val query = search.trim().lowercase()
     return filter { thread ->
@@ -186,7 +190,7 @@ internal fun List<ThreadSummary>.filteredKanbanThreads(
                 FilterMode.All -> true
                 FilterMode.Unread -> thread.unread
                 FilterMode.Starred -> thread.starred || thread.hasStarredItems
-            }
+            } && (!attachmentsOnly || thread.hasAttachments)
         val queryOk =
             searchAlreadyApplied ||
                 query.isBlank() ||
@@ -489,6 +493,23 @@ internal fun FilterModeSegmentedControl(
             )
         }
     }
+}
+
+// The attachments toggle under the filter control: an on/off narrowing of
+// whichever read-state filter is chosen above, not a fourth choice beside them.
+@Composable
+internal fun AttachmentsOnlyMenuItem(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(tr("chat.attachments")) },
+        leadingIcon = { Icon(Icons.Filled.AttachFile, contentDescription = null) },
+        trailingIcon = {
+            if (checked) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        },
+        onClick = { onCheckedChange(!checked) },
+    )
 }
 
 // Unified starred contains starred cards only, including after optimistic flag changes.

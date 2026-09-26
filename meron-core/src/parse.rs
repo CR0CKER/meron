@@ -186,6 +186,27 @@ pub struct Message {
     pub attachments: Vec<Attachment>,
 }
 
+impl Message {
+    /// The parts the user would call attachments: every one except those its
+    /// HTML body already shows inline (`cid:` logos and signature images,
+    /// rewritten to `/media/<key>` at parse time). The reader draws the same
+    /// line, and the store's v11 migration mirrors it for rows cached before
+    /// the list was stored.
+    pub fn file_attachments(&self) -> impl Iterator<Item = &Attachment> {
+        let html = self.body_html.as_deref().unwrap_or_default();
+        self.attachments
+            .iter()
+            .filter(move |attachment| match &attachment.key {
+                Some(key) => !html.contains(&format!("/media/{key}")),
+                None => true,
+            })
+    }
+
+    pub fn has_attachments(&self) -> bool {
+        self.file_attachments().next().is_some()
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Attachment {
     pub filename: String,
@@ -2013,6 +2034,32 @@ AQID\r\n\
         std::fs::remove_file(root.join("acct/inbox/1/0.png")).unwrap();
         assert!(!cached_media_available(&root, &msg));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn has_attachments_ignores_images_the_html_shows_inline() {
+        let attachment = |key: &str| Attachment {
+            filename: "x".to_string(),
+            mime: "image/png".to_string(),
+            size: 3,
+            key: Some(key.to_string()),
+        };
+        let mut msg = Message {
+            body_html: Some("<img src=\"/media/acct/inbox/1/0.png\">".to_string()),
+            ..Default::default()
+        };
+        assert!(!msg.has_attachments());
+
+        msg.attachments.push(attachment("acct/inbox/1/0.png"));
+        assert!(!msg.has_attachments(), "a cid: logo is not an attachment");
+
+        msg.attachments.push(attachment("acct/inbox/1/1.pdf"));
+        assert!(msg.has_attachments());
+
+        // Plain-text mail has no HTML to show anything inline.
+        let mut plain = Message::default();
+        plain.attachments.push(attachment("acct/inbox/2/0.png"));
+        assert!(plain.has_attachments());
     }
 
     #[test]

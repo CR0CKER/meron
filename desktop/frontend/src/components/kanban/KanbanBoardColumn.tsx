@@ -35,6 +35,7 @@ import {
   columnSearchActive,
   columnSearchHighlightClass,
   folderLabel,
+  activeKanbanColumnQuery,
   loadKanbanColumn,
   loadMoreKanbanColumn,
   syncKanbanColumn,
@@ -97,6 +98,7 @@ function KanbanColumnContent({
   const allAccountCursors = useValue(kanban$.accountCursors)
   const allFilters = useValue(kanban$.filters)
   const globalFilter = useValue(kanban$.globalFilter)
+  const attachmentsOnly = useValue(kanban$.globalAttachmentsOnly)
   const searchQuery = useValue(kanban$.searchQuery)
   const searchScope = useValue(kanban$.searchScope)
   const system = useValue(ui$.system)
@@ -116,7 +118,7 @@ function KanbanColumnContent({
   // e.g. selecting an unread card marks it read (tracked in readThreads) — not
   // merely because it's the open thread. So switching to Unread/Starred yields a
   // clean filtered list instead of pinning the currently-open conversation.
-  const threads = filterThreads(rawThreads, filterMode, undefined, readThreads)
+  const threads = filterThreads(rawThreads, filterMode, undefined, readThreads, attachmentsOnly)
   const unreadCount = kanbanColumnUnreadCount(column, allUnreadCounts[key], rawThreads)
   const hasUnread = unreadCount > 0
   const loading = allLoading[key] ?? false
@@ -133,7 +135,7 @@ function KanbanColumnContent({
   const columnAccountLabel = columnAccount ? columnAccount.display_name || columnAccount.email || columnAccount.id : ''
   const isRss = isRssAccount(columnAccount, column.accountId)
   const isPaused = !!columnAccount?.paused
-  const emptyText = columnEmptyText(filterMode, searchActive, rawThreads.length > 0, isRss)
+  const emptyText = columnEmptyText(filterMode, searchActive, rawThreads.length > 0, isRss, attachmentsOnly)
   const [syncing, setSyncing] = useState(false)
   const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number } | null>(null)
   // Only a per-account Trash/Junk column can be emptied — never a unified or
@@ -211,9 +213,11 @@ function KanbanColumnContent({
     setBulkSelection(rows.slice(from, to + 1), target.key)
   }
 
+  // The board's search effect doesn't watch the filters, so a filter change
+  // reloads here with whatever search currently covers this column.
   useEffect(() => {
-    void loadKanbanColumn(column, true)
-  }, [column.accountId, column.folderId, filterMode])
+    void loadKanbanColumn(column, true, activeKanbanColumnQuery(column))
+  }, [column.accountId, column.folderId, filterMode, attachmentsOnly])
 
   const openHeaderMenu = (event: ReactMouseEvent<HTMLElement>) => {
     event.preventDefault()
@@ -421,7 +425,7 @@ function KanbanColumnContent({
         data-thread-list
         className="flex-1 space-y-1 overflow-y-auto p-1"
         onScroll={(event) => {
-          if (searchActive || !hasMore || loadingMore) return
+          if (!hasMore || loadingMore) return
           const el = event.currentTarget
           if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
             void loadMoreKanbanColumn(column)
@@ -431,6 +435,18 @@ function KanbanColumnContent({
         {threads.length === 0 ? (
           <div className="py-8 text-center text-xs font-medium text-secondary">
             {loading || syncing ? t('common.loading') : emptyText}
+            {/* A narrowed page can come back empty with older mail still to
+                read, and an empty column has nothing to scroll: offer the next
+                page directly. */}
+            {!loading && !syncing && hasMore && (
+              <button
+                className="mx-auto mt-3 flex h-8 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold text-secondary hover:bg-hover disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer transition-colors"
+                disabled={loadingMore}
+                onClick={() => void loadMoreKanbanColumn(column)}
+              >
+                {loadingMore ? t('common.loading') : t('threads.actions.loadMore')}
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -454,8 +470,20 @@ function KanbanColumnContent({
                 />
               )
             })}
-            {loadingMore && (
+            {loadingMore ? (
               <div className="py-3 text-center text-xs font-medium text-secondary">{t('common.loading')}</div>
+            ) : (
+              // A narrowed page can leave too few cards to scroll, so scrolling
+              // alone can't always reach the rest.
+              hasMore &&
+              !loading && (
+                <button
+                  className="mx-auto my-2 flex h-8 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold text-secondary hover:bg-hover cursor-pointer transition-colors"
+                  onClick={() => void loadMoreKanbanColumn(column)}
+                >
+                  {t('threads.actions.loadMore')}
+                </button>
+              )
             )}
           </>
         )}

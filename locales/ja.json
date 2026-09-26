@@ -195,7 +195,7 @@
   "chat.plainView": "プレーン表示",
   "chat.previousImage": "前の画像",
   "chat.previousMatch": "前の検索結果",
-  "chat.printAttachments": "添付ファイル",
+  "chat.attachments": "添付ファイル",
   "chat.remoteBlocked": "リモートコンテンツをブロックしました",
   "chat.replyTo": "返信先",
   "chat.retry": "再試行",

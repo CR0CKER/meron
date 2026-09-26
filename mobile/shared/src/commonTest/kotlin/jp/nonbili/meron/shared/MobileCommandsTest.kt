@@ -27,7 +27,7 @@ class MobileCommandsTest {
         }
         assertEquals(MobileCommand.StarredItems, core.lastCommand)
         assertEquals(
-            """{"query":"design","filter":"unread","limit":25,"before_cursor":"starred:opaque"}""",
+            """{"query":"design","filter":"unread","attachments":false,"limit":25,"before_cursor":"starred:opaque"}""",
             core.lastPayloadJson,
         )
 
@@ -688,11 +688,11 @@ class MobileCommandsTest {
 
         runSuspend { client.listThreads(ThreadListParams(accountId = "acc1")) }
         assertEquals(MobileCommand.ThreadList, core.lastCommand)
-        assertEquals("""{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","refresh":false}""", core.lastPayloadJson)
+        assertEquals("""{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","attachments":false,"refresh":false}""", core.lastPayloadJson)
 
         runSuspend { client.listStarredItems() }
         assertEquals(MobileCommand.StarredItems, core.lastCommand)
-        assertEquals("""{"query":"","filter":"all","limit":50}""", core.lastPayloadJson)
+        assertEquals("""{"query":"","filter":"all","attachments":false,"limit":50}""", core.lastPayloadJson)
 
         runSuspend { client.readThread(ThreadReadParams(threadId = "thread1")) }
         assertEquals(MobileCommand.ThreadRead, core.lastCommand)
@@ -766,13 +766,14 @@ class MobileCommandsTest {
                         folderId = "inbox",
                         query = "design",
                         filter = "unread",
+                        attachments = true,
                         beforeCursor = "1700000000:44",
                         refresh = true,
                     ),
             )
 
         assertEquals(
-            """{"id":4,"method":"mail.threadList","params":{"account_id":"acc1","folder_id":"inbox","query":"design","filter":"unread","before_cursor":"1700000000:44","refresh":true}}""",
+            """{"id":4,"method":"mail.threadList","params":{"account_id":"acc1","folder_id":"inbox","query":"design","filter":"unread","attachments":true,"before_cursor":"1700000000:44","refresh":true}}""",
             request.toJson(),
         )
     }
@@ -782,11 +783,11 @@ class MobileCommandsTest {
     @Test
     fun threadListSendsLimitOnlyWhenSet() {
         assertEquals(
-            """{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","refresh":false,"limit":150}""",
+            """{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","attachments":false,"refresh":false,"limit":150}""",
             ThreadListParams(accountId = "acc1", limit = 150).toJson(),
         )
         assertEquals(
-            """{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","refresh":false}""",
+            """{"account_id":"acc1","folder_id":"inbox","query":"","filter":"all","attachments":false,"refresh":false}""",
             ThreadListParams(accountId = "acc1").toJson(),
         )
     }
@@ -1473,7 +1474,7 @@ class MobileCommandsTest {
     @Test
     fun jsonBuilderEscapesPayloadStrings() {
         assertEquals(
-            """{"account_id":"a\"b","folder_id":"line\nbreak","query":"","filter":"all","refresh":false}""",
+            """{"account_id":"a\"b","folder_id":"line\nbreak","query":"","filter":"all","attachments":false,"refresh":false}""",
             ThreadListParams(accountId = "a\"b", folderId = "line\nbreak").toJson(),
         )
     }

@@ -199,6 +199,10 @@ export type Message = {
   /** Long sender lists keep only the first and the last two; true when senders
    * between the first entry and the rest were left out. */
   senders_truncated?: boolean
+  /** On a thread card, the attachments of its cached messages in thread order,
+   * for the chips under the row. Messages whose body is not cached yet are not
+   * known, so an older thread may list none. */
+  files?: { filename: string; mime: string }[]
   /** Local send lifecycle for an optimistically-rendered outgoing message.
    * Absent on messages loaded from the engine (treated as already sent). */
   send_status?: 'sending' | 'sent' | 'failed'

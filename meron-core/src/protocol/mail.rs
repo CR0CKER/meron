@@ -649,6 +649,31 @@ pub(crate) fn list_mobile_threads(data_dir: &str, params: &Value) -> Result<Valu
     if account_id == "unified" {
         return list_mobile_unified_threads(data_dir, params);
     }
+    // The attachments toggle narrows a page after it is read, so a page can come
+    // back empty while older matches remain: read on through a few such pages
+    // (see `ThreadListQuery::next_attachment_cursor`).
+    let mut params = params.clone();
+    let mut hops = 0;
+    loop {
+        let page = list_mobile_account_threads(data_dir, &params, &account_id)?;
+        let request = thread_list::ThreadListQuery::from_params(&params, "folder_id");
+        match request.next_attachment_cursor(&page, hops) {
+            Some(cursor) => {
+                params["before_cursor"] = Value::String(cursor);
+                hops += 1;
+            }
+            None => return Ok(page),
+        }
+    }
+}
+
+/// One page of a single account's mailbox view.
+fn list_mobile_account_threads(
+    data_dir: &str,
+    params: &Value,
+    account_id: &str,
+) -> Result<Value, String> {
+    let account_id = account_id.to_string();
     let request = thread_list::ThreadListQuery::from_params(params, "folder_id");
     let folder_id = request.folder.clone();
     let limit = request.limit;
@@ -676,13 +701,13 @@ pub(crate) fn list_mobile_threads(data_dir: &str, params: &Value) -> Result<Valu
             get_cached_mobile_starred(data_dir, &account_id, &folder_id, limit)?,
             None,
         ),
-        thread_list::MailSource::Recent { unread_only } => get_cached_mobile_mail_page(
+        thread_list::MailSource::Recent { filter } => get_cached_mobile_mail_page(
             data_dir,
             &account_id,
             &folder_id,
             limit,
             request.before_cursor,
-            unread_only,
+            filter,
         )?,
         thread_list::MailSource::Search => {
             // One folder list for both halves: the live search and the offline
@@ -737,7 +762,7 @@ pub(crate) fn list_mobile_threads(data_dir: &str, params: &Value) -> Result<Valu
         }
     };
     with_mobile_db(data_dir, |conn| {
-        thread_list::mail_page(
+        let mut page = thread_list::mail_page(
             &conn,
             &account_id,
             &folder_id,
@@ -746,7 +771,9 @@ pub(crate) fn list_mobile_threads(data_dir: &str, params: &Value) -> Result<Valu
             // A mobile mailbox view is always a thread list.
             true,
         )
-        .map_err(|err| format!("{err:#}"))
+        .map_err(|err| format!("{err:#}"))?;
+        request.retain_attachment_threads(&mut page);
+        Ok(page)
     })
 }
 
@@ -847,18 +874,11 @@ fn get_cached_mobile_mail_page(
     folder_id: &str,
     limit: u32,
     before_cursor: Option<(i64, u32)>,
-    unread_only: bool,
+    filter: store::RecentFilter,
 ) -> Result<(Vec<MessageHeader>, Option<String>), String> {
     let conn = open_mobile_db(data_dir)?;
-    store::get_recent_page(
-        &conn,
-        account_id,
-        folder_id,
-        limit,
-        before_cursor,
-        unread_only,
-    )
-    .map_err(|err| err.to_string())
+    store::get_recent_page(&conn, account_id, folder_id, limit, before_cursor, filter)
+        .map_err(|err| err.to_string())
 }
 
 fn get_cached_mobile_starred(
@@ -990,6 +1010,10 @@ pub(crate) fn list_mobile_starred_items(data_dir: &str, params: &Value) -> Resul
                 .get("filter")
                 .and_then(Value::as_str)
                 .unwrap_or("all"),
+            params
+                .get("attachments")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             limit as usize,
             params.get("before_cursor").and_then(Value::as_str),
         ))
