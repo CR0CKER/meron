@@ -575,6 +575,29 @@ pub fn mutation_result(
     Ok(result)
 }
 
+/// Add the unread counts of further mailboxes a mutation touched — a
+/// whole-thread flag change reaches every folder the thread spans — to a
+/// [`mutation_result`], so clients refresh those badges too.
+pub fn add_folder_unreads(
+    result: &mut Value,
+    conn: &Connection,
+    account_id: &str,
+    folders: impl IntoIterator<Item = impl AsRef<str>>,
+) -> anyhow::Result<()> {
+    for folder in folders {
+        let folder = folder.as_ref();
+        if result["folder_unreads"][account_id].get(folder).is_some() {
+            continue;
+        }
+        let unread = store::get_folder_unread(conn, account_id, folder)?;
+        result["folder_unreads"][account_id][folder] = json!(unread);
+        if let Some(counts) = result["folder_counts"].as_array_mut() {
+            counts.push(json!({ "account_id": account_id, "folder_id": folder, "unread": unread }));
+        }
+    }
+    Ok(())
+}
+
 fn encode_starred_cursor(date: i64, id: &str) -> String {
     let value = json!({ "date": date, "id": id });
     format!(

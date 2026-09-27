@@ -2822,6 +2822,49 @@ fn newest_thread_uids_stays_within_a_subject_branch() {
 }
 
 #[test]
+fn thread_uids_span_folders_and_can_skip_read_messages() {
+    let conn = test_conn();
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, thread_key)
+         VALUES('acct', 'INBOX', '1', 1, 'Topic', 'Them', 'them@example.com', 100, 0, 'topic-key'),
+               ('acct', 'INBOX', '2', 2, 'Topic', 'Them', 'them@example.com', 200, 1, 'topic-key'),
+               ('acct', 'Archive', '3', 7, 'Re: Topic', 'Them', 'them@example.com', 300, 0, 'topic-key'),
+               ('acct', 'Archive', '4', 8, 'Other', 'Them', 'them@example.com', 400, 0, 'other-key')",
+        params![],
+    )
+    .unwrap();
+
+    let by_folder = thread_uids_by_folder(&conn, "acct", "INBOX", "topic-key", None, true).unwrap();
+
+    assert_eq!(
+        by_folder.into_iter().collect::<Vec<_>>(),
+        vec![
+            ("Archive".to_string(), vec![7]),
+            ("INBOX".to_string(), vec![1])
+        ]
+    );
+}
+
+#[test]
+fn thread_uids_keep_uid_keys_folder_local() {
+    let conn = test_conn();
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, thread_key)
+         VALUES('acct', 'INBOX', '1', 5, 'One', 'Them', 'them@example.com', 100, 0, ''),
+               ('acct', 'Archive', '2', 5, 'Two', 'Them', 'them@example.com', 200, 0, '')",
+        params![],
+    )
+    .unwrap();
+
+    let by_folder = thread_uids_by_folder(&conn, "acct", "INBOX", "uid:5", None, false).unwrap();
+
+    assert_eq!(
+        by_folder.into_iter().collect::<Vec<_>>(),
+        vec![("INBOX".to_string(), vec![5])]
+    );
+}
+
+#[test]
 fn newest_thread_uids_is_empty_for_an_unknown_thread() {
     let conn = test_conn();
 

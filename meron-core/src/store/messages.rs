@@ -580,6 +580,52 @@ pub fn newest_thread_uids(
     Ok(newest.map(|header| header.uid).into_iter().collect())
 }
 
+/// A thread's messages grouped by mailbox, for a whole-thread "mark read".
+/// Covers every folder the reader shows the thread from (see `thread_read`),
+/// not just the card's own, so an unread copy filed elsewhere is not left
+/// behind a card that now reads as read. A synthetic `uid:N` key stays
+/// folder-local: UIDs are only unique within one mailbox.
+///
+/// `unseen_only` narrows it to messages the store still has unread. Only a
+/// caller that updates the store after the server write may use it: one that
+/// marks the store first would leave a retry of a failed write nothing to send.
+pub fn thread_uids_by_folder(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    thread_key: &str,
+    subject_filter: Option<&str>,
+    unseen_only: bool,
+) -> Result<std::collections::BTreeMap<String, Vec<u32>>> {
+    let only_folder = thread_key.starts_with("uid:").then_some(folder);
+    let mut stmt = conn.prepare(
+        "SELECT folder, uid, subject FROM messages
+         WHERE account = ?1 AND uid <> 0 AND (?4 = 0 OR seen = 0)
+           AND COALESCE(NULLIF(thread_key, ''), 'uid:' || uid) = ?2
+           AND (?3 IS NULL OR folder = ?3)
+         ORDER BY folder, uid",
+    )?;
+    let rows = stmt.query_map(
+        params![account, thread_key, only_folder, unseen_only],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u32>(1)?,
+                row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            ))
+        },
+    )?;
+    let mut by_folder = std::collections::BTreeMap::<String, Vec<u32>>::new();
+    for row in rows {
+        let (folder, uid, subject) = row?;
+        if subject_filter.is_some_and(|filter| thread_grouping_subject(&subject) != filter) {
+            continue;
+        }
+        by_folder.entry(folder).or_default().push(uid);
+    }
+    Ok(by_folder)
+}
+
 /// Which of the account's threads have a draft waiting in them — the keys the
 /// list's Draft badge is decided by. Only real thread keys: a draft with no
 /// threading headers falls back to `uid:<its own uid>`, which says nothing about

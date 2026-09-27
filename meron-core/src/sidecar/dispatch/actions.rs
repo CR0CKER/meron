@@ -40,63 +40,61 @@ pub(crate) async fn dispatch(
                 })
                 .unwrap_or_default();
 
-            let uids = if !explicit_uids.is_empty() {
-                explicit_uids
-            } else if thread_key.is_empty() {
-                uid.into_iter().collect::<Vec<_>>()
-            } else if !seen {
-                // Marking a whole thread unread flags its newest message only.
+            // Marking a whole thread read reaches every folder it spans and only
+            // the messages still unread; everything else acts on this folder.
+            let whole_thread_read = explicit_uids.is_empty() && !thread_key.is_empty() && seen;
+            let by_folder = if whole_thread_read {
                 let db = engine.db.lock().unwrap();
-                store::newest_thread_uids(
+                // The store is only updated after the server write below, so
+                // skipping messages it already has read is safe to retry.
+                store::thread_uids_by_folder(
                     &db,
                     &account,
                     &folder,
                     &thread_key,
                     subject_filter.as_deref(),
+                    true,
                 )?
             } else {
-                // Only touch the thread's messages whose flag actually differs.
-                let db = engine.db.lock().unwrap();
-                store::get_thread_headers(&db, &account, &folder, &thread_key)?
-                    .into_iter()
-                    .filter(|header| header.seen != seen)
-                    .filter(|header| match subject_filter.as_deref() {
-                        Some(filter) => store::thread_grouping_subject(&header.subject) == filter,
-                        None => true,
-                    })
-                    .map(|header| header.uid)
-                    .collect::<Vec<_>>()
+                let uids = if !explicit_uids.is_empty() {
+                    explicit_uids
+                } else if thread_key.is_empty() {
+                    uid.into_iter().collect::<Vec<_>>()
+                } else {
+                    // Marking a whole thread unread flags its newest message only.
+                    let db = engine.db.lock().unwrap();
+                    store::newest_thread_uids(
+                        &db,
+                        &account,
+                        &folder,
+                        &thread_key,
+                        subject_filter.as_deref(),
+                    )?
+                };
+                std::collections::BTreeMap::from([(folder.clone(), uids)])
             };
 
-            if !uids.is_empty() {
-                engine
-                    .with_preflighted_write_session(
-                        &account,
-                        |session| {
-                            let folder = folder.clone();
-                            Box::pin(
-                                async move { imap::prepare_flag_update(session, &folder).await },
-                            )
-                        },
-                        |session| {
-                            let uids = uids.clone();
-                            Box::pin(async move { imap::store_seen(session, &uids, seen).await })
-                        },
-                    )
-                    .await?;
-            }
+            engine
+                .store_seen_by_folder(&account, &by_folder, seen)
+                .await?;
 
             {
                 let db = engine.db.lock().unwrap();
-                if thread_key.is_empty() || subject_filter.is_some() || !seen {
-                    // Branch-scoped: a whole-thread update would flip sibling
-                    // subject branches sharing the root thread_key. Marking
-                    // unread is per-uid for the same reason — only the newest
-                    // message was flagged.
-                    for marked_uid in &uids {
-                        store::update_message_seen(&db, &account, &folder, *marked_uid, seen)?;
+                // Per uid: a whole-thread update would flip sibling subject
+                // branches sharing the root thread_key, and marking unread only
+                // flagged the newest message.
+                for (marked_folder, uids) in &by_folder {
+                    for marked_uid in uids {
+                        store::update_message_seen(
+                            &db,
+                            &account,
+                            marked_folder,
+                            *marked_uid,
+                            seen,
+                        )?;
                     }
-                } else {
+                }
+                if whole_thread_read && subject_filter.is_none() {
                     store::update_thread_seen(&db, &account, &folder, &thread_key, seen)?;
                 }
             }
@@ -110,9 +108,10 @@ pub(crate) async fn dispatch(
                     .unwrap_or_else(|| thread_key.clone());
                 mail_model::format_thread_id(&account, &folder, &key)
             };
-            mail_model::mutation_result(
+            let db = engine.db.lock().unwrap();
+            let mut result = mail_model::mutation_result(
                 json!({ "ok": true }),
-                &engine.db.lock().unwrap(),
+                &db,
                 &account,
                 &changed_thread_id,
                 &folder,
@@ -120,7 +119,9 @@ pub(crate) async fn dispatch(
                 Some(!seen),
                 None,
                 false,
-            )
+            )?;
+            mail_model::add_folder_unreads(&mut result, &db, &account, by_folder.keys())?;
+            Ok(result)
         }
 
         "messages.markStarred" => {

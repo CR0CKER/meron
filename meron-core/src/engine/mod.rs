@@ -4,7 +4,7 @@
 //! per-account secrets are stored) are injected via the [`EngineHost`] trait.
 
 use anyhow::Context as _;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, LazyLock, RwLock};
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify};
@@ -724,6 +724,35 @@ impl Engine {
             }
             Err(err) => Err(err),
         }
+    }
+
+    /// Set or clear `\Seen` on UIDs spread over several of the account's
+    /// mailboxes — a thread spans folders, and UIDs are mailbox-local — with
+    /// one preflighted write per mailbox.
+    pub async fn store_seen_by_folder(
+        &self,
+        account: &str,
+        by_folder: &BTreeMap<String, Vec<u32>>,
+        seen: bool,
+    ) -> anyhow::Result<()> {
+        for (folder, uids) in by_folder {
+            if uids.is_empty() {
+                continue;
+            }
+            self.with_preflighted_write_session(
+                account,
+                |session| {
+                    let folder = folder.clone();
+                    Box::pin(async move { imap::prepare_flag_update(session, &folder).await })
+                },
+                |session| {
+                    let uids = uids.clone();
+                    Box::pin(async move { imap::store_seen(session, &uids, seen).await })
+                },
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

@@ -466,7 +466,7 @@ func (a *App) markRead(payload map[string]any) (any, error) {
 		return map[string]any{"ok": true}, nil
 	}
 	if a.sidecar == nil || !a.sidecar.Started() {
-		return map[string]any{"ok": true}, nil
+		return nil, a.engineUnavailable()
 	}
 	// Defaults to read; pass seen:false to mark a thread unread.
 	seen := true

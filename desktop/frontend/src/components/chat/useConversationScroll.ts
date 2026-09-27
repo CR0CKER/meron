@@ -253,8 +253,15 @@ export function useConversationScroll(
   const maybeMarkRead = useCallback(() => {
     const container = scrollRef.current
     if (!container || !activeThreadId) return
+    // Mail arriving in the open thread while the window sits in the background
+    // has not been seen yet; the focus listener below catches up on return.
+    if (document.visibilityState === 'hidden' || !document.hasFocus()) return
     const hasUnread = messages.some((message) => message.thread_id === activeThreadId && message.unread)
     if (!hasUnread) return
+    // A message whose body is still loading (or failed to) shows only a short
+    // placeholder, which fits the viewport without having been read. It is
+    // marked once the body arrives and resizes the list.
+    const bodyMissingIds = new Set(messages.filter((message) => message.body_missing).map((message) => message.id))
 
     const containerRect = container.getBoundingClientRect()
     const isVisible = (element: HTMLElement) => {
@@ -274,7 +281,10 @@ export function useConversationScroll(
     const visibleMessageIds = Array.from(container.querySelectorAll<HTMLElement>('[data-unread="true"]'))
       .filter(isRead)
       .map((element) => element.dataset.messageId)
-      .filter((id): id is string => !!id && !markingMessageIdsRef.current.has(id) && !heldUnreadIdsRef.current.has(id))
+      .filter(
+        (id): id is string =>
+          !!id && !bodyMissingIds.has(id) && !markingMessageIdsRef.current.has(id) && !heldUnreadIdsRef.current.has(id),
+      )
 
     if (visibleMessageIds.length === 0) return
     for (const id of visibleMessageIds) {
@@ -319,6 +329,22 @@ export function useConversationScroll(
   useEffect(() => {
     markingMessageIdsRef.current.clear()
   }, [activeThreadId, unreadKey])
+
+  // Back in the window: mark what is on screen now, including anything that
+  // arrived while it was in the background.
+  useEffect(() => {
+    if (activeTab !== '') return
+    const onFocus = () => maybeMarkRead()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') maybeMarkRead()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [activeTab, maybeMarkRead])
 
   // Attach before paint and before child HtmlFrame effects begin reporting their
   // measured heights. On a cold open, attaching in a passive effect can miss the

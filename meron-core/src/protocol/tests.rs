@@ -2042,7 +2042,7 @@ fn mobile_protocol_thread_read_includes_cached_draft_reply() {
 }
 
 #[test]
-fn mobile_protocol_mark_read_persists_locally_before_server_sync() {
+fn mobile_protocol_flag_actions_leave_the_store_alone_when_the_server_write_fails() {
     let data_dir = unique_data_dir("thread-actions");
     seed_mobile_account(&data_dir, "me@example.com");
     let conn = store::open_at(data_dir.join("meron.db")).unwrap();
@@ -2102,7 +2102,12 @@ fn mobile_protocol_mark_read_persists_locally_before_server_sync() {
         Some(data_dir.to_str().unwrap()),
     );
     assert_eq!(mark_all["id"], 72);
-    assert_eq!(mark_all["result"]["ok"], true);
+    assert!(
+        mark_all["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("account needs reconnect")
+    );
 
     // Emptying is gated on the folder role, before any account/network work:
     // INBOX is refused outright, while Trash gets as far as the creds check.
@@ -2139,21 +2144,22 @@ fn mobile_protocol_mark_read_persists_locally_before_server_sync() {
         first["thread_id"],
         "me@example.com#INBOX#t.dG9waWMjU2Vjb25k"
     );
-    assert_eq!(first["unread"], false);
-    assert_eq!(first["unread_count"], 0);
+    // None of the writes reached the server, so none reached the store.
+    assert_eq!(first["unread"], true);
+    assert_eq!(first["unread_count"], 1);
     assert_eq!(first["starred"], false);
 
     let unread = invoke_mobile_protocol_json(
         r#"{"id":71,"method":"mail.threadList","params":{"account_id":"me@example.com","folder_id":"INBOX","filter":"unread"}}"#,
         Some(data_dir.to_str().unwrap()),
     );
-    assert_eq!(unread["result"]["threads"].as_array().unwrap().len(), 0);
+    assert_eq!(unread["result"]["threads"].as_array().unwrap().len(), 2);
 
     let _ = std::fs::remove_dir_all(data_dir);
 }
 
 #[test]
-fn mobile_protocol_marks_uid_thread_read_locally_before_server_sync() {
+fn mobile_protocol_keeps_uid_thread_unread_when_server_write_fails() {
     let data_dir = unique_data_dir("uid-thread-actions");
     seed_mobile_account(&data_dir, "me@example.com");
     let conn = store::open_at(data_dir.join("meron.db")).unwrap();
@@ -2189,7 +2195,8 @@ fn mobile_protocol_marks_uid_thread_read_locally_before_server_sync() {
         r#"{"id":73,"method":"mail.threadRead","params":{"thread_id":"me@example.com#Drafts#4"}}"#,
         Some(data_dir.to_str().unwrap()),
     );
-    assert_eq!(read["result"]["messages"][0]["unread"], false);
+    // The server never took the change, so the store must not claim it did.
+    assert_eq!(read["result"]["messages"][0]["unread"], true);
 
     let _ = std::fs::remove_dir_all(data_dir);
 }

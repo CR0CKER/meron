@@ -194,17 +194,18 @@ internal fun listViewedToBottom(
     return last.offset + last.size <= viewportEndOffset + bottomSlackPx
 }
 
-// Apply a partial scroll-driven read locally. Thread summaries carry the
-// authoritative unread-message count, including messages on older pages that
-// are not loaded in the conversation, so derive the remaining thread state
-// from that count rather than only from the currently rendered messages.
-internal fun threadAfterMessagesRead(
+// Move a card's unread count by `delta` messages, keeping `unread` in step.
+// Thread summaries carry the authoritative unread-message count, including
+// messages on older pages that are not loaded in the conversation, so the card
+// moves relative to that count rather than being derived from the rendered
+// messages.
+internal fun threadWithUnreadDelta(
     thread: ThreadSummary,
-    readCount: Int,
+    delta: Int,
 ): ThreadSummary {
-    if (!thread.unread || readCount <= 0) return thread
-    val remaining = (thread.unreadCount.coerceAtLeast(1) - readCount).coerceAtLeast(0)
-    return thread.copy(unread = remaining > 0, unreadCount = remaining)
+    val current = if (thread.unread) thread.unreadCount.coerceAtLeast(1) else 0
+    val next = (current + delta).coerceAtLeast(0)
+    return thread.copy(unread = next > 0, unreadCount = next)
 }
 
 internal fun threadMessageSearchText(message: MessageBody): String =

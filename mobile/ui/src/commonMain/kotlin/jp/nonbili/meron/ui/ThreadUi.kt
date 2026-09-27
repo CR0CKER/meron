@@ -483,7 +483,10 @@ internal fun ThreadScreen(
                         topSlackPx = topSlackPx,
                         viewportEndOffset = snapshot.viewportEndOffset,
                     ).mapNotNull { msgs.getOrNull(it) }
-                        .filter { it.unread }
+                        // A body still loading (or failed) shows only a short
+                        // placeholder, which fits on screen without having been
+                        // read. It is marked once the body lands and relayouts.
+                        .filter { it.unread && !it.bodyMissing }
                         .map { it.id }
                         .filter { it !in heldUnreadIds }
                         .filter { markedReadIds.add(it) }
@@ -500,7 +503,13 @@ internal fun ThreadScreen(
                 // stand down while a hand-unread message is on screen, or it
                 // undoes the action the held set just protected. It resumes as
                 // soon as that message scrolls out of view.
-                if (atBottom && heldUnreadIds.isEmpty() && (!viewedToBottomSent || msgs.any { it.unread })) {
+                // It also waits for placeholder bodies, for the same reason.
+                if (
+                    atBottom &&
+                    heldUnreadIds.isEmpty() &&
+                    msgs.none { it.unread && it.bodyMissing } &&
+                    (!viewedToBottomSent || msgs.any { it.unread })
+                ) {
                     viewedToBottomSent = true
                     currentOnViewedToBottom()
                 }

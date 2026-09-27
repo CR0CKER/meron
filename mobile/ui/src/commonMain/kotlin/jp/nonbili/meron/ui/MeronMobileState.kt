@@ -236,6 +236,16 @@ internal class MeronMobileState(
     var composeSignaturePending by mutableStateOf(false)
     val composeSaveMutex = Mutex()
 
+    // Serializes read-state writes on mail — scroll-driven marks and the
+    // reader's own toggles — so they reach the server in the order they were
+    // made (a whole-thread mark queued behind a per-message one cannot overtake
+    // a newer "mark unread"), and a per-message mark's rollback lands before a
+    // whole-thread mark launched after it settles.
+    val readMarkMutex = Mutex()
+
+    // What the open conversation's messages show while those writes overlap.
+    val readLedger = MessageReadLedger()
+
     var composeInReplyTo by mutableStateOf("")
     var composeReferences by mutableStateOf("")
 
@@ -330,7 +340,16 @@ internal class MeronMobileState(
             .coerceIn(KANBAN_COLUMN_MIN_WIDTH, KANBAN_COLUMN_MAX_WIDTH),
     )
     var hiddenNavigationAccountIds by mutableStateOf(loadAppStringSet(prefs, HIDDEN_NAV_ACCOUNTS_PREF))
-    var messages by mutableStateOf(emptyList<MessageBody>())
+    private var messagesState by mutableStateOf(emptyList<MessageBody>())
+
+    // Whatever installs the open conversation's messages — a reload from the
+    // core, another action restoring its snapshot — they show the read state of
+    // writes still in flight (see readLedger), which the core does not have yet.
+    var messages: List<MessageBody>
+        get() = messagesState
+        set(value) {
+            messagesState = readLedger.overlay(value, { it.id }, { it.unread }) { message, unread -> message.copy(unread = unread) }
+        }
     var messageCursor by mutableStateOf("")
     var loadingMoreMessages by mutableStateOf(false)
     var attachments by mutableStateOf(emptyList<DraftAttachment>())
