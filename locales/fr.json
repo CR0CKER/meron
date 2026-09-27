@@ -918,6 +918,7 @@
   "threads.noSubject": "(pas de sujet)",
   "threads.searchFeeds": "Rechercher des flux...",
   "threads.searchMessages": "Rechercher des messages...",
+  "threads.searchServerUnavailable": "Impossible de joindre le serveur. Affichage des résultats enregistrés sur cet appareil.",
   "tray.hideMeronTooltip": "Masquer Meron dans la barre d'état système",
   "tray.hideToTray": "Masquer dans le bac",
   "tray.quitMeron": "Quitter Meron",

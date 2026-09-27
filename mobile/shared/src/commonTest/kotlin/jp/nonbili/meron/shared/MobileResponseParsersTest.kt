@@ -229,6 +229,17 @@ class MobileResponseParsersTest {
         assertEquals("1700000000:1", page.nextCursor)
         assertEquals(7, page.folderUnread)
         assertTrue(page.folderSynced == true)
+        assertFalse(page.searchIncomplete)
+    }
+
+    @Test
+    fun parsesIncompleteSearchFlag() {
+        val page =
+            parseThreadListPage(
+                """{"id":2,"result":{"threads":[],"search_incomplete":true}}""",
+            )
+
+        assertTrue(page.searchIncomplete)
     }
 
     @Test

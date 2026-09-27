@@ -918,6 +918,7 @@
   "threads.noSubject": "(không có chủ đề)",
   "threads.searchFeeds": "Tìm kiếm nguồn tin...",
   "threads.searchMessages": "Tìm kiếm tin nhắn...",
+  "threads.searchServerUnavailable": "Không thể kết nối máy chủ. Đang hiển thị kết quả đã lưu trên thiết bị này.",
   "tray.hideMeronTooltip": "Ẩn Meron vào khay hệ thống",
   "tray.hideToTray": "Ẩn vào khay",
   "tray.quitMeron": "Thoát khỏi Meron",

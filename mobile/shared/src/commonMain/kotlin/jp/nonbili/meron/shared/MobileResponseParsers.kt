@@ -291,6 +291,8 @@ data class ThreadListPage(
     val nextCursor: String,
     val folderUnread: Int? = null,
     val folderSynced: Boolean? = null,
+    // The live server search failed, so these are only locally cached matches.
+    val searchIncomplete: Boolean = false,
 )
 
 fun parseThreadListPage(responseJson: String): ThreadListPage {
@@ -301,6 +303,7 @@ fun parseThreadListPage(responseJson: String): ThreadListPage {
                 nextCursor = "",
                 folderUnread = responseJson.findJsonLongProperty("folder_unread")?.toInt(),
                 folderSynced = responseJson.findJsonBooleanProperty("folder_synced"),
+                searchIncomplete = responseJson.findJsonBooleanProperty("search_incomplete") == true,
             )
     val threads =
         threadsJson.jsonArrayElements().mapNotNull { item ->
@@ -368,6 +371,7 @@ fun parseThreadListPage(responseJson: String): ThreadListPage {
         nextCursor = responseJson.findJsonStringProperty("next_cursor").orEmpty(),
         folderUnread = responseJson.findJsonLongProperty("folder_unread")?.toInt(),
         folderSynced = responseJson.findJsonBooleanProperty("folder_synced"),
+        searchIncomplete = responseJson.findJsonBooleanProperty("search_incomplete") == true,
     )
 }
 

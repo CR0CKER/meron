@@ -918,6 +918,7 @@
   "threads.noSubject": "(nessun argomento)",
   "threads.searchFeeds": "Cerca feed...",
   "threads.searchMessages": "Cerca messaggi...",
+  "threads.searchServerUnavailable": "Impossibile raggiungere il server. Vengono mostrati i risultati salvati su questo dispositivo.",
   "tray.hideMeronTooltip": "Nascondi Meron nella barra delle applicazioni",
   "tray.hideToTray": "Nascondi nel vassoio",
   "tray.quitMeron": "Esci da Meron",

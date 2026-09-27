@@ -918,6 +918,7 @@
   "threads.noSubject": "(제목 없음)",
   "threads.searchFeeds": "피드 검색...",
   "threads.searchMessages": "메시지 검색...",
+  "threads.searchServerUnavailable": "서버에 연결할 수 없습니다. 이 기기에 저장된 결과를 표시합니다.",
   "tray.hideMeronTooltip": "시스템 트레이에 Meron 숨기기",
   "tray.hideToTray": "트레이에 숨기기",
   "tray.quitMeron": "Meron 종료",

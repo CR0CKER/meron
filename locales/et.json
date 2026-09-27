@@ -918,6 +918,7 @@
   "threads.noSubject": "(teemat pole)",
   "threads.searchFeeds": "Otsi vooge...",
   "threads.searchMessages": "Otsi sõnumeid...",
+  "threads.searchServerUnavailable": "Serveriga ei õnnestunud ühendust luua. Kuvatakse selles seadmes salvestatud tulemused.",
   "tray.hideMeronTooltip": "Peida Meron süsteemsesse salve",
   "tray.hideToTray": "Peida salve",
   "tray.quitMeron": "Lõpetage Meron",

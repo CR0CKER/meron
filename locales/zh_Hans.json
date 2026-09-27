@@ -918,6 +918,7 @@
   "threads.noSubject": "（无主题）",
   "threads.searchFeeds": "搜索订阅源...",
   "threads.searchMessages": "搜索邮件...",
+  "threads.searchServerUnavailable": "无法连接服务器，正在显示此设备上保存的结果。",
   "tray.hideMeronTooltip": "将 Meron 隐藏到系统托盘",
   "tray.hideToTray": "隐藏到托盘",
   "tray.quitMeron": "退出 Meron",

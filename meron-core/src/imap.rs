@@ -711,6 +711,7 @@ pub async fn list_folders(session: &mut Session) -> Result<Vec<Folder>> {
                 NameAttribute::Junk => Some("junk"),
                 NameAttribute::Archive => Some("archive"),
                 NameAttribute::All => Some("all"),
+                NameAttribute::Flagged => Some("flagged"),
                 _ => None,
             }
             .map(str::to_string)
@@ -917,20 +918,26 @@ pub async fn fetch_recent(session: &mut Session, folder: &str, limit: u32) -> Re
 
 pub async fn search_uids(session: &mut Session, folder: &str, query: &str) -> Result<Vec<u32>> {
     session.select(folder).await.context("SELECT")?;
-    let gmail = supports_gmail_ext(session).await;
+    let caps = session.capabilities().await.ok();
+    let has = |name: &str| caps.as_ref().is_some_and(|caps| caps.has_str(name));
+    let gmail = has("X-GM-EXT-1");
     // SEARCH keys are US-ASCII unless the command names a charset (RFC 3501
     // §6.4.4), so anything non-ASCII — a CJK or accented query — has to be
-    // announced as UTF-8 or the server is entitled to answer BAD.
+    // announced as UTF-8 or the server is entitled to answer BAD. The octets
+    // themselves belong in a literal, since a quoted string is 7-bit only; a
+    // non-synchronizing one (LITERAL+ / LITERAL-) goes inline in the command.
+    // Servers with neither get the quoted form, which most accept anyway.
     let needs_charset = !query.is_ascii();
+    let literal = needs_charset && (has("LITERAL+") || has("LITERAL-"));
     let mut result = session
-        .uid_search(search_criteria(gmail, query, needs_charset))
+        .uid_search(search_criteria(gmail, query, needs_charset, literal))
         .await;
     if result.is_err() && needs_charset {
         // Servers that reject CHARSET outright (or that advertise UTF8=ACCEPT
         // and take the raw octets) get one retry with the bare criteria before
         // we give up and leave the caller with the cached hits.
         result = session
-            .uid_search(search_criteria(gmail, query, false))
+            .uid_search(search_criteria(gmail, query, false, false))
             .await;
     }
     let set: HashSet<u32> = result.context("UID SEARCH query")?;
@@ -944,9 +951,14 @@ pub async fn search_uids(session: &mut Session, folder: &str, query: &str) -> Re
 /// On Gmail, defer to its own search engine via X-GM-RAW: it understands the
 /// full Gmail query syntax (operators like `from:`, `has:attachment`,
 /// `older_than:`, relevance) instead of our crude substring OR. Elsewhere fall
-/// back to plain SUBJECT/FROM/TEXT matching.
-fn search_criteria(gmail: bool, query: &str, charset: bool) -> String {
-    let q = imap_quote(query);
+/// back to plain SUBJECT/FROM/TEXT matching. `literal` sends the query as a
+/// non-synchronizing literal instead of a quoted string.
+fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> String {
+    let q = if literal {
+        imap_literal_plus(query)
+    } else {
+        imap_quote(query)
+    };
     let keys = if gmail {
         format!("X-GM-RAW {q}")
     } else {
@@ -957,6 +969,13 @@ fn search_criteria(gmail: bool, query: &str, charset: bool) -> String {
     } else {
         keys
     }
+}
+
+/// `value` as a non-synchronizing literal (RFC 7888), normalized like
+/// [`imap_quote`]. LITERAL- caps these at 4096 octets, far above any query.
+fn imap_literal_plus(value: &str) -> String {
+    let value = value.trim().replace(['\r', '\n'], " ");
+    format!("{{{}+}}\r\n{value}", value.len())
 }
 
 /// Every UID in `folder` at or above `floor`. `UID SEARCH UID n:*` names the
@@ -980,11 +999,8 @@ pub async fn list_all_uids(session: &mut Session, folder: &str) -> Result<HashSe
     Ok(set)
 }
 
-pub async fn search_starred_uids(
-    session: &mut Session,
-    folder: &str,
-    limit: u32,
-) -> Result<Vec<u32>> {
+/// Every `\Flagged` UID in `folder`, newest (highest) first.
+pub async fn search_starred_uids(session: &mut Session, folder: &str) -> Result<Vec<u32>> {
     session.select(folder).await.context("SELECT")?;
     let set: HashSet<u32> = session
         .uid_search("FLAGGED")
@@ -992,7 +1008,6 @@ pub async fn search_starred_uids(
         .context("UID SEARCH FLAGGED")?;
     let mut uids: Vec<u32> = set.into_iter().collect();
     uids.sort_unstable_by(|a, b| b.cmp(a));
-    uids.truncate(limit as usize);
     Ok(uids)
 }
 
@@ -1162,6 +1177,42 @@ pub async fn fetch_headers_by_uid(
         }
     }
     out.sort_unstable_by(|a, b| b.uid.cmp(&a.uid));
+    Ok(out)
+}
+
+/// Each of `uids`' Date header as epoch seconds (0 when absent or unparseable),
+/// the same date [`fetch_headers_by_uid`] reports. Fetches only that one header
+/// field, so a search can order a large hit set by date without downloading
+/// every header. UIDs the server no longer has are left out.
+pub async fn fetch_dates_by_uid(
+    session: &mut Session,
+    folder: &str,
+    uids: &[u32],
+) -> Result<Vec<(u32, i64)>> {
+    if uids.is_empty() {
+        return Ok(Vec::new());
+    }
+    session.select(folder).await.context("SELECT")?;
+    let mut out = Vec::with_capacity(uids.len());
+    for uid_set in uid_set_chunks(uids, MAX_UID_SET_LEN) {
+        let mut stream = session
+            .uid_fetch(uid_set, "(UID BODY.PEEK[HEADER.FIELDS (DATE)])")
+            .await
+            .context("UID FETCH search dates")?;
+        while let Some(item) = stream.next().await {
+            let fetch = item.context("UID FETCH search date item")?;
+            let Some(uid) = fetch.uid else {
+                continue;
+            };
+            let date = fetch
+                .header()
+                .and_then(|header| mailparse::parse_headers(header).ok())
+                .and_then(|(headers, _)| headers.get_first_value("Date"))
+                .map(|raw| parse::parse_date_to_epoch(&raw))
+                .unwrap_or_default();
+            out.push((uid, date));
+        }
+    }
     Ok(out)
 }
 
@@ -2328,18 +2379,34 @@ mod tests {
     #[test]
     fn search_criteria_announces_utf8_only_when_asked() {
         assert_eq!(
-            search_criteria(false, "plan", false),
+            search_criteria(false, "plan", false, false),
             "OR OR SUBJECT \"plan\" FROM \"plan\" TEXT \"plan\""
         );
-        assert_eq!(search_criteria(true, "plan", false), "X-GM-RAW \"plan\"");
+        assert_eq!(
+            search_criteria(true, "plan", false, false),
+            "X-GM-RAW \"plan\""
+        );
         // Non-ASCII queries need the charset; the retry drops it again.
         assert_eq!(
-            search_criteria(true, "会議", true),
+            search_criteria(true, "会議", true, false),
             "CHARSET UTF-8 X-GM-RAW \"会議\""
         );
         assert_eq!(
-            search_criteria(false, "会議", true),
+            search_criteria(false, "会議", true, false),
             "CHARSET UTF-8 OR OR SUBJECT \"会議\" FROM \"会議\" TEXT \"会議\""
+        );
+    }
+
+    #[test]
+    fn search_criteria_sends_non_ascii_as_literal_plus() {
+        // "会議" is 6 UTF-8 octets; the count is bytes, not chars.
+        assert_eq!(
+            search_criteria(true, " 会議 ", true, true),
+            "CHARSET UTF-8 X-GM-RAW {6+}\r\n会議"
+        );
+        assert_eq!(
+            search_criteria(false, "é\r\nx", true, true),
+            "CHARSET UTF-8 OR OR SUBJECT {5+}\r\né  x FROM {5+}\r\né  x TEXT {5+}\r\né  x"
         );
     }
 

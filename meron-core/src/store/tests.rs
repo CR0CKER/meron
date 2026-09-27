@@ -481,6 +481,21 @@ fn search_messages_short_query_falls_back_to_like() {
 }
 
 #[test]
+fn search_messages_short_query_folds_non_ascii_case() {
+    // SQLite's lower() is ASCII-only; the short-query path must fold Cyrillic
+    // and accented capitals the way the trigram index does for longer queries.
+    let conn = test_conn();
+    insert_message(&conn, 1, "Ок, созвон", "Aki", "aki@example.com", None);
+    insert_message(&conn, 2, "ÉT report", "Aki", "aki@example.com", None);
+    insert_message(&conn, 3, "Other", "Aki", "aki@example.com", None);
+
+    let hit = search_messages(&conn, "acct", "INBOX", "ок", 10, None).unwrap();
+    assert_eq!(hit.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![1]);
+    let hit = search_messages(&conn, "acct", "INBOX", "ét", 10, None).unwrap();
+    assert_eq!(hit.iter().map(|m| m.uid).collect::<Vec<_>>(), vec![2]);
+}
+
+#[test]
 fn search_messages_reindexes_on_body_update() {
     // The FTS triggers must follow a later body write, not just the initial insert.
     let conn = test_conn();
@@ -704,7 +719,8 @@ fn search_snapshot_pages_in_resolved_date_order_when_uids_diverge() {
         vec![2, 1, 3]
     );
 
-    let token = save_search_snapshot(&conn, "acct", "deploy", &folders, &hits).unwrap();
+    let token = create_search_snapshot(&conn, "acct", "deploy", &folders, &[]).unwrap();
+    finish_search_batch(&conn, &token, "acct", &[], &hits, None).unwrap();
     let first = get_search_snapshot_page(&conn, "acct", "deploy", &folders, &token, 0, 1)
         .unwrap()
         .unwrap();
@@ -727,6 +743,112 @@ fn search_snapshot_pages_in_resolved_date_order_when_uids_diverge() {
         get_search_snapshot_page(&conn, "acct", "different", &folders, &token, 0, 1)
             .unwrap()
             .is_none()
+    );
+}
+
+#[test]
+fn search_pending_is_taken_newest_first_by_date_across_folders() {
+    let conn = test_conn();
+    let hit = |folder: &str, uid: u32, date: i64| PendingSearchHit {
+        folder: folder.to_string(),
+        uid,
+        date,
+    };
+    let folders = ["INBOX".to_string(), "Sent".to_string()];
+    // UID 1 was imported late: the lowest UID carries the newest date.
+    let token = create_search_snapshot(
+        &conn,
+        "acct",
+        "deploy",
+        &folders,
+        &[
+            hit("INBOX", 3, 300),
+            hit("INBOX", 2, 200),
+            hit("INBOX", 1, 1000),
+            hit("Sent", 9, 250),
+        ],
+    )
+    .unwrap();
+
+    let (batch, next) = take_search_pending(&conn, &token, 2).unwrap();
+    assert_eq!(batch, vec![hit("INBOX", 1, 1000), hit("INBOX", 3, 300)]);
+    assert_eq!(next, Some(hit("Sent", 9, 250)));
+    let (batch, next) = take_search_pending(&conn, &token, 4).unwrap();
+    assert_eq!(batch.len(), 4);
+    assert_eq!(next, None);
+}
+
+#[test]
+fn search_batches_consume_pending_hits_and_append_in_order() {
+    let conn = test_conn();
+    for (uid, date) in [(5u32, 500i64), (4, 400), (3, 300)] {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date)
+             VALUES('acct', 'INBOX', ?1, ?2, 'deploy notes', 'Ops', 'ops@example.com', ?3)",
+            params![uid.to_string(), uid, date],
+        )
+        .unwrap();
+    }
+    let folders = ["INBOX".to_string()];
+    let pending = [(5u32, 500i64), (4, 400), (3, 300)].map(|(uid, date)| PendingSearchHit {
+        folder: "INBOX".to_string(),
+        uid,
+        date,
+    });
+    let token = create_search_snapshot(&conn, "acct", "deploy", &folders, &pending).unwrap();
+    let header = |uid: u32, date: i64| MessageHeader {
+        uid,
+        date,
+        folder: "INBOX".to_string(),
+        ..Default::default()
+    };
+
+    let (batch, next) = take_search_pending(&conn, &token, 2).unwrap();
+    assert_eq!(
+        batch.iter().map(|hit| hit.uid).collect::<Vec<_>>(),
+        vec![5, 4]
+    );
+    assert_eq!(next.map(|hit| hit.uid), Some(3));
+    finish_search_batch(
+        &conn,
+        &token,
+        "acct",
+        &[("INBOX".to_string(), 5), ("INBOX".to_string(), 4)],
+        &[header(5, 500), header(4, 400)],
+        None,
+    )
+    .unwrap();
+    let page = get_search_snapshot_page(&conn, "acct", "deploy", &folders, &token, 0, 10)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        page.messages.iter().map(|m| m.uid).collect::<Vec<_>>(),
+        vec![5, 4]
+    );
+    assert!(page.pending);
+
+    // The last batch appends after the first and leaves nothing pending; a hit
+    // already listed is not appended twice.
+    finish_search_batch(
+        &conn,
+        &token,
+        "acct",
+        &[("INBOX".to_string(), 3)],
+        &[header(4, 400), header(3, 300)],
+        None,
+    )
+    .unwrap();
+    let page = get_search_snapshot_page(&conn, "acct", "deploy", &folders, &token, 0, 10)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        page.messages.iter().map(|m| m.uid).collect::<Vec<_>>(),
+        vec![5, 4, 3]
+    );
+    assert!(!page.pending);
+    assert_eq!(
+        take_search_pending(&conn, &token, 2).unwrap(),
+        (vec![], None)
     );
 }
 
@@ -2189,7 +2311,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 11);
+    assert_eq!(version, 12);
 
     for table in [
         "accounts",
@@ -2197,6 +2319,8 @@ fn run_migrations_creates_schema_and_bumps_version() {
         "messages_fts",
         "messages_recipients_fts",
         "mail_search_hits",
+        "mail_search_snapshots",
+        "mail_search_pending",
         "folders",
         "folder_state",
         "subscriptions",
@@ -2223,7 +2347,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 11);
+    assert_eq!(version, 12);
 }
 
 #[test]
@@ -2251,7 +2375,7 @@ fn concurrent_first_open_runs_migrations_once() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 11);
+    assert_eq!(version, 12);
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2307,6 +2431,18 @@ fn delete_account_removes_account_scoped_state_only() {
             params![account, format!("token-{account}")],
         )
         .unwrap();
+        conn.execute(
+            "INSERT INTO mail_search_snapshots(token, account, query, scope, created_at)
+             VALUES(?2, ?1, 'query', '[\"INBOX\"]', 1)",
+            params![account, format!("token-{account}")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mail_search_pending(token, account, folder, uid, date)
+             VALUES(?2, ?1, 'INBOX', 2, 1)",
+            params![account, format!("token-{account}")],
+        )
+        .unwrap();
     }
 
     delete_account(&conn, "acct").unwrap();
@@ -2320,6 +2456,8 @@ fn delete_account_removes_account_scoped_state_only() {
         ("account_secrets", "account_id"),
         ("observed_mail_identities", "account"),
         ("mail_search_hits", "account"),
+        ("mail_search_snapshots", "account"),
+        ("mail_search_pending", "account"),
     ] {
         let deleted_count: i64 = conn
             .query_row(
@@ -3883,7 +4021,7 @@ fn tasks_tables_arrive_on_an_existing_install() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 11);
+    assert_eq!(version, 12);
 
     // Cached mail is untouched, and the new tables are writable.
     let messages: i64 = conn

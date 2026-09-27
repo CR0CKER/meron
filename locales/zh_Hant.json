@@ -918,6 +918,7 @@
   "threads.noSubject": "（無主旨）",
   "threads.searchFeeds": "搜尋訂閱源...",
   "threads.searchMessages": "搜尋訊息...",
+  "threads.searchServerUnavailable": "無法連線至伺服器，正在顯示此裝置上儲存的結果。",
   "tray.hideMeronTooltip": "將 Meron 隱藏到系統托盤",
   "tray.hideToTray": "隱藏到托盤",
   "tray.quitMeron": "退出 Meron",

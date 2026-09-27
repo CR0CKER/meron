@@ -531,6 +531,7 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
         next_cursor?: string
         folder_unreads?: Record<string, number>
         failures?: Array<{ account_id: string; message: string }>
+        search_incomplete?: boolean
       }>('mail.threadList', {
         account_id: 'unified',
         folder_id: role,
@@ -554,6 +555,8 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
       }
       mail$.threadAccountCursors.set({})
       mail$.threadsCursor.set(result.next_cursor ?? '')
+      // Some account's server search failed; its part of the list is cached only.
+      if (refresh && result.search_incomplete) showToast(t('threads.searchServerUnavailable'))
     } catch (err) {
       if (superseded()) return
       console.error('Failed to load unified threads:', err)
@@ -562,17 +565,19 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
     }
   } else {
     try {
-      const result = await invoke<{ threads: Message[]; next_cursor?: string; folder_unread?: number }>(
-        'mail.threadList',
-        {
-          account_id: selectedAcc,
-          folder_id: selectedFol,
-          query: q,
-          filter,
-          attachments,
-          refresh,
-        },
-      )
+      const result = await invoke<{
+        threads: Message[]
+        next_cursor?: string
+        folder_unread?: number
+        search_incomplete?: boolean
+      }>('mail.threadList', {
+        account_id: selectedAcc,
+        folder_id: selectedFol,
+        query: q,
+        filter,
+        attachments,
+        refresh,
+      })
       if (superseded()) return
       if (typeof result.folder_unread === 'number') {
         updateCachedFolderUnread(selectedAcc, selectedFol, result.folder_unread)
@@ -580,6 +585,9 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
       allThreads = result.threads || []
       mail$.threadsCursor.set(result.next_cursor ?? '')
       mail$.threadAccountCursors.set({})
+      // The server half of the search failed; say the list is only what this
+      // device has cached rather than letting older matches silently vanish.
+      if (refresh && result.search_incomplete) showToast(t('threads.searchServerUnavailable'))
     } catch (err) {
       if (superseded()) return
       console.error('Failed to load threads:', err)
@@ -735,6 +743,7 @@ export async function loadMoreThreads() {
         threads: Message[]
         next_cursor?: string
         folder_unreads?: Record<string, number>
+        search_incomplete?: boolean
       }>('mail.threadList', {
         account_id: 'unified',
         folder_id: role,
@@ -754,25 +763,30 @@ export async function loadMoreThreads() {
       moreThreads = res.threads || []
       mail$.threadAccountCursors.set({})
       mail$.threadsCursor.set(res.next_cursor ?? '')
+      if (res.search_incomplete) showToast(t('threads.searchServerUnavailable'))
     } else {
       const cursor = mail$.threadsCursor.get()
       if (!cursor) return
-      const res = await invoke<{ threads: Message[]; next_cursor?: string; folder_unread?: number }>(
-        'mail.threadList',
-        {
-          account_id: selectedAcc,
-          folder_id: selectedFol,
-          query: q,
-          filter,
-          attachments,
-          before_cursor: cursor,
-          refresh: false,
-        },
-      )
+      const res = await invoke<{
+        threads: Message[]
+        next_cursor?: string
+        folder_unread?: number
+        search_incomplete?: boolean
+      }>('mail.threadList', {
+        account_id: selectedAcc,
+        folder_id: selectedFol,
+        query: q,
+        filter,
+        attachments,
+        before_cursor: cursor,
+        refresh: false,
+      })
       if (!stillCurrent(cursor)) return
       if (typeof res.folder_unread === 'number') updateCachedFolderUnread(selectedAcc, selectedFol, res.folder_unread)
       moreThreads = res.threads || []
       mail$.threadsCursor.set(res.next_cursor ?? '')
+      // Older server matches could not be fetched; the list ends at what is cached.
+      if (res.search_incomplete) showToast(t('threads.searchServerUnavailable'))
     }
 
     if (moreThreads.length > 0) {

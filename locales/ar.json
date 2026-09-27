@@ -918,6 +918,7 @@
   "threads.noSubject": "(لا يوجد موضوع)",
   "threads.searchFeeds": "البحث في الخلاصات...",
   "threads.searchMessages": "البحث في الرسائل...",
+  "threads.searchServerUnavailable": "تعذّر الوصول إلى الخادم. تُعرض النتائج المحفوظة على هذا الجهاز.",
   "tray.hideMeronTooltip": "إخفاء Meron في علبة النظام",
   "tray.hideToTray": "إخفاء إلى الدرج",
   "tray.quitMeron": "قم بإنهاء Meron",

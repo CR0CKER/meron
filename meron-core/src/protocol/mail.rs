@@ -696,6 +696,7 @@ fn list_mobile_account_threads(
     // Mobile is cache-first: unlike desktop, starred reads the flags the last
     // sync stored so the list still answers offline, and a failed live search
     // falls back to the cached one.
+    let mut search_incomplete = false;
     let (messages, next_cursor) = match request.source() {
         thread_list::MailSource::Starred => (
             get_cached_mobile_starred(data_dir, &account_id, &folder_id, limit)?,
@@ -715,32 +716,63 @@ fn list_mobile_account_threads(
             // would silently drop the Sent hits from the results.
             let folders = mobile_search_folders(data_dir, &account_id, &folder_id)?;
             // Mobile renders indexed local hits first, then repeats the first
-            // page with refresh=true off the UI thread. Snapshot-backed later
-            // pages still go through the engine, where they are local DB reads.
-            let live = refresh || request.search_before_cursor.as_ref().is_some();
-            let (messages, next_cursor) = if live {
+            // page with refresh=true off the UI thread. Later pages are local
+            // reads (the live snapshot, else cached keyset order), served
+            // straight from the store so they need neither the engine nor valid
+            // credentials — a paused account keeps paging its snapshot.
+            if let Some(cursor) = request.search_before_cursor.as_ref() {
+                let page = match continue_mobile_search(
+                    data_dir,
+                    &account_id,
+                    &folders,
+                    &request.query,
+                    limit,
+                    cursor,
+                )? {
+                    crate::engine::SearchContinuation::Page(page) => page,
+                    // The page reaches server hits the first page left for
+                    // later; fetching them needs the engine. Offline, show
+                    // what is here and say the list is incomplete.
+                    crate::engine::SearchContinuation::NeedsServer(partial) => {
+                        search_live_mobile_mail_messages(
+                            data_dir,
+                            &account_id,
+                            &folders,
+                            &request.query,
+                            limit,
+                            Some(cursor),
+                        )
+                        .unwrap_or(partial)
+                    }
+                };
+                search_incomplete = page.incomplete;
+                (page.messages, page.next_cursor)
+            } else if refresh {
                 match search_live_mobile_mail_messages(
                     data_dir,
                     &account_id,
                     &folders,
                     &request.query,
                     limit,
-                    request.search_before_cursor.as_ref(),
+                    None,
                 ) {
-                    Ok(page) => (page.messages, page.next_cursor),
+                    Ok(page) => {
+                        search_incomplete = page.incomplete;
+                        (page.messages, page.next_cursor)
+                    }
                     Err(err) => {
                         crate::mlog!(
                             crate::log::Level::Warn,
                             "mail.search",
                             "live search failed for account={account_id} folder={folder_id}: {err}"
                         );
+                        search_incomplete = true;
                         let messages = search_cached_mobile_mail_messages(
                             data_dir,
                             &account_id,
                             &folders,
                             &request.query,
                             limit,
-                            request.search_before_cursor.as_ref(),
                         )?;
                         let next_cursor = store::search_next_cursor(&messages, limit, 0);
                         (messages, next_cursor)
@@ -753,12 +785,10 @@ fn list_mobile_account_threads(
                     &folders,
                     &request.query,
                     limit,
-                    None,
                 )?;
                 let next_cursor = store::search_next_cursor(&messages, limit, 0);
                 (messages, next_cursor)
-            };
-            (messages, next_cursor)
+            }
         }
     };
     with_mobile_db(data_dir, |conn| {
@@ -772,6 +802,11 @@ fn list_mobile_account_threads(
             true,
         )
         .map_err(|err| format!("{err:#}"))?;
+        if search_incomplete {
+            page.as_object_mut()
+                .unwrap()
+                .insert("search_incomplete".to_string(), Value::Bool(true));
+        }
         request.retain_attachment_threads(&mut page);
         Ok(page)
     })
@@ -908,11 +943,23 @@ fn search_cached_mobile_mail_messages(
     folders: &[String],
     query: &str,
     limit: u32,
-    before_cursor: Option<&crate::thread_list::SearchCursor>,
 ) -> Result<Vec<MessageHeader>, String> {
     let conn = open_mobile_db(data_dir)?;
-    store::search_messages_in_folders(&conn, account_id, folders, query, limit, before_cursor)
+    store::search_messages_in_folders(&conn, account_id, folders, query, limit, None)
         .map_err(|err| err.to_string())
+}
+
+fn continue_mobile_search(
+    data_dir: &str,
+    account_id: &str,
+    folders: &[String],
+    query: &str,
+    limit: u32,
+    cursor: &crate::thread_list::SearchCursor,
+) -> Result<crate::engine::SearchContinuation, String> {
+    let conn = open_mobile_db(data_dir)?;
+    crate::engine::continue_search_page(&conn, account_id, folders, query, limit, cursor)
+        .map_err(|err| format!("{err:#}"))
 }
 
 fn search_live_mobile_mail_messages(

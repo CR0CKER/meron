@@ -918,6 +918,7 @@
   "threads.noSubject": "(bez tēmas)",
   "threads.searchFeeds": "Meklēt plūsmas...",
   "threads.searchMessages": "Meklēt ziņojumus...",
+  "threads.searchServerUnavailable": "Neizdevās sazināties ar serveri. Tiek rādīti šajā ierīcē saglabātie rezultāti.",
   "tray.hideMeronTooltip": "Slēpt Meron sistēmas teknē",
   "tray.hideToTray": "Paslēpt uz paplātes",
   "tray.quitMeron": "Izejiet no Meron",

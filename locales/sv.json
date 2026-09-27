@@ -918,6 +918,7 @@
   "threads.noSubject": "(inget ämne)",
   "threads.searchFeeds": "Sök flöden...",
   "threads.searchMessages": "Sök meddelanden...",
+  "threads.searchServerUnavailable": "Det gick inte att nå servern. Visar träffar som sparats på den här enheten.",
   "tray.hideMeronTooltip": "Göm Meron i systemfältet",
   "tray.hideToTray": "Göm till fack",
   "tray.quitMeron": "Avsluta Meron",

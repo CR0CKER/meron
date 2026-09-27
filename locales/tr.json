@@ -918,6 +918,7 @@
   "threads.noSubject": "(konu yok)",
   "threads.searchFeeds": "Beslemelerde ara...",
   "threads.searchMessages": "Mesajlarda ara...",
+  "threads.searchServerUnavailable": "Sunucuya ulaşılamadı. Bu cihazda kayıtlı sonuçlar gösteriliyor.",
   "tray.hideMeronTooltip": "Meron'yi sistem tepsisinde gizle",
   "tray.hideToTray": "Tepsiye Gizle",
   "tray.quitMeron": "Meron'den çıkın",

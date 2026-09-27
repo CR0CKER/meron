@@ -94,6 +94,12 @@ pub fn search_messages(
 
 /// Substring search via a scoped table scan. Used for queries too short for the
 /// trigram FTS index (< 3 codepoints).
+///
+/// The match runs in Rust rather than as SQL `lower(..) LIKE ..`: SQLite's
+/// `lower()` folds ASCII only, so a two-letter Cyrillic or Greek query would miss
+/// capitalised text that the (Unicode-folding) trigram path finds once the query
+/// grows a third letter. Rows stream newest first and the scan stops at `limit`
+/// hits, the same work the SQL scan did.
 pub(super) fn search_messages_like(
     conn: &Connection,
     account: &str,
@@ -102,41 +108,50 @@ pub(super) fn search_messages_like(
     limit: u32,
     before_cursor: Option<&crate::thread_list::SearchCursor>,
 ) -> Result<Vec<MessageHeader>> {
-    let like = format!("%{}%", escape_like(q.to_lowercase()));
+    let needle = q.to_lowercase();
     let cursor_date = before_cursor.map(|cursor| cursor.date);
     let cursor_uid = before_cursor.map(|cursor| cursor.uid as i64).unwrap_or(0);
     let cursor_folder = before_cursor.map(|cursor| cursor.folder.as_str());
     let mut stmt = conn.prepare(
         "SELECT uid, subject, from_name, from_addr, date, seen, starred, thread_key,
                 json_extract(json, '$.to'),
-                COALESCE(json_extract(json, '$.message_id'), '') FROM messages
+                COALESCE(json_extract(json, '$.message_id'), ''),
+                recipients, body
+         FROM messages
          WHERE account = ?1 AND folder = ?2 AND uid <> 0
-           AND (
-             lower(COALESCE(subject, '')) LIKE ?3 ESCAPE '\\'
-             OR lower(COALESCE(from_name, '')) LIKE ?3 ESCAPE '\\'
-             OR lower(COALESCE(from_addr, '')) LIKE ?3 ESCAPE '\\'
-             OR lower(COALESCE(recipients, '')) LIKE ?3 ESCAPE '\\'
-             OR lower(COALESCE(body, '')) LIKE ?3 ESCAPE '\\'
-           )
-           AND (?5 IS NULL
-                OR date < ?5
-                OR (date = ?5 AND uid < ?6)
-                OR (date = ?5 AND uid = ?6 AND folder < ?7))
-         ORDER BY date DESC, uid DESC LIMIT ?4",
+           AND (?3 IS NULL
+                OR date < ?3
+                OR (date = ?3 AND uid < ?4)
+                OR (date = ?3 AND uid = ?4 AND folder < ?5))
+         ORDER BY date DESC, uid DESC",
     )?;
-    let rows = stmt.query_map(
-        params![
-            account,
-            folder,
-            like,
-            limit,
-            cursor_date,
-            cursor_uid,
-            cursor_folder
-        ],
-        search_header_from_row,
-    )?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    let mut rows = stmt.query(params![
+        account,
+        folder,
+        cursor_date,
+        cursor_uid,
+        cursor_folder
+    ])?;
+    let mut messages = Vec::new();
+    while messages.len() < limit as usize {
+        let Some(row) = rows.next()? else {
+            break;
+        };
+        let mut hit = false;
+        // Body last: it is by far the largest column to fold.
+        for column in [1, 2, 3, 10, 11] {
+            if let Some(text) = row.get_ref(column)?.as_str_or_null()?
+                && text.to_lowercase().contains(&needle)
+            {
+                hit = true;
+                break;
+            }
+        }
+        if hit {
+            messages.push(search_header_from_row(row)?);
+        }
+    }
+    Ok(messages)
 }
 
 /// Search several folders (typically the open mailbox plus Sent) as one
@@ -202,17 +217,44 @@ pub struct SearchSnapshotPage {
     pub messages: Vec<MessageHeader>,
     pub next_offset: u32,
     pub has_more: bool,
+    /// Server hits still wait to be fetched.
+    pub pending: bool,
+    /// Set when the last batch cut off its cached-only hits: the keyset cursor
+    /// of the last one it took, where paging past the end resumes the cache.
+    /// Distinct from the snapshot's last row, which can be a server hit older
+    /// than cached hits the cut skipped.
+    pub cache_resume: Option<String>,
 }
 
-/// Persist the resolved order of one live IMAP search. Only identities and
-/// positions are stored; headers remain in `messages`, where the live fetch
-/// already upserted them.
-pub fn save_search_snapshot(
+/// A search hit's display-order key, `(date, uid, folder)`, as
+/// [`sort_search_hits_all`] ranks it (newest first means largest first).
+pub type SearchHitKey<'a> = (i64, u32, &'a str);
+
+/// One server hit a snapshot has not fetched yet, with the date its Date
+/// header was resolved to when the snapshot was made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSearchHit {
+    pub folder: String,
+    pub uid: u32,
+    pub date: i64,
+}
+
+impl PendingSearchHit {
+    pub fn key(&self) -> SearchHitKey<'_> {
+        (self.date, self.uid, &self.folder)
+    }
+}
+
+/// Start a live-search snapshot with every server hit still to fetch.
+/// `pending` carries each server hit with its resolved date; batches of it are
+/// taken newest first by [`take_search_pending`] and recorded by
+/// [`finish_search_batch`] as paging needs them.
+pub fn create_search_snapshot(
     conn: &Connection,
     account: &str,
     query: &str,
     folders: &[String],
-    messages: &[MessageHeader],
+    pending: &[PendingSearchHit],
 ) -> Result<String> {
     let token = uuid::Uuid::new_v4().simple().to_string();
     let scope = serde_json::to_string(folders)?;
@@ -221,7 +263,149 @@ pub fn save_search_snapshot(
         .unwrap_or_default()
         .as_secs() as i64;
     let tx = conn.unchecked_transaction()?;
-    for (position, message) in messages.iter().enumerate() {
+    tx.execute(
+        "INSERT INTO mail_search_snapshots(token, account, query, scope, created_at)
+         VALUES(?1, ?2, ?3, ?4, ?5)",
+        params![token, account, query, scope, created_at],
+    )?;
+    {
+        let mut insert = tx.prepare(
+            "INSERT OR IGNORE INTO mail_search_pending(token, account, folder, uid, date)
+             VALUES(?1, ?2, ?3, ?4, ?5)",
+        )?;
+        for hit in pending {
+            insert.execute(params![token, account, hit.folder, hit.uid, hit.date])?;
+        }
+    }
+    // Search snapshots are disposable cache state. A one-day lease is long
+    // enough for suspended mobile views to resume without letting abandoned
+    // queries grow the database indefinitely.
+    let expired = created_at.saturating_sub(86_400);
+    tx.execute(
+        "DELETE FROM mail_search_hits WHERE account = ?1 AND created_at < ?2",
+        params![account, expired],
+    )?;
+    tx.execute(
+        "DELETE FROM mail_search_pending
+         WHERE token IN (SELECT token FROM mail_search_snapshots
+                         WHERE account = ?1 AND created_at < ?2)",
+        params![account, expired],
+    )?;
+    tx.execute(
+        "DELETE FROM mail_search_snapshots WHERE account = ?1 AND created_at < ?2",
+        params![account, expired],
+    )?;
+    tx.commit()?;
+    Ok(token)
+}
+
+/// The cached dates of whichever of `uids` the cache holds in `folder`, so a
+/// new snapshot only asks the server for the dates it lacks.
+pub fn cached_message_dates(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    uids: &[u32],
+) -> Result<std::collections::HashMap<u32, i64>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT date FROM messages WHERE account = ?1 AND folder = ?2 AND uid = ?3",
+    )?;
+    let mut dates = std::collections::HashMap::new();
+    for &uid in uids {
+        if let Some(date) = stmt
+            .query_row(params![account, folder, uid], |row| row.get::<_, i64>(0))
+            .optional()?
+        {
+            dates.insert(uid, date);
+        }
+    }
+    Ok(dates)
+}
+
+/// The snapshot's `count` newest unfetched server hits by date, across all its
+/// folders, plus the newest one after them: nothing older than that one can be
+/// placed until it is fetched. Nothing is consumed until
+/// [`finish_search_batch`] records the fetch.
+pub fn take_search_pending(
+    conn: &Connection,
+    token: &str,
+    count: usize,
+) -> Result<(Vec<PendingSearchHit>, Option<PendingSearchHit>)> {
+    let mut stmt = conn.prepare(
+        "SELECT folder, uid, date FROM mail_search_pending WHERE token = ?1
+         ORDER BY date DESC, uid DESC, folder DESC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![token, count.saturating_add(1) as i64], |row| {
+        Ok(PendingSearchHit {
+            folder: row.get(0)?,
+            uid: row.get(1)?,
+            date: row.get(2)?,
+        })
+    })?;
+    let mut hits = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = (hits.len() > count).then(|| hits.pop()).flatten();
+    Ok((hits, next))
+}
+
+/// Record one fetched batch: drop the `done` hits from the pending set, and
+/// append `messages` (already in display order) after the snapshot's current
+/// end, skipping any the snapshot already lists.
+pub fn finish_search_batch(
+    conn: &Connection,
+    token: &str,
+    account: &str,
+    done: &[(String, u32)],
+    messages: &[MessageHeader],
+    cache_resume: Option<&str>,
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let Some((query, scope, created_at)) = tx
+        .query_row(
+            "SELECT query, scope, created_at FROM mail_search_snapshots
+             WHERE token = ?1 AND account = ?2",
+            params![token, account],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .optional()?
+    else {
+        // Expired or dropped while the batch was in flight.
+        return Ok(());
+    };
+    {
+        let mut delete = tx.prepare(
+            "DELETE FROM mail_search_pending WHERE token = ?1 AND folder = ?2 AND uid = ?3",
+        )?;
+        for (folder, uid) in done {
+            delete.execute(params![token, folder, uid])?;
+        }
+    }
+    tx.execute(
+        "UPDATE mail_search_snapshots SET cache_resume = ?2 WHERE token = ?1",
+        params![token, cache_resume],
+    )?;
+    let mut position: i64 = tx.query_row(
+        "SELECT COALESCE(MAX(position) + 1, 0) FROM mail_search_hits WHERE token = ?1",
+        params![token],
+        |row| row.get(0),
+    )?;
+    for message in messages {
+        let listed = tx
+            .query_row(
+                "SELECT 1 FROM mail_search_hits WHERE token = ?1 AND folder = ?2 AND uid = ?3",
+                params![token, message.folder, message.uid],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if listed {
+            continue;
+        }
         tx.execute(
             "INSERT INTO mail_search_hits(
                token, account, query, scope, position, folder, uid, created_at
@@ -231,23 +415,27 @@ pub fn save_search_snapshot(
                 account,
                 query,
                 scope,
-                position as i64,
+                position,
                 message.folder,
                 message.uid,
                 created_at
             ],
         )?;
+        position += 1;
     }
-    // Search snapshots are disposable cache state. A one-day lease is long
-    // enough for suspended mobile views to resume without letting abandoned
-    // queries grow the database indefinitely.
-    tx.execute(
-        "DELETE FROM mail_search_hits
-         WHERE account = ?1 AND created_at < ?2",
-        params![account, created_at.saturating_sub(86_400)],
-    )?;
     tx.commit()?;
-    Ok(token)
+    Ok(())
+}
+
+/// Every (folder, uid) a snapshot already lists, so a batch can skip cached
+/// hits an earlier batch appended.
+pub fn search_snapshot_members(
+    conn: &Connection,
+    token: &str,
+) -> Result<std::collections::HashSet<(String, u32)>> {
+    let mut stmt = conn.prepare("SELECT folder, uid FROM mail_search_hits WHERE token = ?1")?;
+    let rows = stmt.query_map(params![token], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 /// Read a stable live-search page. `None` means the cursor is stale or belongs
@@ -263,19 +451,19 @@ pub fn get_search_snapshot_page(
     limit: u32,
 ) -> Result<Option<SearchSnapshotPage>> {
     let scope = serde_json::to_string(folders)?;
-    let exists = conn
+    let snapshot = conn
         .query_row(
-            "SELECT 1 FROM mail_search_hits
-             WHERE token = ?1 AND account = ?2 AND query = ?3 AND scope = ?4
-             LIMIT 1",
+            "SELECT cache_resume,
+                    EXISTS(SELECT 1 FROM mail_search_pending WHERE token = ?1)
+             FROM mail_search_snapshots
+             WHERE token = ?1 AND account = ?2 AND query = ?3 AND scope = ?4",
             params![token, account, query, scope],
-            |_| Ok(()),
+            |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, bool>(1)?)),
         )
-        .optional()?
-        .is_some();
-    if !exists {
+        .optional()?;
+    let Some((cache_resume, pending)) = snapshot else {
         return Ok(None);
-    }
+    };
 
     let fetch_limit = limit.saturating_add(1);
     let mut stmt = conn.prepare(
@@ -285,20 +473,17 @@ pub fn get_search_snapshot_page(
          FROM mail_search_hits h
          JOIN messages m
            ON m.account = h.account AND m.folder = h.folder AND m.uid = h.uid
-         WHERE h.token = ?1 AND h.account = ?2 AND h.query = ?3 AND h.scope = ?4
-           AND h.position >= ?5
+         WHERE h.token = ?1 AND h.account = ?2
+           AND h.position >= ?3
          ORDER BY h.position
-         LIMIT ?6",
+         LIMIT ?4",
     )?;
-    let rows = stmt.query_map(
-        params![token, account, query, scope, offset, fetch_limit],
-        |row| {
-            let mut message = message_header_from_row(row)?;
-            message.folder = row.get(9)?;
-            message.message_id = row.get(11)?;
-            Ok((message, row.get::<_, u32>(10)?))
-        },
-    )?;
+    let rows = stmt.query_map(params![token, account, offset, fetch_limit], |row| {
+        let mut message = message_header_from_row(row)?;
+        message.folder = row.get(9)?;
+        message.message_id = row.get(11)?;
+        Ok((message, row.get::<_, u32>(10)?))
+    })?;
     let mut rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
     let has_more = rows.len() > limit as usize;
     if has_more {
@@ -312,5 +497,7 @@ pub fn get_search_snapshot_page(
         messages: rows.into_iter().map(|(message, _)| message).collect(),
         next_offset,
         has_more,
+        pending,
+        cache_resume,
     }))
 }

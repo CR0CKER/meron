@@ -135,6 +135,9 @@ func copyPageMetadata(object, out map[string]any) {
 	if folderSynced, ok := object["folder_synced"].(bool); ok {
 		out["folder_synced"] = folderSynced
 	}
+	if incomplete, ok := object["search_incomplete"].(bool); ok && incomplete {
+		out["search_incomplete"] = true
+	}
 	if folderUnreads, ok := object["folder_unreads"].(map[string]any); ok {
 		out["folder_unreads"] = folderUnreads
 	}

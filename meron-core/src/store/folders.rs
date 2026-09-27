@@ -56,6 +56,16 @@ pub fn delete_folder(conn: &Connection, account: &str, name: &str) -> Result<usi
         "DELETE FROM mail_search_hits WHERE account = ?1 AND folder = ?2",
         params![account, name],
     )?;
+    // A snapshot's scope and pending hits name its folders. Snapshots are
+    // disposable, so the account's are dropped rather than rewritten.
+    tx.execute(
+        "DELETE FROM mail_search_snapshots WHERE account = ?1",
+        params![account],
+    )?;
+    tx.execute(
+        "DELETE FROM mail_search_pending WHERE account = ?1",
+        params![account],
+    )?;
     tx.execute(
         "DELETE FROM folder_state WHERE account = ?1 AND folder = ?2",
         params![account, name],

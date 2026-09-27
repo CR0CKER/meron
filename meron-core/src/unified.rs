@@ -20,9 +20,16 @@ pub fn merge_pages(pages: Vec<(String, Result<Value, String>)>, items_field: &st
     let mut next_cursors = AccountCursors::new();
     let mut folder_unreads = Map::new();
     let mut failures = Vec::new();
+    let mut search_incomplete = false;
     for (account_id, page) in pages {
         match page {
             Ok(result) => {
+                // One account's live search failing leaves the merged list
+                // short of its server-only hits; the view must still say so.
+                search_incomplete |= result
+                    .get("search_incomplete")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 items.extend(
                     result
                         .get(items_field)
@@ -62,6 +69,11 @@ pub fn merge_pages(pages: Vec<(String, Result<Value, String>)>, items_field: &st
             "next_cursor".to_string(),
             Value::String(encode_cursor(&next_cursors)),
         );
+    }
+    if search_incomplete {
+        out.as_object_mut()
+            .unwrap()
+            .insert("search_incomplete".to_string(), Value::Bool(true));
     }
     out
 }
@@ -112,5 +124,21 @@ mod tests {
                 .unwrap()
                 .starts_with("unified:")
         );
+        assert!(merged.get("search_incomplete").is_none());
+    }
+
+    #[test]
+    fn one_incomplete_account_search_marks_the_merged_page() {
+        let merged = merge_pages(
+            vec![
+                ("first".to_string(), Ok(json!({"threads": []}))),
+                (
+                    "second".to_string(),
+                    Ok(json!({"threads": [], "search_incomplete": true})),
+                ),
+            ],
+            "threads",
+        );
+        assert_eq!(merged["search_incomplete"], true);
     }
 }

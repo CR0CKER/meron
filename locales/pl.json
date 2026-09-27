@@ -918,6 +918,7 @@
   "threads.noSubject": "(bez tematu)",
   "threads.searchFeeds": "Szukaj kanałów...",
   "threads.searchMessages": "Szukaj wiadomości...",
+  "threads.searchServerUnavailable": "Nie udało się połączyć z serwerem. Wyświetlane są wyniki zapisane na tym urządzeniu.",
   "tray.hideMeronTooltip": "Ukryj Meron w zasobniku systemowym",
   "tray.hideToTray": "Ukryj w zasobniku",
   "tray.quitMeron": "Wyjdź z Meron",

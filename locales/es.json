@@ -918,6 +918,7 @@
   "threads.noSubject": "(sin tema)",
   "threads.searchFeeds": "Buscar feeds...",
   "threads.searchMessages": "Buscar mensajes...",
+  "threads.searchServerUnavailable": "No se pudo conectar con el servidor. Se muestran los resultados guardados en este dispositivo.",
   "tray.hideMeronTooltip": "Ocultar Meron en la bandeja del sistema",
   "tray.hideToTray": "Ocultar en la bandeja",
   "tray.quitMeron": "Salir de Meron",

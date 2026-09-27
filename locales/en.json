@@ -918,6 +918,7 @@
   "threads.noSubject": "(no subject)",
   "threads.searchFeeds": "Search feeds...",
   "threads.searchMessages": "Search messages...",
+  "threads.searchServerUnavailable": "Couldn't reach the server. Showing matches saved on this device.",
   "tray.hideMeronTooltip": "Hide Meron to the system tray",
   "tray.hideToTray": "Hide to Tray",
   "tray.quitMeron": "Quit Meron",

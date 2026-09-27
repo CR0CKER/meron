@@ -311,6 +311,7 @@ async fn messages_recent(engine: &Arc<Engine>, p: &Value, out: &Writer) -> anyho
     // local index with refresh=false, then repeats with refresh=true;
     // snapshot-backed later pages are local even though they travel
     // through the shared search engine.
+    let mut search_incomplete = false;
     let (messages, next_cursor) = match request.source() {
         thread_list::MailSource::Starred => {
             let folders = starred_search_folders(engine, &account, &folder).await;
@@ -342,6 +343,7 @@ async fn messages_recent(engine: &Arc<Engine>, p: &Value, out: &Writer) -> anyho
                     request.search_before_cursor.as_ref(),
                 )
                 .await?;
+                search_incomplete = page.incomplete;
                 (page.messages, page.next_cursor)
             } else {
                 let messages = store::search_messages_in_folders(
@@ -378,6 +380,11 @@ async fn messages_recent(engine: &Arc<Engine>, p: &Value, out: &Writer) -> anyho
         "folder_synced".to_string(),
         Value::Bool(folder_synced_before),
     );
+    if search_incomplete {
+        page.as_object_mut()
+            .unwrap()
+            .insert("search_incomplete".to_string(), Value::Bool(true));
+    }
     request.retain_attachment_threads(&mut page);
     Ok(page)
 }

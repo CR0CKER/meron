@@ -751,6 +751,14 @@ pub fn delete_account(conn: &Connection, id: &str) -> Result<()> {
         "DELETE FROM mail_search_hits WHERE account = ?1",
         params![id],
     )?;
+    tx.execute(
+        "DELETE FROM mail_search_snapshots WHERE account = ?1",
+        params![id],
+    )?;
+    tx.execute(
+        "DELETE FROM mail_search_pending WHERE account = ?1",
+        params![id],
+    )?;
     tx.execute("DELETE FROM folder_state WHERE account = ?1", params![id])?;
     tx.execute("DELETE FROM subscriptions WHERE account = ?1", params![id])?;
     tx.execute(

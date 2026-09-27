@@ -918,6 +918,7 @@
   "threads.noSubject": "(kein Thema)",
   "threads.searchFeeds": "Feeds suchen...",
   "threads.searchMessages": "Nachrichten suchen...",
+  "threads.searchServerUnavailable": "Server nicht erreichbar. Es werden auf diesem Gerät gespeicherte Treffer angezeigt.",
   "tray.hideMeronTooltip": "Verstecken Sie Meron in der Taskleiste",
   "tray.hideToTray": "Im Fach ausblenden",
   "tray.quitMeron": "Beenden Sie Meron",

@@ -918,6 +918,7 @@
   "threads.noSubject": "(件名なし)",
   "threads.searchFeeds": "フィードを検索...",
   "threads.searchMessages": "メッセージを検索...",
+  "threads.searchServerUnavailable": "サーバーに接続できませんでした。この端末に保存されている結果を表示しています。",
   "tray.hideMeronTooltip": "Meron をシステム トレイに非表示にする",
   "tray.hideToTray": "トレイに隠す",
   "tray.quitMeron": "Meronを終了",

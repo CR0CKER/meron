@@ -918,6 +918,7 @@
   "threads.noSubject": "(χωρίς θέμα)",
   "threads.searchFeeds": "Αναζήτηση ροών...",
   "threads.searchMessages": "Αναζήτηση μηνυμάτων...",
+  "threads.searchServerUnavailable": "Δεν ήταν δυνατή η σύνδεση με τον διακομιστή. Εμφανίζονται αποτελέσματα αποθηκευμένα σε αυτήν τη συσκευή.",
   "tray.hideMeronTooltip": "Απόκρυψη Meron στο δίσκο συστήματος",
   "tray.hideToTray": "Απόκρυψη στον δίσκο",
   "tray.quitMeron": "Κλείστε το Meron",

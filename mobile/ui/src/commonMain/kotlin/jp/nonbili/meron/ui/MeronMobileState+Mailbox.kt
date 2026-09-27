@@ -363,7 +363,16 @@ internal fun MeronMobileState.syncCoreThreads(
                 mailListScrollToTopRequest += 1
             }
             val newCount = if (!wasInitialLoad && syncFirst) parsedThreads.count { it.id !in existingIds } else 0
-            status = successStatus ?: if (newCount > 0) "$newCount new message(s)" else ""
+            status = successStatus
+                ?: if (result.searchIncomplete) {
+                    // The server half of the search failed; the list is only what
+                    // this device has cached, so older matches may be missing.
+                    trs("threads.searchServerUnavailable")
+                } else if (newCount > 0) {
+                    "$newCount new message(s)"
+                } else {
+                    ""
+                }
             Log.i(
                 "MailLoad",
                 "sync success account=$accountId folder=$folder threads=${parsedThreads.size} cursor=${mailboxCursor.isNotBlank()} accountCursors=${mailboxAccountCursors.size} initialThreadsLoaded=$initialThreadsLoaded syncing=$syncing",
@@ -600,7 +609,11 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
             cacheVisibleMailbox()
             loadingMoreThreads = false
             errorBanner = null
-            if (!quiet) {
+            if (result.searchIncomplete) {
+                // Older server matches could not be fetched; the list ends at
+                // what this device has cached.
+                status = trs("threads.searchServerUnavailable")
+            } else if (!quiet) {
                 status = if (appended.isEmpty()) "No older messages." else "Loaded ${appended.size} older message(s)."
             }
         }.onFailure {
@@ -704,6 +717,7 @@ internal suspend fun MeronMobileState.loadAccountInbox(
         unreadCount = page.folderUnread,
         nextCursor = page.nextCursor,
         folderSynced = page.folderSynced,
+        searchIncomplete = page.searchIncomplete,
     )
 }
 
@@ -814,6 +828,7 @@ internal suspend fun MeronMobileState.loadUnifiedInbox(
         unreadCount = page.folderUnread.takeIf { role == INBOX_FOLDER },
         nextCursor = page.nextCursor,
         folderSynced = page.folderSynced,
+        searchIncomplete = page.searchIncomplete,
     )
 }
 
