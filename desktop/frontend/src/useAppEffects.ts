@@ -79,6 +79,17 @@ export function useAppEffects() {
     applyDocumentLanguage(targetLanguage)
   }, [language])
 
+  // The backend samples the window on every resize (the webview fires at most
+  // one per frame) and saves once it settles. Sampling has to keep pace: a
+  // debounced sample taken after a maximise would miss the unmaximised size.
+  useEffect(() => {
+    const onResize = () => {
+      void invoke('window.resized').catch(() => {})
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   useEffect(() => {
     void boot().catch((error) => {
       const message = error instanceof Error ? error.message : String(error)

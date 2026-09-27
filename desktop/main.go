@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"net/http"
@@ -37,13 +38,14 @@ func main() {
 
 	app := NewApp()
 	globalApp = app
+	startMaximised := app.window.Maximised
 
 	err := wails.Run(&options.App{
 		Title:                    "Meron",
-		Width:                    1200,
-		Height:                   800,
-		WindowStartState:         startWindowState(),
-		HideWindowOnClose:        true,
+		Width:                    app.window.Width,
+		Height:                   app.window.Height,
+		WindowStartState:         startWindowState(startMaximised),
+		HideWindowOnClose:        hideOnCloseNatively,
 		EnableDefaultContextMenu: true,
 		AssetServer: &assetserver.Options{
 			Assets:     assets,
@@ -66,9 +68,12 @@ func main() {
 				app.HandleSecondInstanceLaunch(data.Args)
 			},
 		},
-		OnStartup:  app.Startup,
-		OnDomReady: maximiseOnDomReady,
-		OnShutdown: app.Shutdown,
+		OnStartup: app.Startup,
+		OnDomReady: func(ctx context.Context) {
+			maximiseOnDomReady(ctx, startMaximised)
+		},
+		OnBeforeClose: app.beforeClose,
+		OnShutdown:    app.Shutdown,
 		Bind: []interface{}{
 			app,
 		},

@@ -141,6 +141,11 @@ export type Settings = {
    * the core's own tables, not here — this is only whether the app shows them.
    */
   tasksEnabled: boolean
+  /**
+   * Whether the window's close button hides Meron to the tray instead of
+   * quitting (Linux and Windows; macOS keeps its own close/quit split).
+   */
+  closeToTray: boolean
   /** Whether to poll for new releases in the background (see states/update.ts). */
   autoUpdateCheck: boolean
   /** Version whose update banner the user dismissed, so it doesn't nag. */
@@ -184,6 +189,7 @@ const DB_KEY = {
   hiddenSideNavAccounts: 'hidden_sidenav_accounts',
   showUnifiedInboxInSideNav: 'show_unified_inbox_in_sidenav',
   tasksEnabled: 'tasks_enabled',
+  closeToTray: 'close_to_tray',
   autoUpdateCheck: 'auto_update_check',
   dismissedUpdateVersion: 'dismissed_update_version',
   language: 'language',
@@ -352,11 +358,18 @@ export const settings$ = observable<Settings>({
   hiddenSideNavAccounts: [],
   showUnifiedInboxInSideNav: true,
   tasksEnabled: false,
+  closeToTray: true,
   autoUpdateCheck: true,
   dismissedUpdateVersion: null,
   language: null,
   shortcutOverrides: {},
   proxy: EMPTY_PROXY,
+})
+
+// The backend decides what the close button does, so hand it the setting. Its
+// default matches ours, so only a change (hydration included) needs sending.
+settings$.closeToTray.onChange(({ value }) => {
+  void invoke('window.setCloseToTray', { enabled: value }).catch(() => {})
 })
 
 // lib/shortcuts resolves chords from a local mirror, so keep it in step with the
@@ -747,6 +760,10 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.tasksEnabled] === 'boolean') {
       settings$.tasksEnabled.set(prefs[DB_KEY.tasksEnabled] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.closeToTray] === 'boolean') {
+      settings$.closeToTray.set(prefs[DB_KEY.closeToTray] as boolean)
     }
 
     if (typeof prefs[DB_KEY.autoUpdateCheck] === 'boolean') {

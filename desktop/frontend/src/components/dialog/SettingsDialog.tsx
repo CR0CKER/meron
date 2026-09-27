@@ -27,6 +27,7 @@ import {
   Keyboard,
   Archive,
   Server,
+  PanelTopClose,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { importOpml, exportOpml } from '../../states/feeds'
@@ -67,6 +68,7 @@ import { BoardPanel } from './BoardSettingsPanel'
 import { RemoteSendersDialog } from './RemoteSendersDialog'
 import { pickImageFile } from '../../lib/nativeFilePicker'
 import { invoke } from '../../lib/bridge'
+import { isMac } from '../../lib/shortcuts'
 import { McpSettingsPanel } from './McpSettingsPanel'
 
 // General uses the empty selection; MCP has its own section below. Account
@@ -533,6 +535,7 @@ function GeneralSection() {
         />
       </SettingsGroup>
 
+      <WindowGroup />
       <UpdatesGroup />
       <BackupGroup />
       <StorageGroup />
@@ -657,6 +660,27 @@ function BackupGroup() {
         />
       )}
     </>
+  )
+}
+
+// macOS has its own split between closing a window and quitting (⌘Q), so the
+// close button's behaviour is only a choice elsewhere.
+function WindowGroup() {
+  const { t } = useTranslation()
+  const closeToTray = useValue(settings$.closeToTray)
+
+  if (isMac) return null
+
+  return (
+    <SettingsGroup title={t('settings.sections.window')}>
+      <ToggleRow
+        icon={<PanelTopClose size={15} />}
+        title={t('settings.window.closeToTray')}
+        hint={t('settings.window.closeToTrayHint', { quit: t('tray.quitMeron') })}
+        checked={closeToTray}
+        onChange={() => settings$.closeToTray.set(!closeToTray)}
+      />
+    </SettingsGroup>
   )
 }
 

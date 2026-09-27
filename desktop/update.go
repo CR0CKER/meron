@@ -539,8 +539,6 @@ func (u *updater) install() (any, error) {
 	u.mu.Unlock()
 	// applyUpdate has queued the relaunch; quitting releases the single-instance
 	// lock so the new copy can start.
-	if u.app.ctx != nil {
-		wailsRuntime.Quit(u.app.ctx)
-	}
+	u.app.quit()
 	return status, nil
 }

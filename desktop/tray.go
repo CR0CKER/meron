@@ -93,6 +93,7 @@ func (a *App) showMainWindow() {
 	if ctx == nil {
 		return
 	}
+	a.windowHidden.Store(false)
 	showAndRaiseMainWindow(ctx)
 }
 
@@ -101,15 +102,13 @@ func (a *App) hideMainWindow() {
 	if ctx == nil {
 		return
 	}
-	wailsRuntime.WindowHide(ctx)
+	a.rememberWindowState(ctx)
+	a.windowHidden.Store(true)
+	windowHide(ctx)
 }
 
 func (a *App) quitFromTray() {
-	ctx := a.runtimeContext()
-	if ctx == nil {
-		return
-	}
-	wailsRuntime.Quit(ctx)
+	a.quit()
 }
 
 func (a *App) runtimeContext() context.Context {

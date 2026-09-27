@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -24,9 +25,21 @@ type App struct {
 	trayHasUnread bool
 	trayStop      func()
 	trayStopOnce  sync.Once
-	filePickerMu  sync.Mutex
-	lastFileDir   string
-	lastImageDir  string
+	// closeToTray is pushed by the frontend from its settings; until then the
+	// close button keeps its long-standing behaviour of hiding to the tray.
+	closeToTray  atomic.Bool
+	quitting     atomic.Bool
+	windowHidden atomic.Bool
+
+	windowMu        sync.Mutex
+	window          windowState
+	windowSaved     windowState
+	windowSaveTimer *time.Timer
+	windowStatePath string
+
+	filePickerMu sync.Mutex
+	lastFileDir  string
+	lastImageDir string
 
 	oauthMu          sync.Mutex
 	oauthState       string
@@ -76,7 +89,11 @@ func NewApp() *App {
 	loadDotEnvLocal()
 	logger, logFile := openAppLog()
 	captureCrashes(logFile)
-	return &App{logger: logger, logFile: logFile}
+	app := &App{logger: logger, logFile: logFile, windowStatePath: windowStatePath()}
+	app.window = loadWindowState(app.windowStatePath)
+	app.windowSaved = app.window
+	app.closeToTray.Store(true)
+	return app
 }
 
 func (a *App) Startup(ctx context.Context) {
@@ -118,8 +135,16 @@ func (a *App) onSystemResumed() {
 	}
 }
 
+// HandleSecondInstanceLaunch brings the running window forward when Meron is
+// launched again, so a window closed to the tray is found again from the app
+// launcher instead of the launch appearing to do nothing.
 func (a *App) HandleSecondInstanceLaunch(args []string) {
-	for _, raw := range mailtoURLs(args) {
+	urls := mailtoURLs(args)
+	if len(urls) == 0 {
+		a.showMainWindow()
+		return
+	}
+	for _, raw := range urls {
 		a.openMailtoURL(raw)
 	}
 }
@@ -140,10 +165,17 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
+// quietCommands succeed without a log line: they arrive at frame rate and
+// would drown out everything else in the log.
+var quietCommands = map[string]bool{"window.resized": true}
+
 func (a *App) Invoke(command string, payload map[string]any) (result any, err error) {
 	start := time.Now()
 	defer a.recoverInvoke(command, &err)
 	result, err = a.invoke(command, payload)
+	if err == nil && quietCommands[command] {
+		return result, nil
+	}
 	if err != nil {
 		a.logf("invoke %s failed after %s: %v", command, time.Since(start).Round(time.Millisecond), err)
 	} else {
@@ -175,6 +207,10 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.appPrefsSet(payload)
 	case "tray.setUnread":
 		return a.traySetUnread(payload)
+	case "window.resized":
+		return a.windowResized()
+	case "window.setCloseToTray":
+		return a.windowSetCloseToTray(payload)
 	case "window.setAppearance":
 		return a.setWindowAppearance(payload)
 	case "i18n.setNativeLabels":
