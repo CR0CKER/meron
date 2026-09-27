@@ -10,6 +10,12 @@ description: |
 grade: stable
 confinement: strict
 compression: xz
+# Explicit icon so snapcraft doesn't resolve Icon=meron via the hicolor theme:
+# its lookup compares size dirs as strings ("96x96" > "512x512"), so a stage
+# package shipping hicolor/96x96 makes it point at a nonexistent meron.xpm.
+# The path is resolved against the project dir before any part builds, so it
+# must point at the staged source file, not the organized prime path.
+icon: snap/local/meron.png
 
 # The Wails app (desktop/build/bin/meron) and desktop/icon assets are produced by
 # the GitHub Actions workflow before snapcraft runs. The `dump` part just stages
