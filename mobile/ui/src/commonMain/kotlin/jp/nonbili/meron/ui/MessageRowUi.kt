@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,7 +79,6 @@ internal fun MessageRow(
     onOpenHtmlImage: (String) -> Unit,
     onCopyMessageText: (String, String) -> Unit,
     onComposeTo: (String) -> Unit,
-    onOpenMessage: (MessageBody) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
 ) {
@@ -146,7 +144,6 @@ internal fun MessageRow(
                     onCopyMessageText = onCopyMessageText,
                     onOpenUrl = onOpenUrl,
                     onComposeTo = onComposeTo,
-                    onOpenMessage = onOpenMessage,
                 )
                 MessageBodyContent(
                     message = message,
@@ -314,7 +311,6 @@ internal fun MessageRowHeader(
     onCopyMessageText: (String, String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onComposeTo: (String) -> Unit,
-    onOpenMessage: (MessageBody) -> Unit,
 ) {
     var addressesOpen by remember(message.id) { mutableStateOf(false) }
     Row(
@@ -345,44 +341,40 @@ internal fun MessageRowHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // A feed item has no recipients, so its details
-                // could only repeat the feed name above.
-                if (!isRss) {
-                    Icon(
-                        if (addressesOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription =
-                            if (addressesOpen) tr("chat.hideDetails") else tr("chat.showDetails"),
-                        modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { addressesOpen = !addressesOpen }
-                                .size(16.dp),
-                        tint = mutedColor,
-                    )
+                // An outgoing message already names its recipients here,
+                // so the details toggle rides beside them.
+                if (outgoing && !isRss) {
+                    AddressDetailsChevron(addressesOpen, mutedColor) { addressesOpen = !addressesOpen }
                 }
             }
-            if (!outgoing && message.fromAddr.isNotBlank()) {
-                Text(
-                    message.fromAddr,
-                    fontSize = 11.sp,
-                    color = mutedColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            // Who else received it, named only when a reply-all would reach
-            // someone the plain reply misses — otherwise the reader answers the
-            // sender alone without noticing the others.
-            if (!outgoing && canReplyAllToMessage(message)) {
-                val recipients = remember(message.to, message.cc) { formatRecipientSummary(message.to, message.cc) }
-                if (recipients.isNotBlank()) {
+            // Who received it, Gmail-style: the others by name when a reply-all
+            // would reach someone the plain reply misses — otherwise the reader
+            // answers the sender alone without noticing them — and "me" when
+            // it's only us. The chevron here opens the full addresses. A feed
+            // item has no recipients, so it gets neither.
+            if (!outgoing && !isRss) {
+                val me = tr("threads.me")
+                val recipients =
+                    remember(message.to, message.cc) { formatRecipientSummary(message.to, message.cc) }
+                        .takeIf { canReplyAllToMessage(message) }
+                        .orEmpty()
+                        .ifBlank { me }
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { addressesOpen = !addressesOpen },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
                         tr("chat.toRecipients", mapOf("recipients" to recipients)),
+                        modifier = Modifier.weight(1f, fill = false),
                         fontSize = 11.sp,
                         color = mutedColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    AddressDetailsChevron(addressesOpen, mutedColor) { addressesOpen = !addressesOpen }
                 }
             }
         }
@@ -393,16 +385,20 @@ internal fun MessageRowHeader(
             searchQuery = searchQuery,
         )
         MessageRowBadges(message = message, isDraft = isDraft, mutedColor = mutedColor)
-        IconButton(
-            onClick = { if (isDraft) onOpenDraft(message) else onOpenMessage(message) },
-            modifier = Modifier.size(24.dp),
-        ) {
-            Icon(
-                imageVector = if (isDraft) Icons.Filled.Edit else Icons.Filled.OpenInFull,
-                contentDescription = if (isDraft) tr("chat.draft") else tr("threads.actions.openInNewTab"),
-                modifier = Modifier.size(15.dp),
-                tint = mutedColor,
-            )
+        // The conversation already shows the message at full width, so only
+        // a draft gets a button: it opens the draft in the composer.
+        if (isDraft) {
+            IconButton(
+                onClick = { onOpenDraft(message) },
+                modifier = Modifier.size(24.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = tr("chat.draft"),
+                    modifier = Modifier.size(15.dp),
+                    tint = mutedColor,
+                )
+            }
         }
         MessageActionsButton(
             preferHtml = preferHtml,
@@ -432,6 +428,24 @@ internal fun MessageRowHeader(
             modifier = Modifier.padding(bottom = 2.dp),
         )
     }
+}
+
+@Composable
+private fun AddressDetailsChevron(
+    open: Boolean,
+    tint: Color,
+    onToggle: () -> Unit,
+) {
+    Icon(
+        if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+        contentDescription = if (open) tr("chat.hideDetails") else tr("chat.showDetails"),
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(onClick = onToggle)
+                .size(16.dp),
+        tint = tint,
+    )
 }
 
 /** "To: …" for a message the account sent, the sender's name otherwise. */

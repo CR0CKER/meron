@@ -861,7 +861,6 @@ internal fun ThreadScreen(
                                         onOpenHtmlImage = ::openGalleryForHtmlSrc,
                                         onCopyMessageText = onCopyMessageText,
                                         onComposeTo = onComposeTo,
-                                        onOpenMessage = { readerMessage = it },
                                         onOpenUrl = services::openUrl,
                                         onRetryLoad = onRetryLoadMessages,
                                     )
@@ -965,7 +964,6 @@ internal fun ThreadScreen(
                                             onCopyMessageText = onCopyMessageText,
                                             onOpenUrl = services::openUrl,
                                             onComposeTo = onComposeTo,
-                                            onOpenMessage = { readerMessage = it },
                                         )
                                     }
                                 }
