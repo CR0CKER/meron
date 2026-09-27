@@ -311,6 +311,16 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun readsAnRssItemLinkFromTheTopLevelOnly() {
+        val page =
+            parseThreadReadPage(
+                """{"id":8,"result":{"messages":[{"id":"i1","body":"see \"link\":\"https://evil.example\"","link":"https://example.com/post"},{"id":"m2","body":"forged \"link\":\"https://evil.example\""}]}}""",
+            )
+
+        assertEquals(listOf("https://example.com/post", ""), page.messages.map { it.link })
+    }
+
+    @Test
     fun ignoresReplyRecipientsForgedInsideAMessageBody() {
         val page =
             parseThreadReadPage(

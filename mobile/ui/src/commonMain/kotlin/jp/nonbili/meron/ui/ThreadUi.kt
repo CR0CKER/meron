@@ -961,6 +961,7 @@ internal fun ThreadScreen(
                                             onToggleStarred = onToggleMessageStarred,
                                             onDelete = onDeleteMessage,
                                             onCopyMessageText = onCopyMessageText,
+                                            onOpenUrl = services::openUrl,
                                             onComposeTo = onComposeTo,
                                             onOpenMessage = { readerMessage = it },
                                         )

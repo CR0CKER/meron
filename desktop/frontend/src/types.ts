@@ -184,6 +184,9 @@ export type Message = {
    * reply the same way. Absent on thread cards, which carry no recipient
    * headers, and on RSS items. */
   reply?: ReplyRecipients
+  /** The item's original page; present on RSS items only (empty when the
+   * feed gave none). */
+  link?: string
   /** Source feed URL; present on RSS feed threads only. */
   feed_url?: string
   /** Cached feed-icon media key (served at `/media/<key>`); present on RSS feed

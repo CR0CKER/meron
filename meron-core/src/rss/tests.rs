@@ -507,10 +507,8 @@ fn recent_and_read_thread_build_bridge_messages() {
     let items = read_thread(&conn, &thread_id).unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["subject"], "Hello RSS");
-    assert_eq!(
-        items[0]["body"],
-        "Hello world.\n\nSource: https://example.com/post"
-    );
+    assert_eq!(items[0]["body"], "Hello world.");
+    assert_eq!(items[0]["link"], "https://example.com/post");
     assert_eq!(items[0]["unread"], true);
 }
 

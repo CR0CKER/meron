@@ -1013,13 +1013,6 @@ fn item_message(
             body = content.to_string();
         }
     }
-    if !link.is_empty() {
-        if !body.is_empty() {
-            body.push_str("\n\n");
-        }
-        body.push_str("Source: ");
-        body.push_str(link);
-    }
     let ts = if published != 0 {
         published
     } else if updated != 0 {
@@ -1041,6 +1034,8 @@ fn item_message(
         "thread_id": thread_id,
         "from_name": sub_title,
         "from_addr": feed_host_label(link),
+        // The item's original page; the reader offers to open or copy it.
+        "link": link,
         "subject": subject,
         "preview": first_line(summary),
         "body": body,

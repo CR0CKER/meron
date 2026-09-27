@@ -290,6 +290,7 @@ internal fun MessageBubble(
                     onToggleStarred = onToggleStarred,
                     onDelete = onDelete,
                     onCopyMessageText = onCopyMessageText,
+                    onOpenUrl = onOpenUrl,
                 )
             }
             if (addressesOpen) {
@@ -342,6 +343,7 @@ internal fun MessageActionsButton(
     onToggleStarred: (MessageBody) -> Unit,
     onDelete: (MessageBody) -> Unit,
     onCopyMessageText: (String, String) -> Unit,
+    onOpenUrl: (String) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -350,6 +352,7 @@ internal fun MessageActionsButton(
         val subjectLabel = tr("composer.fields.subject")
         val messageIdLabel = tr("chat.messageId")
         val noSubjectLabel = tr("threads.noSubject")
+        val linkLabel = tr("composer.toolbar.link")
         IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(24.dp)) {
             Icon(
                 Icons.Filled.MoreVert,
@@ -366,6 +369,22 @@ internal fun MessageActionsButton(
                     onClick = {
                         menuOpen = false
                         printMessage(message)
+                    },
+                )
+            }
+            if (isRss && message.link.isNotBlank()) {
+                DropdownMenuItem(
+                    text = { Text(tr("chat.actions.openLink")) },
+                    onClick = {
+                        menuOpen = false
+                        onOpenUrl(message.link)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(tr("chat.actions.copyLinkAddress")) },
+                    onClick = {
+                        menuOpen = false
+                        onCopyMessageText(linkLabel, message.link)
                     },
                 )
             }

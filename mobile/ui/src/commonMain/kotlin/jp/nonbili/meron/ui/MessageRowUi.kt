@@ -144,6 +144,7 @@ internal fun MessageRow(
                     onToggleStarred = onToggleStarred,
                     onDelete = onDelete,
                     onCopyMessageText = onCopyMessageText,
+                    onOpenUrl = onOpenUrl,
                     onComposeTo = onComposeTo,
                     onOpenMessage = onOpenMessage,
                 )
@@ -311,6 +312,7 @@ internal fun MessageRowHeader(
     onToggleStarred: (MessageBody) -> Unit,
     onDelete: (MessageBody) -> Unit,
     onCopyMessageText: (String, String) -> Unit,
+    onOpenUrl: (String) -> Unit,
     onComposeTo: (String) -> Unit,
     onOpenMessage: (MessageBody) -> Unit,
 ) {
@@ -418,6 +420,7 @@ internal fun MessageRowHeader(
             onToggleStarred = onToggleStarred,
             onDelete = onDelete,
             onCopyMessageText = onCopyMessageText,
+            onOpenUrl = onOpenUrl,
         )
     }
     if (addressesOpen) {

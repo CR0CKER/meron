@@ -478,6 +478,7 @@ fun parseThreadReadPage(responseJson: String): ThreadReadPage {
                 starred = item.findJsonBooleanProperty("starred") ?: false,
                 hasAttachments = item.findJsonBooleanProperty("has_attachments") ?: false,
                 bodyMissing = item.findJsonBooleanProperty("body_missing") ?: false,
+                link = recipients("link"),
                 reply =
                     replyObject?.takeIf { it.startsWith("{") }?.let { reply ->
                         MessageReply(

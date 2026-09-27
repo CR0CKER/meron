@@ -219,6 +219,8 @@ data class MessageBody(
     // True when the core has no cached body for this message (the on-demand
     // fetch failed), as opposed to a message whose body is genuinely empty.
     val bodyMissing: Boolean = false,
+    // An RSS item's original page; empty for mail and for items without one.
+    val link: String = "",
     val attachments: List<MessageAttachment> = emptyList(),
     val sendStatus: SendStatus = SendStatus.None,
     // Who a reply to this message addresses and copies, decided by the core so

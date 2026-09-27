@@ -4,6 +4,7 @@ import {
   Download,
   ExternalLink,
   Forward,
+  Globe,
   Link2,
   Mail,
   MailOpen,
@@ -108,6 +109,26 @@ export function MessageContextMenu({
                 onClose()
               }}
             />
+          )}
+          {isRSS && state.message.link && (
+            <>
+              <MenuItem
+                icon={<Globe size={13} className="text-accent" />}
+                label={t('chat.actions.openLink')}
+                onClick={() => {
+                  openExternal(state.message.link!)
+                  onClose()
+                }}
+              />
+              <MenuItem
+                icon={<Link2 size={13} className="text-accent" />}
+                label={t('chat.actions.copyLinkAddress')}
+                onClick={() => {
+                  navigator.clipboard?.writeText(state.message.link!).catch(() => undefined)
+                  onClose()
+                }}
+              />
+            </>
           )}
           {onSelectMessage && (
             <MenuItem

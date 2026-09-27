@@ -2458,9 +2458,10 @@ fn mobile_protocol_routes_rss_accounts_through_mail_shapes() {
         "rss-account#rss#feed-a#item-new"
     );
     assert_eq!(read["result"]["messages"][0]["subject"], "New item");
+    assert_eq!(read["result"]["messages"][0]["body"], "Body for New item");
     assert_eq!(
-        read["result"]["messages"][0]["body"],
-        "Body for New item\n\nSource: https://example.com/item-new"
+        read["result"]["messages"][0]["link"],
+        "https://example.com/item-new"
     );
     assert_eq!(read["result"]["messages"][0]["unread"], true);
     assert_eq!(read["result"]["next_cursor"], "ts:200:item-new");
