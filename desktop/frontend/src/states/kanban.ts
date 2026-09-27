@@ -48,8 +48,11 @@ export const kanban$ = observable({
   // Board-wide filter from the header switch; the default for columns that don't
   // have their own filter set.
   globalFilter: 'all' as FilterMode,
+  // Per-column attachments toggle (keyed by kanbanColumnKey), overriding
+  // globalAttachmentsOnly for that column the same way `filters` does.
+  attachmentsOnly: {} as Record<string, boolean>,
   // Board-wide attachments toggle, independent of the read-state filters above
-  // and applied to every column on top of them.
+  // and the default for columns without their own toggle set.
   globalAttachmentsOnly: false,
   searchQuery: '',
   searchScope: 'all',
@@ -264,6 +267,13 @@ export function setGlobalKanbanFilter(mode: FilterMode) {
   kanban$.globalFilter.set(mode)
 }
 
+// The board-wide attachments toggle; like setGlobalKanbanFilter, it clears the
+// per-column overrides so the latest choice applies to every column.
+export function setGlobalKanbanAttachmentsOnly(on: boolean) {
+  kanban$.attachmentsOnly.set({})
+  kanban$.globalAttachmentsOnly.set(on)
+}
+
 const globalFilterSession = persistedField(kanban$.globalFilter, 'session_kanban_filter', (raw) =>
   isFilterMode(raw) ? raw : undefined,
 )
@@ -280,6 +290,18 @@ const columnFiltersSession = persistedField(kanban$.filters, 'session_kanban_col
   }
   return out
 })
+const columnAttachmentsSession = persistedField(
+  kanban$.attachmentsOnly,
+  'session_kanban_column_attachments_only',
+  (raw) => {
+    if (!raw || typeof raw !== 'object') return undefined
+    const out: Record<string, boolean> = {}
+    for (const [colKey, on] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof on === 'boolean') out[colKey] = on
+    }
+    return out
+  },
+)
 const activeBoardSession = persistedField(kanban$.activeBoardId, 'session_kanban_board', (raw) => {
   if (typeof raw !== 'string') return undefined
   if (raw === '') return ''
@@ -291,6 +313,7 @@ export const KANBAN_SESSION_KEYS = [
   globalFilterSession.key,
   attachmentsSession.key,
   columnFiltersSession.key,
+  columnAttachmentsSession.key,
   activeBoardSession.key,
 ]
 
@@ -299,6 +322,7 @@ export function restoreKanbanSession(prefs: Record<string, unknown>) {
   globalFilterSession.restore(prefs)
   attachmentsSession.restore(prefs)
   columnFiltersSession.restore(prefs)
+  columnAttachmentsSession.restore(prefs)
   activeBoardSession.restore(prefs)
 }
 
@@ -416,6 +440,8 @@ export function switchKanbanColumnFolder(boardId: string, column: KanbanColumn, 
 
   const filter = kanban$.filters[fromEntry].get()
   if (filter !== undefined) kanban$.filters[toEntry].set(filter)
+  const attachmentsOnly = kanban$.attachmentsOnly[fromEntry].get()
+  if (attachmentsOnly !== undefined) kanban$.attachmentsOnly[toEntry].set(attachmentsOnly)
 
   // Only discard the old folder's cached page when no other board still shows it.
   if (!getAllKanbanColumns().some((item) => kanbanColumnKey(item) === fromEntry)) {
@@ -431,6 +457,9 @@ export function switchKanbanColumnFolder(boardId: string, column: KanbanColumn, 
     const nextFilters = { ...kanban$.filters.get() }
     delete nextFilters[fromEntry]
     kanban$.filters.set(nextFilters)
+    const nextAttachmentsOnly = { ...kanban$.attachmentsOnly.get() }
+    delete nextAttachmentsOnly[fromEntry]
+    kanban$.attachmentsOnly.set(nextAttachmentsOnly)
   }
   return true
 }
@@ -662,7 +691,8 @@ export function selectAdjacentKanbanThread(delta: number) {
   const allThreads = kanban$.threads.get()
   const filters = kanban$.filters.get()
   const globalFilter = kanban$.globalFilter.get()
-  const attachmentsOnly = kanban$.globalAttachmentsOnly.get()
+  const columnAttachmentsOnly = kanban$.attachmentsOnly.get()
+  const globalAttachmentsOnly = kanban$.globalAttachmentsOnly.get()
   const preferredKey = kanban$.paneColumnKey.get()
   const orderedColumns = preferredKey
     ? [
@@ -677,6 +707,7 @@ export function selectAdjacentKanbanThread(delta: number) {
     const boardKey = kanbanBoardColumnKey(boardId, column)
     const rawThreads = allThreads[sourceKey] ?? []
     const filterMode = filters[sourceKey] ?? globalFilter
+    const attachmentsOnly = columnAttachmentsOnly[sourceKey] ?? globalAttachmentsOnly
     const list = filterThreads(rawThreads, filterMode, selected, mail$.readThreads.get(), attachmentsOnly)
     if (!fallback && list.length > 0) {
       fallback = { key: boardKey, thread: delta >= 0 ? list[0] : list[list.length - 1], column }

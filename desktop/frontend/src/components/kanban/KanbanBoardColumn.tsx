@@ -98,7 +98,8 @@ function KanbanColumnContent({
   const allAccountCursors = useValue(kanban$.accountCursors)
   const allFilters = useValue(kanban$.filters)
   const globalFilter = useValue(kanban$.globalFilter)
-  const attachmentsOnly = useValue(kanban$.globalAttachmentsOnly)
+  const allAttachmentsOnly = useValue(kanban$.attachmentsOnly)
+  const globalAttachmentsOnly = useValue(kanban$.globalAttachmentsOnly)
   const searchQuery = useValue(kanban$.searchQuery)
   const searchScope = useValue(kanban$.searchScope)
   const system = useValue(ui$.system)
@@ -114,6 +115,7 @@ function KanbanColumnContent({
   // A column's own filter, once set, wins over the board-wide switch; the global
   // filter is only the default for columns the user hasn't touched.
   const filterMode = allFilters[key] ?? globalFilter
+  const attachmentsOnly = allAttachmentsOnly[key] ?? globalAttachmentsOnly
   // Keep a card visible (in place) only when opening it just changed its state —
   // e.g. selecting an unread card marks it read (tracked in readThreads) — not
   // merely because it's the open thread. So switching to Unread/Starred yields a
@@ -246,6 +248,8 @@ function KanbanColumnContent({
           mail$.readThreads.set({})
           kanban$.filters[key].set(mode)
         }}
+        attachmentsOnly={attachmentsOnly}
+        onAttachmentsOnlyChange={(on) => kanban$.attachmentsOnly[key].set(on)}
         hasUnread={hasUnread}
         onMarkAllRead={() => void markColumnAllRead(column)}
         onEmptyFolder={emptiableTarget ? () => void emptyColumnFolder() : undefined}
@@ -393,6 +397,8 @@ function KanbanColumnContent({
                 mail$.readThreads.set({})
                 kanban$.filters[key].set(mode)
               }}
+              attachmentsOnly={attachmentsOnly}
+              onAttachmentsOnlyChange={(on) => kanban$.attachmentsOnly[key].set(on)}
               hasUnread={hasUnread}
               onMarkAllRead={() => void markColumnAllRead(column)}
               onEmptyFolder={emptiableTarget ? () => void emptyColumnFolder() : undefined}

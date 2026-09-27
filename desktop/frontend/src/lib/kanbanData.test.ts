@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { accounts$ } from '../states/accounts'
 import { t } from './i18n'
-import { kanban$, setGlobalKanbanFilter } from '../states/kanban'
+import { kanban$, setGlobalKanbanAttachmentsOnly, setGlobalKanbanFilter } from '../states/kanban'
 import { mail$ } from '../states/mail'
 import { settings$ } from '../states/settings'
 import type { Account, Folder } from '../types'
@@ -9,6 +9,7 @@ import {
   KANBAN_DROP_REASONS,
   KANBAN_MOVE_MESSAGES,
   accountLabel,
+  activeKanbanColumnAttachmentsOnly,
   activeKanbanColumnFilter,
   activeKanbanColumnQuery,
   columnDropTargetClass,
@@ -182,6 +183,19 @@ describe('setGlobalKanbanFilter', () => {
 
     expect(kanban$.filters.get()).toEqual({})
     expect(activeKanbanColumnFilter(column)).toBe('unread')
+  })
+})
+
+describe('setGlobalKanbanAttachmentsOnly', () => {
+  it('clears per-column overrides so the new global toggle applies everywhere', () => {
+    const column = { accountId: 'acc1', folderId: 'INBOX' }
+    kanban$.attachmentsOnly['acc1\nINBOX'].set(true)
+    expect(activeKanbanColumnAttachmentsOnly(column)).toBe(true)
+
+    setGlobalKanbanAttachmentsOnly(false)
+
+    expect(kanban$.attachmentsOnly.get()).toEqual({})
+    expect(activeKanbanColumnAttachmentsOnly(column)).toBe(false)
   })
 })
 

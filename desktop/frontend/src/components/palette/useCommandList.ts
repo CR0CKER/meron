@@ -38,6 +38,7 @@ import {
   openMailAccount,
   selectKanbanBoard,
   setGlobalKanbanFilter,
+  setGlobalKanbanAttachmentsOnly,
 } from '../../states/kanban'
 import { thread$ } from '../../states/thread'
 import { mail$, syncMail } from '../../states/mail'
@@ -78,8 +79,9 @@ export function useCommandList(): Command[] {
       ? setGlobalKanbanFilter
       : (mode: typeof filterMode) => ui$.filterMode.set(mode)
     const activeAttachmentsOnly = activeBoardId ? kanbanAttachmentsOnly : attachmentsOnly
-    const setActiveAttachmentsOnly = (on: boolean) =>
-      (activeBoardId ? kanban$.globalAttachmentsOnly : ui$.attachmentsOnly).set(on)
+    const setActiveAttachmentsOnly = activeBoardId
+      ? setGlobalKanbanAttachmentsOnly
+      : (on: boolean) => ui$.attachmentsOnly.set(on)
     const railShortcut = (slot: number) => RAIL_SHORTCUT_IDS[slot - 1] as ShortcutId | undefined
 
     const list: Command[] = [

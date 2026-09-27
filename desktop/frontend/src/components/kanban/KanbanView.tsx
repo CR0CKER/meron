@@ -19,6 +19,7 @@ import {
   kanban$,
   removeKanbanColumn,
   setGlobalKanbanFilter,
+  setGlobalKanbanAttachmentsOnly,
   type KanbanColumn,
 } from '../../states/kanban'
 import { settings$ } from '../../states/settings'
@@ -287,7 +288,7 @@ export function KanbanView({ boardId }: { boardId: string }) {
           filterMode={globalFilter}
           onFilterChange={setGlobalKanbanFilter}
           attachmentsOnly={attachmentsOnly}
-          onAttachmentsOnlyChange={(on) => kanban$.globalAttachmentsOnly.set(on)}
+          onAttachmentsOnlyChange={setGlobalKanbanAttachmentsOnly}
           onAddColumn={openDialog}
         />
       </div>

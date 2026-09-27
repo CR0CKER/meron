@@ -442,6 +442,10 @@ export function activeKanbanColumnFilter(column: KanbanColumn): FilterMode {
   return kanban$.filters[kanbanColumnKey(column)].peek() ?? kanban$.globalFilter.peek()
 }
 
+export function activeKanbanColumnAttachmentsOnly(column: KanbanColumn): boolean {
+  return kanban$.attachmentsOnly[kanbanColumnKey(column)].peek() ?? kanban$.globalAttachmentsOnly.peek()
+}
+
 // The board search as it applies to this column: the query when the column is in
 // the search's scope, '' otherwise. A reload triggered by anything other than the
 // search itself (a filter toggle, the next page) must keep the column searched.
@@ -457,7 +461,7 @@ function currentColumnView(column: KanbanColumn, query: string): ColumnView {
   return {
     query: query.trim(),
     filter: activeKanbanColumnFilter(column),
-    attachments: kanban$.globalAttachmentsOnly.peek(),
+    attachments: activeKanbanColumnAttachmentsOnly(column),
   }
 }
 
