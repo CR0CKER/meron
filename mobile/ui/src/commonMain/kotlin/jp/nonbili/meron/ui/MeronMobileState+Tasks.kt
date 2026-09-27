@@ -179,22 +179,12 @@ private fun MeronMobileState.offerTaskUndo(
 }
 
 /**
- * Nudge one task up or down. Mobile has no drag-and-drop anywhere in the app,
- * so reordering is a menu action, as it already is for kanban columns.
+ * Save a new order for the open tasks, as left by a drag. Completed tasks are
+ * ordered by when they were ticked, not by hand, so only the open ones take part.
  */
-internal suspend fun MeronMobileState.moveTask(
-    taskId: String,
-    delta: Int,
-) {
+internal suspend fun MeronMobileState.reorderTasks(ids: List<String>) {
     val listId = activeTaskListId
     if (listId.isBlank()) return
-    // Completed tasks are ordered by when they were ticked, not by hand, so only
-    // the open ones take part.
-    val ids = tasks.filterNot { it.done }.map { it.id }.toMutableList()
-    val from = ids.indexOf(taskId)
-    val to = from + delta
-    if (from < 0 || to < 0 || to >= ids.size) return
-    ids.add(to, ids.removeAt(from))
     onCore { requireCoreOk(it.reorderTasks(TaskReorderParams(listId, ids))) }
     loadTasks(listId)
 }

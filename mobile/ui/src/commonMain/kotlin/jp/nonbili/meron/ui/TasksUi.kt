@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.Checkbox
@@ -34,28 +33,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.nonbili.meron.shared.TaskSummary
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * The Tasks screen body: an add field, the open tasks, then the completed ones
  * under a collapsible heading, as in Google Tasks.
  *
- * Reordering is a menu action rather than a drag, because nothing else in this
- * app drags — kanban columns move with the same up/down pair.
+ * Open tasks reorder by long-pressing a row and dragging it.
  */
 @Composable
 internal fun TasksScreen(
@@ -65,7 +70,7 @@ internal fun TasksScreen(
     onToggleDone: (TaskSummary, Boolean) -> Unit,
     onEditTask: (TaskSummary) -> Unit,
     onDeleteTask: (TaskSummary) -> Unit,
-    onMoveTask: (TaskSummary, Int) -> Unit,
+    onReorderTasks: (List<String>) -> Unit,
     onOpenMessage: (TaskSummary) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,6 +82,21 @@ internal fun TasksScreen(
     val completedListState = rememberLazyListState()
     val open = tasks.filterNot { it.done }
     val completed = tasks.filter { it.done }
+
+    // A drag rearranges a local copy of the open task IDs and saves it on drop;
+    // a reload that brings a different order replaces the copy. Only IDs are
+    // kept so an edited task still shows its current content.
+    val openIds = open.map { it.id }
+    var orderIds by remember(openIds) { mutableStateOf(openIds) }
+    val openById = open.associateBy { it.id }
+    val order = orderIds.mapNotNull { openById[it] }
+    val currentOpenIds by rememberUpdatedState(openIds)
+    val haptics = LocalHapticFeedback.current
+    val reorderState =
+        rememberReorderableLazyListState(listState) { from, to ->
+            orderIds = orderIds.toMutableList().apply { add(to.index, removeAt(from.index)) }
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+        }
 
     fun submit() {
         if (draft.isBlank()) return
@@ -129,17 +149,30 @@ internal fun TasksScreen(
                             Modifier.weight(1f).fillMaxWidth().appScrollbar(listState),
                             state = listState,
                         ) {
-                            items(open, key = { it.id }) { task ->
-                                TaskRow(
-                                    task = task,
-                                    canMoveUp = open.firstOrNull()?.id != task.id,
-                                    canMoveDown = open.lastOrNull()?.id != task.id,
-                                    onToggleDone = { onToggleDone(task, it) },
-                                    onEdit = { onEditTask(task) },
-                                    onDelete = { onDeleteTask(task) },
-                                    onMove = { onMoveTask(task, it) },
-                                    onOpenMessage = { onOpenMessage(task) },
-                                )
+                            items(order, key = { it.id }) { task ->
+                                ReorderableItem(reorderState, key = task.id) { dragging ->
+                                    Surface(
+                                        color = if (dragging) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
+                                        shadowElevation = if (dragging) 6.dp else 0.dp,
+                                        modifier =
+                                            Modifier.longPressDraggableHandle(
+                                                onDragStarted = {
+                                                    haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                                },
+                                                onDragStopped = {
+                                                    if (orderIds != currentOpenIds) onReorderTasks(orderIds)
+                                                },
+                                            ),
+                                    ) {
+                                        TaskRow(
+                                            task = task,
+                                            onToggleDone = { onToggleDone(task, it) },
+                                            onEdit = { onEditTask(task) },
+                                            onDelete = { onDeleteTask(task) },
+                                            onOpenMessage = { onOpenMessage(task) },
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -161,14 +194,9 @@ internal fun TasksScreen(
                                     items(completed, key = { it.id }) { task ->
                                         TaskRow(
                                             task = task,
-                                            // Completed tasks are ordered by when they were
-                                            // ticked, so hand-ordering them means nothing.
-                                            canMoveUp = false,
-                                            canMoveDown = false,
                                             onToggleDone = { onToggleDone(task, it) },
                                             onEdit = { onEditTask(task) },
                                             onDelete = { onDeleteTask(task) },
-                                            onMove = {},
                                             onOpenMessage = { onOpenMessage(task) },
                                         )
                                     }
@@ -218,12 +246,9 @@ private fun CompletedHeader(
 @Composable
 private fun TaskRow(
     task: TaskSummary,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onToggleDone: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onMove: (Int) -> Unit,
     onOpenMessage: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -294,26 +319,6 @@ private fun TaskRow(
                 Icon(Icons.Filled.MoreVert, contentDescription = tr("chat.moreActions"), Modifier.size(20.dp), tint = secondary)
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                if (canMoveUp) {
-                    DropdownMenuItem(
-                        text = { Text(tr("tasks.moveUp")) },
-                        leadingIcon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onMove(-1)
-                        },
-                    )
-                }
-                if (canMoveDown) {
-                    DropdownMenuItem(
-                        text = { Text(tr("tasks.moveDown")) },
-                        leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onMove(1)
-                        },
-                    )
-                }
                 DropdownMenuItem(
                     text = { Text(tr("tasks.deleteTask")) },
                     leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },

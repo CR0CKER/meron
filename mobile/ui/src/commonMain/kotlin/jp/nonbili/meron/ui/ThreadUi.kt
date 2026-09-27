@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -661,6 +662,7 @@ internal fun ThreadScreen(
                                 if (!isRss) {
                                     DropdownMenuItem(
                                         text = { Text(tr("chat.actions.printThread")) },
+                                        leadingIcon = { Icon(Icons.Filled.Print, contentDescription = null) },
                                         trailingIcon = { if (printing) CircularProgressIndicator(Modifier.size(16.dp)) },
                                         enabled = !printing && thread != null,
                                         onClick = {

@@ -1,5 +1,6 @@
 package jp.nonbili.meron.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -64,6 +67,7 @@ internal fun TasksRouteContent(
 ) {
     with(state) {
         var listMenuOpen by remember { mutableStateOf(false) }
+        var listSwitcherOpen by remember { mutableStateOf(false) }
         var renamingList by remember { mutableStateOf(false) }
         var listNameDraft by remember { mutableStateOf("") }
         var deletingList by remember { mutableStateOf(false) }
@@ -152,7 +156,38 @@ internal fun TasksRouteContent(
                 snackbarHost = { SnackbarHost(snackbarHost) },
                 topBar = {
                     TopAppBar(
-                        title = { Text(activeList?.title ?: tr("tasks.title")) },
+                        title = {
+                            // Tapping the title switches lists; the overflow
+                            // menu keeps only the actions on the active list.
+                            Box {
+                                Row(
+                                    modifier = Modifier.clickable(enabled = taskLists.size > 1) { listSwitcherOpen = true },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(activeList?.title ?: tr("tasks.title"))
+                                    if (taskLists.size > 1) {
+                                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = listSwitcherOpen,
+                                    onDismissRequest = { listSwitcherOpen = false },
+                                ) {
+                                    taskLists.forEach { list ->
+                                        DropdownMenuItem(
+                                            text = { Text(list.title) },
+                                            trailingIcon = {
+                                                if (list.id == activeTaskListId) Icon(Icons.Filled.Check, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                listSwitcherOpen = false
+                                                scope.launch { selectTaskList(list.id) }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        },
                         navigationIcon = {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(Icons.Filled.Menu, contentDescription = tr("mobile.actions.openNavigation"))
@@ -167,18 +202,6 @@ internal fun TasksRouteContent(
                                     expanded = listMenuOpen,
                                     onDismissRequest = { listMenuOpen = false },
                                 ) {
-                                    // Switching lists lives in the same menu as
-                                    // managing them: a picker of its own would
-                                    // be a second control for one short list.
-                                    taskLists.forEach { list ->
-                                        DropdownMenuItem(
-                                            text = { Text(list.title) },
-                                            onClick = {
-                                                listMenuOpen = false
-                                                scope.launch { selectTaskList(list.id) }
-                                            },
-                                        )
-                                    }
                                     DropdownMenuItem(
                                         text = { Text(tr("tasks.newList")) },
                                         leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -228,7 +251,7 @@ internal fun TasksRouteContent(
                     onToggleDone = { task, done -> scope.launch { setTaskDone(task.id, done) } },
                     onEditTask = { editing = it },
                     onDeleteTask = { task -> scope.launch { deleteTask(task.id) } },
-                    onMoveTask = { task, delta -> scope.launch { moveTask(task.id, delta) } },
+                    onReorderTasks = { ids -> scope.launch { reorderTasks(ids) } },
                     onOpenMessage = ::openTaskThread,
                     modifier = Modifier.fillMaxSize().padding(padding),
                 )
