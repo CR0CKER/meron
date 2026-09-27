@@ -440,13 +440,25 @@ fun parseThreadReadPage(responseJson: String): ThreadReadPage {
             // Top-level for the same reason: a forged offset in the body would
             // fold away text of the sender's choosing.
             val bodyQuoteStart = entries.firstOrNull { it.first == "body_quote_start" }?.second?.toIntOrNull()
+
+            // The core's keys arrive sorted, so "reply" (whose own "to"/"cc"
+            // address the sender) precedes the top-level recipients; a scan
+            // would show the sender as the message's To.
+            fun recipients(name: String): String =
+                entries
+                    .firstOrNull { it.first == name }
+                    ?.second
+                    ?.takeIf { it.startsWith('"') }
+                    ?.readJsonString(0)
+                    ?.value
+                    .orEmpty()
             MessageBody(
                 id = id,
                 folderId = item.findJsonStringProperty("folder_id") ?: item.findJsonStringProperty("folder").orEmpty(),
                 from = fromName.ifBlank { fromAddr },
-                to = item.findJsonStringProperty("to").orEmpty(),
-                cc = item.findJsonStringProperty("cc").orEmpty(),
-                bcc = item.findJsonStringProperty("bcc").orEmpty(),
+                to = recipients("to"),
+                cc = recipients("cc"),
+                bcc = recipients("bcc"),
                 subject = item.findJsonStringProperty("subject").orEmpty(),
                 body = item.findJsonStringProperty("body").orEmpty(),
                 bodyHtml = item.findJsonStringProperty("body_html").orEmpty(),

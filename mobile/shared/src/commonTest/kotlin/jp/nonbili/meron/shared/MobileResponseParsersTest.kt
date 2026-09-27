@@ -278,6 +278,18 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun readsMessageRecipientsRatherThanTheReplyTargetsSortedAheadOfThem() {
+        val page =
+            parseThreadReadPage(
+                """{"id":8,"result":{"messages":[{"bcc":"","body":"hi","cc":"","from_addr":"ada@example.com","id":"m1","reply":{"all_adds_recipients":false,"all_cc":"","all_to":"ada@example.com","cc":"","to":"ada@example.com"},"subject":"Hi","to":"me@example.com"}]}}""",
+            )
+
+        val message = page.messages.single()
+        assertEquals("me@example.com", message.to)
+        assertEquals("ada@example.com", message.reply?.to)
+    }
+
+    @Test
     fun readsTheCoreQuoteOffsetForAThreadMessage() {
         val page =
             parseThreadReadPage(
