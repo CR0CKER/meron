@@ -166,6 +166,13 @@ textarea {
   outline: none;
 }
 
+/* dnd-kit makes every sortable item a <div role="button" tabindex="0">, so a
+   click focuses it and WebKit draws its blue focus ring, ignoring the theme.
+   Drop the ring for pointer focus only; keyboard reordering still shows it. */
+[role='button']:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* Enable the native right-click menu (cut/copy/paste) on text fields. Wails
    disables the default context menu in production builds unless an element
    opts back in via this CSS property. */
