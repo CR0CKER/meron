@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { darken, isValidColor, lighten, mix, parseColor, withAlpha } from './color'
+import { darken, isValidColor, lighten, mix, parseColor, toHex, withAlpha } from './color'
 
 // Theme registry and derivation. A theme is a complete set of values for the
 // `--me-*` CSS custom properties in index.css. Built-ins live here; custom
@@ -562,18 +562,47 @@ function sanitizeTokens(raw: unknown): ThemeTokens | null {
   return out
 }
 
+const SOURCE_COLOR_KEYS = ['bgApp', 'surface', 'sideNav', 'accent', 'text'] as const
+
 function sanitizeSource(raw: unknown): CustomThemeInput | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
   const appearance = obj.appearance
   if (appearance !== 'light' && appearance !== 'dark') return null
-  const colors = {} as Record<'bgApp' | 'surface' | 'sideNav' | 'accent' | 'text', string>
-  for (const key of ['bgApp', 'surface', 'sideNav', 'accent', 'text'] as const) {
+  const colors = {} as Record<(typeof SOURCE_COLOR_KEYS)[number], string>
+  for (const key of SOURCE_COLOR_KEYS) {
     const value = obj[key]
     if (typeof value !== 'string' || !isValidColor(value)) return null
     colors[key] = value
   }
   return { appearance, ...colors }
+}
+
+/**
+ * Shareable one-line form of a custom theme's editor inputs, e.g.
+ * "light,#f0f2f1,#ffffff,#121a16,#0e7a58,#1b211e": appearance, then background,
+ * surface, side navigation, accent and text as hex. The field order is the
+ * format; a future layout would need a new leading marker.
+ */
+export function serializeThemeSource(source: CustomThemeInput): string {
+  const colors = SOURCE_COLOR_KEYS.map((key) => toHex(source[key]) ?? source[key])
+  return [source.appearance, ...colors].join(',')
+}
+
+/** Inverse of serializeThemeSource; null for anything that isn't exactly that shape. */
+export function parseThemeSource(text: string): CustomThemeInput | null {
+  const parts = text
+    .trim()
+    .split(',')
+    .map((part) => part.trim())
+  if (parts.length !== SOURCE_COLOR_KEYS.length + 1) return null
+  const [appearance, ...colors] = parts
+  const hex = colors.map((color) => (color.startsWith('#') ? toHex(color) : null))
+  if (hex.some((color) => color === null)) return null
+  return sanitizeSource({
+    appearance: appearance.toLowerCase(),
+    ...Object.fromEntries(SOURCE_COLOR_KEYS.map((key, index) => [key, hex[index]])),
+  })
 }
 
 /**

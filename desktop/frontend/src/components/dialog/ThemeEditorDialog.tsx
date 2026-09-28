@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { Forward, Upload, X } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import { isValidColor, luminance } from '../../lib/color'
@@ -8,11 +8,14 @@ import {
   defaultCustomInput,
   deriveThemeTokens,
   newCustomThemeId,
+  parseThemeSource,
+  serializeThemeSource,
   type Appearance,
   type CustomTheme,
   type CustomThemeInput,
 } from '../../lib/themes'
 import { upsertCustomTheme } from '../../states/settings'
+import { showToast } from '../../states/ui'
 import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
 import { TextInput } from '../field/Field'
@@ -31,6 +34,14 @@ const COLOR_FIELDS: { key: ColorField; labelKey: string; hintKey: string }[] = [
   { key: 'accent', labelKey: 'theme.fields.accent', hintKey: 'theme.fields.accentHint' },
   { key: 'text', labelKey: 'theme.fields.text', hintKey: 'theme.fields.textHint' },
 ]
+
+/** Copy a theme's share string (see serializeThemeSource) and confirm with a toast. */
+export function copyThemeSource(source: CustomThemeInput, copiedLabel: string) {
+  navigator.clipboard
+    ?.writeText(serializeThemeSource(source))
+    .then(() => showToast(copiedLabel))
+    .catch(() => undefined)
+}
 
 /** Normalized "#rrggbb" for the native color input, or null if not expressible. */
 function toHex6(value: string): string | null {
@@ -52,6 +63,8 @@ export function ThemeEditorDialog({
   // Until a color is touched, flipping appearance reseeds the palette so a new
   // dark theme doesn't start from light colors.
   const [dirty, setDirty] = useState(initial !== null)
+  // null = import field hidden; otherwise the pasted text so far.
+  const [importText, setImportText] = useState<string | null>(null)
 
   useEscapeKey(onClose)
 
@@ -62,6 +75,18 @@ export function ThemeEditorDialog({
 
   const setAppearance = (next: Appearance) => {
     setInput((current) => (dirty ? { ...current, appearance: next } : defaultCustomInput(next)))
+  }
+
+  // A pasted share string applies as soon as it parses; nothing is saved until Save.
+  const onImportChange = (text: string) => {
+    const parsed = parseThemeSource(text)
+    if (!parsed) {
+      setImportText(text)
+      return
+    }
+    setDirty(true)
+    setInput(parsed)
+    setImportText(null)
   }
 
   const valid = COLOR_FIELDS.every(({ key }) => isValidColor(input[key]))
@@ -112,6 +137,45 @@ export function ThemeEditorDialog({
               ))}
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={Forward}
+              disabled={!valid}
+              onClick={() => copyThemeSource(input, t('theme.shareCopied'))}
+            >
+              {t('theme.share')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={Upload}
+              onClick={() => setImportText((current) => (current === null ? '' : null))}
+            >
+              {t('theme.import')}
+            </Button>
+          </div>
+
+          {importText !== null && (
+            <div className="flex flex-col gap-1">
+              <TextInput
+                type="text"
+                autoFocus
+                value={importText}
+                spellCheck={false}
+                placeholder={t('theme.importPlaceholder')}
+                onChange={(event) => onImportChange(event.target.value)}
+                invalid={importText.trim() !== ''}
+                surface="raised"
+                className="rounded-xl px-3 py-2 text-[0.6875rem] font-mono"
+              />
+              {importText.trim() !== '' && (
+                <span className="text-[0.625rem] font-medium text-rose-500">{t('theme.importInvalid')}</span>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             {COLOR_FIELDS.map(({ key, labelKey, hintKey }) => (

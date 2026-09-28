@@ -14,7 +14,9 @@ import {
   deriveThemeTokens,
   isCustomThemeId,
   newCustomThemeId,
+  parseThemeSource,
   sanitizeCustomThemes,
+  serializeThemeSource,
   type CustomThemeInput,
 } from './themes'
 
@@ -144,6 +146,37 @@ describe('accent labels', () => {
     expect(accentLabelColor('#fff')).toBe('#000000')
     expect(accentLabelColor('rgb(0, 0, 0)')).toBe('#ffffff')
     expect(accentLabelColor('hsl(60, 100%, 50%)')).toBe('#000000')
+  })
+})
+
+describe('serializeThemeSource / parseThemeSource', () => {
+  it('writes appearance then the five colors as hex', () => {
+    expect(serializeThemeSource(SAMPLE_INPUT)).toBe('light,#f1f5f9,#ffffff,#0f172a,#4f46e5,#0f172a')
+    expect(serializeThemeSource({ ...SAMPLE_INPUT, accent: 'rgb(255, 0, 0)' })).toContain(',#ff0000,')
+  })
+
+  it('round-trips', () => {
+    expect(parseThemeSource(serializeThemeSource(SAMPLE_INPUT))).toEqual(SAMPLE_INPUT)
+  })
+
+  it('tolerates whitespace, case and short hex', () => {
+    expect(parseThemeSource('  Dark, #FFF ,#000,#111,#abc,#eee\n')).toEqual({
+      appearance: 'dark',
+      bgApp: '#ffffff',
+      surface: '#000000',
+      sideNav: '#111111',
+      accent: '#aabbcc',
+      text: '#eeeeee',
+    })
+  })
+
+  it('rejects anything else', () => {
+    expect(parseThemeSource('')).toBeNull()
+    expect(parseThemeSource('light,#fff,#fff,#fff,#fff')).toBeNull()
+    expect(parseThemeSource('light,#fff,#fff,#fff,#fff,#fff,#fff')).toBeNull()
+    expect(parseThemeSource('dim,#fff,#fff,#fff,#fff,#fff')).toBeNull()
+    expect(parseThemeSource('light,#fff,#fff,#fff,#fff,red')).toBeNull()
+    expect(parseThemeSource('light,#fff,#fff,#fff,#fff,#ggg')).toBeNull()
   })
 })
 

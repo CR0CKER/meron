@@ -144,6 +144,15 @@ export function formatColor({ r, g, b, a }: Rgba): string {
   return `rgba(${clamp255(r)}, ${clamp255(g)}, ${clamp255(b)}, ${Math.round(clamp01(a) * 100) / 100})`
 }
 
+/** "#rrggbb", or "#rrggbbaa" when translucent; null if unparseable. */
+export function toHex(input: string): string | null {
+  const parsed = parseColor(input)
+  if (!parsed) return null
+  const to2 = (n: number) => clamp255(n).toString(16).padStart(2, '0')
+  const alpha = parsed.a >= 1 ? '' : to2(clamp01(parsed.a) * 255)
+  return `#${to2(parsed.r)}${to2(parsed.g)}${to2(parsed.b)}${alpha}`
+}
+
 /** Linear blend of two colors: weight 0 -> a, 1 -> b. */
 export function mix(colorA: string, colorB: string, weight: number): string {
   const a = parseColor(colorA)

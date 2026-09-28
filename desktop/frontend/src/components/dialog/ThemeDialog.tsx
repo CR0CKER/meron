@@ -9,7 +9,7 @@ import { confirmAction } from '../../states/ui'
 import { deleteCustomTheme, selectTheme, setThemeFollowSystem, settings$ } from '../../states/settings'
 import { IconButton } from '../button/IconButton'
 import { ToggleRow } from './AccountSettingsRows'
-import { ThemeEditorDialog } from './ThemeEditorDialog'
+import { ThemeEditorDialog, copyThemeSource } from './ThemeEditorDialog'
 import { ThemeSwatch } from './ThemeSwatch'
 
 // Theme picker dialog (Settings -> General -> Theme -> Change), following the
@@ -50,6 +50,7 @@ function ThemeSection({
               large
               selected={chosenIds.includes(item.id)}
               onSelect={() => selectTheme(item)}
+              onShare={custom ? () => copyThemeSource(custom.source, t('theme.shareCopied')) : undefined}
               onEdit={custom ? () => onEdit({ appearance: custom.appearance, theme: custom }) : undefined}
               onDelete={custom ? () => onDelete(custom) : undefined}
             />
