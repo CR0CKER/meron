@@ -891,6 +891,8 @@
   "theme.fields.text": "Κείμενο",
   "theme.fields.textHint": "Κύριο χρώμα κειμένου",
   "theme.light": "Φωτεινό",
+  "theme.matchSystem": "Αντιστοίχιση με την εμφάνιση συστήματος",
+  "theme.matchSystemHint": "Εναλλαγή ανάμεσα στο φωτεινό και το σκοτεινό θέμα που επιλέξατε, όταν αλλάζει το σύστημα.",
   "theme.namePlaceholder": "Όνομα θέματος",
   "theme.new": "Νέο θέμα",
   "theme.pickColor": "Επιλογή χρώματος {label}",

@@ -891,6 +891,8 @@
   "theme.fields.text": "文字",
   "theme.fields.textHint": "主要文字顏色",
   "theme.light": "淺色",
+  "theme.matchSystem": "跟隨系統外觀",
+  "theme.matchSystemHint": "系統切換時，在你選擇的淺色與深色主題之間切換。",
   "theme.namePlaceholder": "主題名稱",
   "theme.new": "新主題",
   "theme.pickColor": "選取 {label} 顏色",

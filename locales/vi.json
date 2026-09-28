@@ -891,6 +891,8 @@
   "theme.fields.text": "Màu văn bản",
   "theme.fields.textHint": "Màu văn bản chính",
   "theme.light": "Sáng",
+  "theme.matchSystem": "Theo giao diện hệ thống",
+  "theme.matchSystemHint": "Chuyển giữa chủ đề sáng và tối bạn đã chọn khi hệ thống chuyển đổi.",
   "theme.namePlaceholder": "Tên giao diện",
   "theme.new": "Giao diện mới",
   "theme.pickColor": "Chọn màu {label}",

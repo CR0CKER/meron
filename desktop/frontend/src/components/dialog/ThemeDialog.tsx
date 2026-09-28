@@ -3,16 +3,19 @@ import { Palette, Plus, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
-import { BUILTIN_THEMES, DEFAULT_LIGHT_ID, type Appearance, type CustomTheme, type ThemeDef } from '../../lib/themes'
+import { BUILTIN_THEMES, type Appearance, type CustomTheme, type ThemeDef } from '../../lib/themes'
+import { useChosenThemeIds } from '../../lib/useThemeChoice'
 import { confirmAction } from '../../states/ui'
-import { deleteCustomTheme, selectTheme, settings$ } from '../../states/settings'
+import { deleteCustomTheme, selectTheme, setThemeFollowSystem, settings$ } from '../../states/settings'
 import { IconButton } from '../button/IconButton'
+import { ToggleRow } from './AccountSettingsRows'
 import { ThemeEditorDialog } from './ThemeEditorDialog'
 import { ThemeSwatch } from './ThemeSwatch'
 
 // Theme picker dialog (Settings -> General -> Theme -> Change), following the
 // WallpaperDialog layout: light and dark sections of large swatches, with the
-// custom-theme editor reachable from a dashed tile in each section.
+// custom-theme editor reachable from a dashed tile in each section. While the
+// theme follows the system, each section holds its own pick.
 
 type EditorState = { appearance: Appearance; theme: CustomTheme | null }
 
@@ -20,7 +23,7 @@ function ThemeSection({
   label,
   themes,
   customThemes,
-  effectiveId,
+  chosenIds,
   onEdit,
   onDelete,
   newTileAppearance,
@@ -28,7 +31,7 @@ function ThemeSection({
   label: string
   themes: ThemeDef[]
   customThemes: CustomTheme[]
-  effectiveId: string
+  chosenIds: string[]
   onEdit: (state: EditorState) => void
   onDelete: (theme: CustomTheme) => void
   newTileAppearance: Appearance
@@ -45,7 +48,7 @@ function ThemeSection({
               key={item.id}
               theme={item}
               large
-              selected={item.id === effectiveId}
+              selected={chosenIds.includes(item.id)}
               onSelect={() => selectTheme(item)}
               onEdit={custom ? () => onEdit({ appearance: custom.appearance, theme: custom }) : undefined}
               onDelete={custom ? () => onDelete(custom) : undefined}
@@ -68,15 +71,13 @@ function ThemeSection({
 export function ThemeDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
   const [editor, setEditor] = useState<EditorState | null>(null)
-  const selectedId = useValue(settings$.themeId)
+  const followSystem = useValue(settings$.themeFollowSystem)
   const customThemes = useValue(settings$.customThemes)
+  const chosenIds = useChosenThemeIds()
 
   useEscapeKey(onClose)
 
   const themes = [...BUILTIN_THEMES, ...customThemes]
-  // A stale selection (deleted custom theme) highlights the default, matching
-  // what resolveThemeDef actually paints.
-  const effectiveId = themes.some((item) => item.id === selectedId) ? selectedId : DEFAULT_LIGHT_ID
 
   const onDelete = async (themeToDelete: CustomTheme) => {
     const confirmed = await confirmAction({
@@ -90,7 +91,7 @@ export function ThemeDialog({ onClose }: { onClose: () => void }) {
 
   const sectionProps = {
     customThemes,
-    effectiveId,
+    chosenIds,
     onEdit: (state: EditorState) => setEditor(state),
     onDelete: (theme: CustomTheme) => void onDelete(theme),
   }
@@ -108,6 +109,14 @@ export function ThemeDialog({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+            <div className="rounded-2xl bg-raised/80 border border-border/60 overflow-hidden">
+              <ToggleRow
+                title={t('theme.matchSystem')}
+                hint={t('theme.matchSystemHint')}
+                checked={followSystem}
+                onChange={() => setThemeFollowSystem(!followSystem)}
+              />
+            </div>
             <ThemeSection
               label={t('theme.light')}
               themes={themes.filter((item) => item.appearance === 'light')}

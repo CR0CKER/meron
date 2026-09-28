@@ -891,6 +891,8 @@
   "theme.fields.text": "Tekst",
   "theme.fields.textHint": "Peamine teksti värv",
   "theme.light": "Hele",
+  "theme.matchSystem": "Järgi süsteemi välimust",
+  "theme.matchSystemHint": "Vahetab valitud heleda ja tumeda teema vahel, kui süsteem vahetab.",
   "theme.namePlaceholder": "Kujunduse nimi",
   "theme.new": "Uus kujundus",
   "theme.pickColor": "Vali värv: {label}",

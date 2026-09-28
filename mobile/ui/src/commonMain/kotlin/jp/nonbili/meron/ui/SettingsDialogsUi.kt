@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,14 +41,20 @@ import kotlin.math.roundToInt
 
 @Composable
 internal fun ThemePickerDialog(
-    current: AppAppearanceMode,
-    onSelect: (AppAppearanceMode) -> Unit,
+    choice: ThemeChoice,
+    systemDark: Boolean,
+    onChange: (ThemeChoice) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // Light and dark sections of preview swatches, mirroring the desktop
-    // ThemeDialog grid.
-    val selectableModes = AppAppearanceMode.entries.filterNot { it == AppAppearanceMode.System }
-    val (darkModes, lightModes) = selectableModes.partition { themePreviewColors(it).dark }
+    // ThemeDialog grid, under the "match system" switch. While the theme
+    // follows the system each section holds its own pick, so picking one
+    // leaves the dialog open for the other.
+    val (darkModes, lightModes) = AppAppearanceMode.entries.partition { it.isDark }
+    val onSelect: (AppAppearanceMode) -> Unit = { mode ->
+        onChange(choice.select(mode))
+        if (!choice.followSystem) onDismiss()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("common.theme")) },
@@ -60,8 +67,31 @@ internal fun ThemePickerDialog(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                themeSwatchSection(lightLabel, lightModes, current, onSelect, onDismiss)
-                themeSwatchSection(darkLabel, darkModes, current, onSelect, onDismiss)
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onChange(choice.withFollowSystem(!choice.followSystem, systemDark)) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("theme.matchSystem"), style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                tr("theme.matchSystemHint"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = choice.followSystem,
+                            onCheckedChange = { onChange(choice.withFollowSystem(it, systemDark)) },
+                        )
+                    }
+                }
+                themeSwatchSection(lightLabel, lightModes, choice.chosen, onSelect)
+                themeSwatchSection(darkLabel, darkModes, choice.chosen, onSelect)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("buttons.done")) } },
@@ -72,9 +102,8 @@ internal fun ThemePickerDialog(
 private fun LazyListScope.themeSwatchSection(
     label: String,
     modes: List<AppAppearanceMode>,
-    current: AppAppearanceMode,
+    chosen: Set<AppAppearanceMode>,
     onSelect: (AppAppearanceMode) -> Unit,
-    onDismiss: () -> Unit,
 ) {
     item {
         Text(
@@ -89,11 +118,8 @@ private fun LazyListScope.themeSwatchSection(
             row.forEach { mode ->
                 ThemeSwatch(
                     mode = mode,
-                    selected = mode == current,
-                    onSelect = {
-                        onSelect(mode)
-                        onDismiss()
-                    },
+                    selected = mode in chosen,
+                    onSelect = { onSelect(mode) },
                     modifier = Modifier.weight(1f),
                 )
             }

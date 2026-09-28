@@ -13,7 +13,6 @@ enum class AppAppearanceMode(
     val storageValue: String,
     val label: String,
 ) {
-    System("system", "System"),
     Light("light", "Meron Light"),
     Indigo("indigo", "Indigo"),
     Dark("dark", "Meron Dark"),
@@ -28,6 +27,58 @@ enum class AppAppearanceMode(
     Forest("forest", "Forest"),
     Plum("plum", "Plum"),
     Ember("ember", "Ember"),
+}
+
+/** Whether [this] is one of the dark themes. */
+internal val AppAppearanceMode.isDark: Boolean get() = mobileThemeSpec(this).dark
+
+/**
+ * The theme setting: one fixed theme, or a light and a dark pick the app
+ * switches between with the system appearance. Mirrors desktop's themeId /
+ * themeFollowSystem / lightThemeId / darkThemeId.
+ */
+data class ThemeChoice(
+    val fixed: AppAppearanceMode = AppAppearanceMode.Light,
+    val followSystem: Boolean = false,
+    val light: AppAppearanceMode = AppAppearanceMode.Light,
+    val dark: AppAppearanceMode = AppAppearanceMode.IndigoDark,
+) {
+    /** The theme to paint while the system is (or is not) dark. */
+    fun resolve(systemDark: Boolean): AppAppearanceMode =
+        when {
+            !followSystem -> fixed
+            systemDark -> dark
+            else -> light
+        }
+
+    /** The themes the picker marks as chosen. */
+    val chosen: Set<AppAppearanceMode> get() = if (followSystem) setOf(light, dark) else setOf(fixed)
+
+    /** Pick [mode]: the fixed theme, or while following the system, the pick for its own appearance. */
+    fun select(mode: AppAppearanceMode): ThemeChoice =
+        when {
+            !followSystem -> copy(fixed = mode)
+            mode.isDark -> copy(dark = mode)
+            else -> copy(light = mode)
+        }
+
+    /**
+     * Turn following the system on or off without changing what is on screen
+     * when the system already matches: the painted theme becomes the pick for
+     * its appearance, or the fixed theme when turning off.
+     */
+    fun withFollowSystem(
+        enabled: Boolean,
+        systemDark: Boolean,
+    ): ThemeChoice {
+        if (enabled == followSystem) return this
+        val current = resolve(systemDark)
+        return when {
+            !enabled -> copy(followSystem = false, fixed = current)
+            current.isDark -> copy(followSystem = true, dark = current)
+            else -> copy(followSystem = true, light = current)
+        }
+    }
 }
 
 /** Colors that have no Material slot: the chat bubbles and dark sidebar. */
@@ -390,7 +441,6 @@ private fun mobileThemeSpec(
     mode: AppAppearanceMode,
 ): MobileThemeSpec =
     when (mode) {
-        AppAppearanceMode.System -> MeronLight
         AppAppearanceMode.Indigo -> IndigoLight
         AppAppearanceMode.IndigoDark -> IndigoDark
         AppAppearanceMode.Light -> MeronLight

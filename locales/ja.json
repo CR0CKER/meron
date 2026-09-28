@@ -891,6 +891,8 @@
   "theme.fields.text": "テキスト",
   "theme.fields.textHint": "プライマリテキストの色",
   "theme.light": "ライト",
+  "theme.matchSystem": "システムの外観に合わせる",
+  "theme.matchSystemHint": "システムの切り替えに合わせて、選んだライトテーマとダークテーマを切り替えます。",
   "theme.namePlaceholder": "テーマ名",
   "theme.new": "新規テーマ",
   "theme.pickColor": "{label}の色を選択",

@@ -446,12 +446,6 @@ internal fun appLanguageDisplayName(tag: String): String = languageEndonyms[tag]
 
 internal fun onOffLabel(enabled: Boolean): String = if (enabled) "On" else "Off"
 
-internal fun AppAppearanceMode.next(): AppAppearanceMode {
-    val values = AppAppearanceMode.entries.filterNot { it == AppAppearanceMode.System }
-    val index = values.indexOf(this).takeIf { it >= 0 } ?: 0
-    return values[(index + 1) % values.size]
-}
-
 internal fun formatBytes(bytes: Long): String =
     when {
         bytes >= 1_000_000 -> "${bytes / 1_000_000} MB"

@@ -891,6 +891,8 @@
   "theme.fields.text": "النص",
   "theme.fields.textHint": "لون النص الأساسي",
   "theme.light": "فاتح",
+  "theme.matchSystem": "مطابقة مظهر النظام",
+  "theme.matchSystemHint": "التبديل بين السمة الفاتحة والداكنة التي اخترتها عندما يبدّل النظام مظهره.",
   "theme.namePlaceholder": "اسم السمة",
   "theme.new": "سمة جديدة",
   "theme.pickColor": "اختر لون {label}",

@@ -891,6 +891,8 @@
   "theme.fields.text": "Tekst",
   "theme.fields.textHint": "Główny kolor tekstu",
   "theme.light": "Jasny",
+  "theme.matchSystem": "Dopasuj do wyglądu systemu",
+  "theme.matchSystemHint": "Przełącza między wybranym jasnym i ciemnym motywem, gdy przełącza się system.",
   "theme.namePlaceholder": "Nazwa motywu",
   "theme.new": "Nowy motyw",
   "theme.pickColor": "Wybierz kolor elementu {label}",

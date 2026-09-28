@@ -891,6 +891,8 @@
   "theme.fields.text": "Text",
   "theme.fields.textHint": "Primary text color",
   "theme.light": "Light",
+  "theme.matchSystem": "Match system appearance",
+  "theme.matchSystemHint": "Switch between your light and dark theme picks when the system switches.",
   "theme.namePlaceholder": "Theme name",
   "theme.new": "New theme",
   "theme.pickColor": "Pick {label} color",

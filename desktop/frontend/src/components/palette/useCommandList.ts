@@ -28,6 +28,7 @@ import { createElement } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { ui$, closeCommandPalette, focusGlobalSearch, focusQuickReply } from '../../states/ui'
 import { selectTheme, settings$ } from '../../states/settings'
+import { useChosenThemeIds } from '../../lib/useThemeChoice'
 import { accounts$ } from '../../states/accounts'
 import { BUILTIN_THEMES } from '../../lib/themes'
 import {
@@ -56,7 +57,7 @@ import type { Command } from './paletteCommands'
 export function useCommandList(): Command[] {
   const boards = useValue(settings$.kanbanBoards)
   const activeBoardId = useValue(kanban$.activeBoardId)
-  const themeId = useValue(settings$.themeId)
+  const chosenThemeIds = useChosenThemeIds()
   const customThemes = useValue(settings$.customThemes)
   const filterMode = useValue(ui$.filterMode)
   const kanbanFilterMode = useValue(kanban$.globalFilter)
@@ -212,7 +213,7 @@ export function useCommandList(): Command[] {
         id: `theme.${theme.id}`,
         label: `Theme: ${theme.name}`,
         icon: icon(theme.appearance === 'light' ? Sun : Moon),
-        active: themeId === theme.id,
+        active: chosenThemeIds.includes(theme.id),
         run: run(() => selectTheme(theme)),
       })),
     ]
@@ -323,7 +324,7 @@ export function useCommandList(): Command[] {
   }, [
     boards,
     activeBoardId,
-    themeId,
+    chosenThemeIds,
     customThemes,
     filterMode,
     kanbanFilterMode,

@@ -9,7 +9,7 @@ import { openMailtoCompose, openThreadTabById } from './states/compose'
 import { accounts$ } from './states/accounts'
 import { kanban$ } from './states/kanban'
 import { setSyncError, clearSyncErrorFor } from './states/connectivity'
-import { settings$, applyDocumentLanguage } from './states/settings'
+import { settings$, applyDocumentLanguage, watchSystemAppearance } from './states/settings'
 import { configurationRefresh } from './lib/configurationRefresh'
 import { applyUpdateStatus, loadUpdateStatus, runUpdateCheck } from './states/update'
 import type { UpdateStatus } from './lib/update'
@@ -32,6 +32,7 @@ const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 // mailbox/thread loading, and the tray unread badge. Kept out of the component so
 // App stays a layout shell.
 export function useAppEffects() {
+  useEffect(() => watchSystemAppearance(), [])
   useEffect(() => {
     const eventsOn = (window as any).runtime?.EventsOn
     if (typeof eventsOn !== 'function') return

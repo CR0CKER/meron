@@ -1,15 +1,23 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
+  chosenThemeIds,
+  deleteCustomTheme,
   EMPTY_PROXY,
   hydrateSettings,
   isProxyUsable,
   normalizeSenderAddr,
   sanitizeKanbanBoards,
+  resolveThemeDef,
   sanitizeProxy,
+  selectTheme,
   setRemoteImageSender,
+  setThemeFollowSystem,
   settings$,
+  systemAppearance$,
+  upsertCustomTheme,
   WRITE_SESSION,
 } from './settings'
+import { builtinTheme, deriveThemeTokens, defaultCustomInput, type CustomTheme } from '../lib/themes'
 
 const baseBoard = {
   id: 'kb-1',
@@ -211,5 +219,108 @@ describe('settings persistence', () => {
       ;(window as any).go = wails
       settings$.remoteImageSenders.set([])
     }
+  })
+})
+
+describe('theme following the system', () => {
+  afterEach(() => {
+    settings$.themeFollowSystem.set(false)
+    settings$.themeId.set('light')
+    settings$.lightThemeId.set('light')
+    settings$.darkThemeId.set('indigo-dark')
+    settings$.customThemes.set([])
+    systemAppearance$.set('light')
+  })
+
+  it('paints the pick for the system appearance', () => {
+    settings$.themeFollowSystem.set(true)
+    settings$.lightThemeId.set('mist')
+    settings$.darkThemeId.set('forest')
+
+    systemAppearance$.set('light')
+    expect(resolveThemeDef().id).toBe('mist')
+    systemAppearance$.set('dark')
+    expect(resolveThemeDef().id).toBe('forest')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(chosenThemeIds()).toEqual(['mist', 'forest'])
+  })
+
+  it('files a picked theme under its own appearance', () => {
+    settings$.themeFollowSystem.set(true)
+    selectTheme(builtinTheme('graphite')!)
+    selectTheme(builtinTheme('paper')!)
+    expect(settings$.darkThemeId.get()).toBe('graphite')
+    expect(settings$.lightThemeId.get()).toBe('paper')
+    expect(settings$.themeId.get()).toBe('light')
+  })
+
+  it('keeps the painted theme when toggled either way', () => {
+    settings$.themeId.set('plum')
+    systemAppearance$.set('dark')
+    setThemeFollowSystem(true)
+    expect(settings$.darkThemeId.get()).toBe('plum')
+    expect(resolveThemeDef().id).toBe('plum')
+
+    systemAppearance$.set('light')
+    expect(resolveThemeDef().id).toBe('light')
+    setThemeFollowSystem(false)
+    expect(settings$.themeId.get()).toBe('light')
+  })
+
+  it('falls back to the appearance default for a deleted custom pick', () => {
+    const source = defaultCustomInput('dark')
+    const custom: CustomTheme = {
+      id: 'custom-test',
+      name: 'Mine',
+      appearance: 'dark',
+      tokens: deriveThemeTokens(source),
+      source,
+    }
+    settings$.customThemes.set([custom])
+    settings$.themeFollowSystem.set(true)
+    selectTheme(custom)
+    systemAppearance$.set('dark')
+    expect(resolveThemeDef().id).toBe('custom-test')
+
+    deleteCustomTheme('custom-test')
+    expect(settings$.darkThemeId.get()).toBe('indigo-dark')
+    expect(resolveThemeDef().id).toBe('indigo-dark')
+  })
+
+  it('drops a custom pick edited to the other appearance from its old slot', () => {
+    const light = defaultCustomInput('light')
+    const custom: CustomTheme = {
+      id: 'custom-flip',
+      name: 'Mine',
+      appearance: 'light',
+      tokens: deriveThemeTokens(light),
+      source: light,
+    }
+    settings$.customThemes.set([custom])
+    settings$.themeFollowSystem.set(true)
+    selectTheme(custom)
+    expect(settings$.lightThemeId.get()).toBe('custom-flip')
+
+    const dark = defaultCustomInput('dark')
+    upsertCustomTheme({ ...custom, appearance: 'dark', tokens: deriveThemeTokens(dark), source: dark })
+    expect(settings$.darkThemeId.get()).toBe('custom-flip')
+
+    systemAppearance$.set('light')
+    expect(resolveThemeDef().id).toBe('light')
+    systemAppearance$.set('dark')
+    expect(resolveThemeDef().id).toBe('custom-flip')
+    expect(chosenThemeIds()).toEqual(['light', 'custom-flip'])
+  })
+
+  it('hydrates the persisted choice', () => {
+    hydrateSettings({ theme_follow_system: true, light_theme_id: 'dawn', dark_theme_id: 'ember' })
+    expect(settings$.themeFollowSystem.get()).toBe(true)
+    expect(settings$.lightThemeId.get()).toBe('dawn')
+    expect(settings$.darkThemeId.get()).toBe('ember')
+
+    hydrateSettings({ theme_follow_system: 'yes', light_theme_id: '', dark_theme_id: 7 })
+    expect(settings$.themeFollowSystem.get()).toBe(true)
+    expect(settings$.lightThemeId.get()).toBe('dawn')
+    expect(settings$.darkThemeId.get()).toBe('ember')
   })
 })

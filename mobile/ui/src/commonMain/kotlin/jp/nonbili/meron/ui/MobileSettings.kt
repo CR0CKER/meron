@@ -52,6 +52,9 @@ internal val mobileSettings =
     listOf(
         // Appearance and language.
         MobileSetting(PrefStore.App, APPEARANCE_MODE_PREF, PrefType.Str),
+        MobileSetting(PrefStore.App, THEME_FOLLOW_SYSTEM_PREF, PrefType.Bool),
+        MobileSetting(PrefStore.App, LIGHT_THEME_PREF, PrefType.Str),
+        MobileSetting(PrefStore.App, DARK_THEME_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, APP_LANGUAGE_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, MESSAGE_FONT_SCALE_PREF, PrefType.Int),
         MobileSetting(PrefStore.App, SHOW_SENDER_IMAGES_PREF, PrefType.Bool),

@@ -891,6 +891,8 @@
   "theme.fields.text": "Textfarbe",
   "theme.fields.textHint": "Primäre Textfarbe",
   "theme.light": "Hell",
+  "theme.matchSystem": "Systemdarstellung übernehmen",
+  "theme.matchSystemHint": "Wechselt zwischen deinem hellen und dunklen Theme, wenn das System umschaltet.",
   "theme.namePlaceholder": "Design-Name",
   "theme.new": "Neues Design",
   "theme.pickColor": "Farbe für {label} wählen",

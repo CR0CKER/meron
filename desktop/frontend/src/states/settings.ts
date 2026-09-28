@@ -2,6 +2,7 @@ import { observable } from '@legendapp/state'
 import { invoke } from '../lib/bridge'
 import { ui$ } from './ui'
 import {
+  DEFAULT_DARK_ID,
   DEFAULT_LIGHT_ID,
   THEME_TOKEN_KEYS,
   TOKEN_CSS_VAR,
@@ -9,6 +10,7 @@ import {
   builtinTheme,
   defaultThemeId,
   sanitizeCustomThemes,
+  type Appearance,
   type CustomTheme,
   type ThemeDef,
 } from '../lib/themes'
@@ -86,8 +88,17 @@ export const EMPTY_PROXY: ProxySettings = {
 }
 
 export type Settings = {
-  /** Active built-in or custom theme id. The theme's appearance controls light/dark mode. */
+  /**
+   * Active built-in or custom theme id while not following the system. The
+   * theme's appearance controls light/dark mode.
+   */
   themeId: string
+  /** Whether the theme switches between `lightThemeId` and `darkThemeId` with the OS appearance. */
+  themeFollowSystem: boolean
+  /** Theme painted while following the system and the OS is light. */
+  lightThemeId: string
+  /** Theme painted while following the system and the OS is dark. */
+  darkThemeId: string
   /** User-created themes (see lib/themes.ts). */
   customThemes: CustomTheme[]
   /** Interface font: '' for Inter, a lib/fonts option id, or a typed family name. */
@@ -168,6 +179,9 @@ export const KANBAN_COLUMN_MAX_WIDTH = 700
 // nothing else needs to change.
 const DB_KEY = {
   themeId: 'theme_id',
+  themeFollowSystem: 'theme_follow_system',
+  lightThemeId: 'light_theme_id',
+  darkThemeId: 'dark_theme_id',
   customThemes: 'custom_themes',
   fontFamily: 'font_family',
   messageFontFamily: 'message_font_family',
@@ -227,23 +241,58 @@ export function isSendKey(
 // light-on-dark first-paint flash. The DB rows stay authoritative.
 const THEME_CACHE_KEY = 'meron-theme-cache'
 
-function bootstrapThemeSelection(): Pick<Settings, 'themeId' | 'customThemes'> {
+type ThemeSelection = Pick<Settings, 'themeId' | 'themeFollowSystem' | 'lightThemeId' | 'darkThemeId' | 'customThemes'>
+
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+
+function mediaAppearance(): Appearance {
+  try {
+    return window.matchMedia(DARK_SCHEME_QUERY).matches ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+function bootstrapThemeSelection(): ThemeSelection & { systemAppearance: Appearance } {
+  const nonEmpty = (value: unknown, fallback: string) => (typeof value === 'string' && value ? value : fallback)
   try {
     const raw = localStorage.getItem(THEME_CACHE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as Record<string, unknown>
       return {
-        themeId: typeof parsed.themeId === 'string' && parsed.themeId ? parsed.themeId : DEFAULT_LIGHT_ID,
+        themeId: nonEmpty(parsed.themeId, DEFAULT_LIGHT_ID),
+        themeFollowSystem: parsed.themeFollowSystem === true,
+        lightThemeId: nonEmpty(parsed.lightThemeId, DEFAULT_LIGHT_ID),
+        darkThemeId: nonEmpty(parsed.darkThemeId, DEFAULT_DARK_ID),
         customThemes: sanitizeCustomThemes(parsed.customThemes) ?? [],
+        // The last appearance the backend reported: the webview's own media
+        // query reflects the app's pinned appearance, not the system's.
+        systemAppearance:
+          parsed.systemAppearance === 'dark' || parsed.systemAppearance === 'light'
+            ? parsed.systemAppearance
+            : mediaAppearance(),
       }
     }
   } catch {
     // Corrupt cache: fall through to defaults; the DB hydrate will repair it.
   }
-  return { themeId: DEFAULT_LIGHT_ID, customThemes: [] }
+  return {
+    themeId: DEFAULT_LIGHT_ID,
+    themeFollowSystem: false,
+    lightThemeId: DEFAULT_LIGHT_ID,
+    darkThemeId: DEFAULT_DARK_ID,
+    customThemes: [],
+    systemAppearance: mediaAppearance(),
+  }
 }
 
 const themeBootstrap = bootstrapThemeSelection()
+
+/**
+ * The OS light/dark preference, which a theme following the system resolves
+ * against. Fed by the backend (see watchSystemAppearance); not a setting.
+ */
+export const systemAppearance$ = observable<Appearance>(themeBootstrap.systemAppearance)
 
 // Typography, like the theme, is painted before the DB rows arrive, so it keeps
 // its own localStorage mirror to avoid a reflow from the default font/size to
@@ -337,6 +386,9 @@ export function applyDocumentLanguage(lang: SupportedI18nLanguage) {
 
 export const settings$ = observable<Settings>({
   themeId: themeBootstrap.themeId,
+  themeFollowSystem: themeBootstrap.themeFollowSystem,
+  lightThemeId: themeBootstrap.lightThemeId,
+  darkThemeId: themeBootstrap.darkThemeId,
   customThemes: themeBootstrap.customThemes,
   fontFamily: fontBootstrap.fontFamily,
   messageFontFamily: fontBootstrap.messageFontFamily,
@@ -435,15 +487,36 @@ settings$.onChange(({ changes }) => {
   }
 })
 
+function findTheme(id: string): ThemeDef | undefined {
+  return settings$.customThemes.peek().find((theme) => theme.id === id) ?? builtinTheme(id)
+}
+
+/**
+ * The theme chosen for one appearance while following the system. A stale id
+ * (deleted custom theme, renamed builtin), or a custom theme since edited to the
+ * other appearance, falls back to that appearance's default.
+ */
+export function followedThemeDef(appearance: Appearance): ThemeDef {
+  const id = appearance === 'dark' ? settings$.darkThemeId.peek() : settings$.lightThemeId.peek()
+  const theme = findTheme(id)
+  return theme?.appearance === appearance ? theme : builtinTheme(defaultThemeId(appearance))!
+}
+
 /** The theme that should currently be painted, after fallbacks. */
 export function resolveThemeDef(): ThemeDef {
-  const id = settings$.themeId.peek()
-  const custom = settings$.customThemes.peek().find((theme) => theme.id === id)
-  if (custom) return custom
-  const builtin = builtinTheme(id)
+  if (settings$.themeFollowSystem.peek()) return followedThemeDef(systemAppearance$.peek())
   // A stale id (deleted custom theme, renamed builtin) falls back to Meron Light.
-  if (builtin) return builtin
-  return builtinTheme(DEFAULT_LIGHT_ID)!
+  return findTheme(settings$.themeId.peek()) ?? builtinTheme(DEFAULT_LIGHT_ID)!
+}
+
+/**
+ * Ids of the themes the picker marks as chosen: the fixed theme, or the light
+ * and dark pair while following the system. Resolved like the paint is, so a
+ * stale id highlights the default that actually shows.
+ */
+export function chosenThemeIds(): string[] {
+  if (settings$.themeFollowSystem.peek()) return [followedThemeDef('light').id, followedThemeDef('dark').id]
+  return [resolveThemeDef().id]
 }
 
 // The active theme is reflected to the DOM (the `.dark` class drives Tailwind
@@ -468,7 +541,11 @@ function applyActiveTheme() {
     THEME_CACHE_KEY,
     JSON.stringify({
       themeId: settings$.themeId.peek(),
+      themeFollowSystem: settings$.themeFollowSystem.peek(),
+      lightThemeId: settings$.lightThemeId.peek(),
+      darkThemeId: settings$.darkThemeId.peek(),
       customThemes: settings$.customThemes.peek(),
+      systemAppearance: systemAppearance$.peek(),
     }),
   )
 
@@ -478,12 +555,77 @@ function applyActiveTheme() {
 }
 applyActiveTheme()
 settings$.themeId.onChange(applyActiveTheme)
+settings$.themeFollowSystem.onChange(applyActiveTheme)
+settings$.lightThemeId.onChange(applyActiveTheme)
+settings$.darkThemeId.onChange(applyActiveTheme)
+systemAppearance$.onChange(applyActiveTheme)
 // Editing the active custom theme must repaint live.
 settings$.customThemes.onChange(applyActiveTheme)
 
-/** Pick the active theme. Its appearance controls light/dark mode. */
+/**
+ * Keep `systemAppearance$` on the OS preference: the backend reports it once
+ * asked and again on every change. Where it has no source (a platform without
+ * one, a desktop without the settings portal, a plain browser), the webview's
+ * media query stands in. Returns the unsubscribe.
+ */
+export function watchSystemAppearance(): () => void {
+  let fromBackend = false
+  const report = (detail: unknown) => {
+    const dark = (detail as { dark?: unknown } | null)?.dark
+    if (typeof dark !== 'boolean') return
+    fromBackend = true
+    systemAppearance$.set(dark ? 'dark' : 'light')
+  }
+
+  let media: MediaQueryList | null = null
+  const onMedia = () => {
+    if (!fromBackend && media) systemAppearance$.set(media.matches ? 'dark' : 'light')
+  }
+  try {
+    media = window.matchMedia(DARK_SCHEME_QUERY)
+    media.addEventListener('change', onMedia)
+  } catch {
+    media = null
+  }
+
+  const eventsOn = (window as any).runtime?.EventsOn
+  const unsubscribe = typeof eventsOn === 'function' ? eventsOn('system.appearance', report) : null
+  void invoke<{ dark: boolean | null }>('system.appearance')
+    .then((result) => {
+      report(result)
+      onMedia()
+    })
+    .catch(onMedia)
+
+  return () => {
+    media?.removeEventListener('change', onMedia)
+    if (typeof unsubscribe === 'function') unsubscribe()
+  }
+}
+
+/**
+ * Pick a theme. While following the system it becomes the choice for its own
+ * appearance; otherwise it is the active theme, and its appearance controls
+ * light/dark mode.
+ */
 export function selectTheme(def: ThemeDef) {
-  settings$.themeId.set(def.id)
+  if (!settings$.themeFollowSystem.peek()) settings$.themeId.set(def.id)
+  else if (def.appearance === 'dark') settings$.darkThemeId.set(def.id)
+  else settings$.lightThemeId.set(def.id)
+}
+
+/**
+ * Turn following the system on or off without changing what is on screen when
+ * the system already matches: the painted theme becomes the pick for its
+ * appearance, or the fixed theme when turning off.
+ */
+export function setThemeFollowSystem(enabled: boolean) {
+  if (enabled === settings$.themeFollowSystem.peek()) return
+  const current = resolveThemeDef()
+  if (!enabled) settings$.themeId.set(current.id)
+  else if (current.appearance === 'dark') settings$.darkThemeId.set(current.id)
+  else settings$.lightThemeId.set(current.id)
+  settings$.themeFollowSystem.set(enabled)
 }
 
 /** Add or replace a custom theme and make it the active choice for its appearance. */
@@ -503,6 +645,8 @@ export function deleteCustomTheme(id: string) {
   if (!theme) return
   settings$.customThemes.set(current.filter((item) => item.id !== id))
   if (settings$.themeId.peek() === id) settings$.themeId.set(DEFAULT_LIGHT_ID)
+  if (settings$.lightThemeId.peek() === id) settings$.lightThemeId.set(DEFAULT_LIGHT_ID)
+  if (settings$.darkThemeId.peek() === id) settings$.darkThemeId.set(DEFAULT_DARK_ID)
 }
 
 // Whether hydration found a stored kanban-boards row. An empty stored list means
@@ -671,6 +815,13 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
     // theme arriving in a later hydrate.
     const themeId = prefs[DB_KEY.themeId]
     if (typeof themeId === 'string' && themeId) settings$.themeId.set(themeId)
+    const lightThemeId = prefs[DB_KEY.lightThemeId]
+    if (typeof lightThemeId === 'string' && lightThemeId) settings$.lightThemeId.set(lightThemeId)
+    const darkThemeId = prefs[DB_KEY.darkThemeId]
+    if (typeof darkThemeId === 'string' && darkThemeId) settings$.darkThemeId.set(darkThemeId)
+    if (typeof prefs[DB_KEY.themeFollowSystem] === 'boolean') {
+      settings$.themeFollowSystem.set(prefs[DB_KEY.themeFollowSystem] as boolean)
+    }
     const customThemes = sanitizeCustomThemes(prefs[DB_KEY.customThemes])
     if (customThemes) settings$.customThemes.set(customThemes)
 

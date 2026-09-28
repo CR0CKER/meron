@@ -76,16 +76,35 @@ internal fun saveLastMailLocation(
     prefs.putString(LAST_MAIL_FOLDER_PREF, folder.ifBlank { INBOX_FOLDER })
 }
 
-fun loadAppearanceMode(prefs: AppPreferences): AppAppearanceMode {
-    val stored = prefs.getString(APPEARANCE_MODE_PREF, AppAppearanceMode.Light.storageValue)
-    return AppAppearanceMode.entries.firstOrNull { it.storageValue == stored && it != AppAppearanceMode.System }
-        ?: AppAppearanceMode.Light
+private fun loadAppearanceMode(
+    prefs: AppPreferences,
+    key: String,
+    defaultValue: AppAppearanceMode,
+): AppAppearanceMode {
+    val stored = prefs.getString(key, defaultValue.storageValue)
+    return AppAppearanceMode.entries.firstOrNull { it.storageValue == stored } ?: defaultValue
 }
 
-fun saveAppearanceMode(
+fun loadThemeChoice(prefs: AppPreferences): ThemeChoice {
+    val defaults = ThemeChoice()
+    return ThemeChoice(
+        fixed = loadAppearanceMode(prefs, APPEARANCE_MODE_PREF, defaults.fixed),
+        followSystem = prefs.getBoolean(THEME_FOLLOW_SYSTEM_PREF, defaults.followSystem),
+        // A pick stored under the wrong appearance would never show; use the default.
+        light = loadAppearanceMode(prefs, LIGHT_THEME_PREF, defaults.light).takeUnless { it.isDark } ?: defaults.light,
+        dark = loadAppearanceMode(prefs, DARK_THEME_PREF, defaults.dark).takeIf { it.isDark } ?: defaults.dark,
+    )
+}
+
+fun saveThemeChoice(
     prefs: AppPreferences,
-    mode: AppAppearanceMode,
-) = prefs.putString(APPEARANCE_MODE_PREF, mode.storageValue)
+    choice: ThemeChoice,
+) {
+    prefs.putString(APPEARANCE_MODE_PREF, choice.fixed.storageValue)
+    prefs.putBoolean(THEME_FOLLOW_SYSTEM_PREF, choice.followSystem)
+    prefs.putString(LIGHT_THEME_PREF, choice.light.storageValue)
+    prefs.putString(DARK_THEME_PREF, choice.dark.storageValue)
+}
 
 internal fun loadSendShortcutMode(prefs: AppPreferences): SendShortcutMode =
     when (prefs.getString(SEND_SHORTCUT_PREF, "mod_enter")) {

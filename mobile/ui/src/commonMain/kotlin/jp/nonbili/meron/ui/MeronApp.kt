@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -259,7 +260,8 @@ fun MeronApp(
     // go through `backedPrefs` like every other setting. `putString` stages
     // synchronously, which is what makes them survive the Activity recreation the
     // language change triggers.
-    var appearanceMode by remember(backedPrefs) { mutableStateOf(loadAppearanceMode(backedPrefs)) }
+    var themeChoice by remember(backedPrefs) { mutableStateOf(loadThemeChoice(backedPrefs)) }
+    val systemDark = isSystemInDarkTheme()
     // Android 13+ lets the language be changed from system settings while the app
     // is not running; that choice outranks the stored tag.
     val systemLanguageTag = remember(locale) { locale.systemLanguageTag() }
@@ -277,9 +279,9 @@ fun MeronApp(
         }
     }
     val deviceLanguageTag = remember(locale) { resolveDeviceLanguageTag(locale.deviceLanguageTag()) }
-    val onAppearanceModeChange: (AppAppearanceMode) -> Unit = { mode ->
-        appearanceMode = mode
-        saveAppearanceMode(backedPrefs, mode)
+    val onThemeChoiceChange: (ThemeChoice) -> Unit = { choice ->
+        themeChoice = choice
+        saveThemeChoice(backedPrefs, choice)
     }
     val onAppLanguageChange: (String) -> Unit = { tag ->
         appLanguageTag = tag
@@ -307,7 +309,7 @@ fun MeronApp(
         LocalPlatformServices provides services,
         LocalAvatarCore provides core,
     ) {
-        MeronTheme(appearanceMode = appearanceMode, messageFontScale = state.messageFontScale) {
+        MeronTheme(appearanceMode = themeChoice.resolve(systemDark), messageFontScale = state.messageFontScale) {
             MeronMobileScreenContent(
                 state = state,
                 drawerState = drawerState,
@@ -317,8 +319,9 @@ fun MeronApp(
                 incomingOAuthCallbackUrl = incomingOAuthCallbackUrl,
                 onOAuthCallbackConsumed = onOAuthCallbackConsumed,
                 incomingNotificationThreadTarget = incomingNotificationThreadTarget,
-                appearanceMode = appearanceMode,
-                onAppearanceModeChange = onAppearanceModeChange,
+                themeChoice = themeChoice,
+                systemDark = systemDark,
+                onThemeChoiceChange = onThemeChoiceChange,
                 appLanguageTag = appLanguageTag,
                 onAppLanguageChange = onAppLanguageChange,
                 packageName = mobileHost.packageName,
@@ -366,8 +369,9 @@ private fun MeronMobileScreenContent(
     incomingOAuthCallbackUrl: String?,
     onOAuthCallbackConsumed: () -> Unit,
     incomingNotificationThreadTarget: NotificationThreadTarget?,
-    appearanceMode: AppAppearanceMode,
-    onAppearanceModeChange: (AppAppearanceMode) -> Unit,
+    themeChoice: ThemeChoice,
+    systemDark: Boolean,
+    onThemeChoiceChange: (ThemeChoice) -> Unit,
     appLanguageTag: String,
     onAppLanguageChange: (String) -> Unit,
     packageName: String,
@@ -1275,8 +1279,9 @@ private fun MeronMobileScreenContent(
                     onMoveAccountUp = { account -> moveAccount(account, -1) },
                     onMoveAccountDown = { account -> moveAccount(account, 1) },
                     onRemoveAccount = ::removeAccount,
-                    appearanceMode = appearanceMode,
-                    onAppearanceModeChange = onAppearanceModeChange,
+                    themeChoice = themeChoice,
+                    systemDark = systemDark,
+                    onThemeChoiceChange = onThemeChoiceChange,
                     appLanguageTag = appLanguageTag,
                     onAppLanguageChange = onAppLanguageChange,
                     showSenderImages = showSenderImages,

@@ -891,6 +891,8 @@
   "theme.fields.text": "Texte",
   "theme.fields.textHint": "Couleur principale du texte",
   "theme.light": "Clair",
+  "theme.matchSystem": "Suivre l’apparence du système",
+  "theme.matchSystemHint": "Bascule entre vos thèmes clair et sombre lorsque le système change d’apparence.",
   "theme.namePlaceholder": "Nom du thème",
   "theme.new": "Nouveau thème",
   "theme.pickColor": "Choisir la couleur de {label}",

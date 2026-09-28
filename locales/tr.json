@@ -891,6 +891,8 @@
   "theme.fields.text": "Metin",
   "theme.fields.textHint": "Birincil metin rengi",
   "theme.light": "Açık",
+  "theme.matchSystem": "Sistem görünümüne uy",
+  "theme.matchSystemHint": "Sistem değiştiğinde seçtiğiniz açık ve koyu tema arasında geçiş yapar.",
   "theme.namePlaceholder": "Tema adı",
   "theme.new": "Yeni tema",
   "theme.pickColor": "{label} rengini seç",

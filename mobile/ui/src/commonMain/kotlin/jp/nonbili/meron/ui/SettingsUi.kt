@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -134,8 +135,9 @@ internal fun SettingsScreen(
     onMoveAccountUp: (AccountSummary) -> Unit,
     onMoveAccountDown: (AccountSummary) -> Unit,
     onRemoveAccount: (AccountSummary) -> Unit,
-    appearanceMode: AppAppearanceMode,
-    onAppearanceModeChange: (AppAppearanceMode) -> Unit,
+    themeChoice: ThemeChoice,
+    systemDark: Boolean,
+    onThemeChoiceChange: (ThemeChoice) -> Unit,
     appLanguageTag: String,
     onAppLanguageChange: (String) -> Unit,
     showSenderImages: Boolean,
@@ -236,8 +238,9 @@ internal fun SettingsScreen(
     }
     if (showThemePicker) {
         ThemePickerDialog(
-            current = appearanceMode,
-            onSelect = onAppearanceModeChange,
+            choice = themeChoice,
+            systemDark = systemDark,
+            onChange = onThemeChoiceChange,
             onDismiss = { showThemePicker = false },
         )
     }
@@ -308,7 +311,8 @@ internal fun SettingsScreen(
         ) {
             composable(SettingsRoutes.General) {
                 SettingsGeneralPage(
-                    appearanceMode = appearanceMode,
+                    themeChoice = themeChoice,
+                    systemDark = systemDark,
                     onOpenTheme = { showThemePicker = true },
                     appLanguageTag = appLanguageTag,
                     onOpenLanguage = { showLanguagePicker = true },
@@ -666,7 +670,8 @@ private object SettingsRoutes {
 // Composer, Sync & notifications, and Storage in one scrollable page.
 @Composable
 internal fun SettingsGeneralPage(
-    appearanceMode: AppAppearanceMode,
+    themeChoice: ThemeChoice,
+    systemDark: Boolean,
     onOpenTheme: () -> Unit,
     appLanguageTag: String,
     onOpenLanguage: () -> Unit,
@@ -718,15 +723,24 @@ internal fun SettingsGeneralPage(
     LazyColumn(modifier.appScrollbar(listState), state = listState) {
         item { SettingsSectionLabel(tr("settings.pages.appearance")) }
         item {
-            val displayedAppearanceMode =
-                if (appearanceMode == AppAppearanceMode.System) AppAppearanceMode.Light else appearanceMode
+            // The preview is what is painted now; while following the system
+            // the label names both picks.
+            val displayedAppearanceMode = themeChoice.resolve(systemDark)
+            val themeLabel =
+                if (themeChoice.followSystem) "${themeChoice.light.label} / ${themeChoice.dark.label}" else displayedAppearanceMode.label
             SettingsRow(
                 icon = Icons.Filled.Visibility,
                 title = tr("common.theme"),
                 onClick = onOpenTheme,
                 trailing = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(displayedAppearanceMode.label, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            themeLabel,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 180.dp),
+                        )
                         Box(
                             Modifier
                                 .width(44.dp)

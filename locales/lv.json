@@ -891,6 +891,8 @@
   "theme.fields.text": "Teksts",
   "theme.fields.textHint": "Galvenā teksta krāsa",
   "theme.light": "Gaišs",
+  "theme.matchSystem": "Sekot sistēmas izskatam",
+  "theme.matchSystemHint": "Pārslēdzas starp izvēlēto gaišo un tumšo motīvu, kad pārslēdzas sistēma.",
   "theme.namePlaceholder": "Motīva nosaukums",
   "theme.new": "Jauns motīvs",
   "theme.pickColor": "Izvēlēties {label} krāsu",

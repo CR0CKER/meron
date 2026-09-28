@@ -39,13 +39,14 @@ class MarkAllReadFolderBadgeTest {
     @Test
     fun aFailedMailboxWritePutsTheDrawerBadgeBack() =
         runBlocking {
-            val core = GatedCore().apply { gate.complete(Unit) }
+            val core = GatedCore()
             core.markAllReadFails = true
             val state = state(core, this)
 
             state.markVisibleMailboxAllRead()
 
             assertEquals(0, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
+            core.gate.complete(Unit)
             waitUntil { state.status.startsWith("Mark all read failed") }
             assertEquals(12, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             assertEquals(12, folderUnread(state.coreFolders, INBOX_FOLDER))
@@ -67,13 +68,14 @@ class MarkAllReadFolderBadgeTest {
     @Test
     fun aFailedColumnWritePutsTheDrawerBadgeBack() =
         runBlocking {
-            val core = GatedCore().apply { gate.complete(Unit) }
+            val core = GatedCore()
             core.markAllReadFails = true
             val state = state(core, this)
 
             state.markKanbanColumnAllRead(KanbanColumnSpec(accountId = "a", folderId = "INBOX"))
 
             assertEquals(0, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
+            core.gate.complete(Unit)
             waitUntil { !state.kanbanMarkingRead }
             assertEquals(12, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             assertEquals(12, folderUnread(state.coreFolders, INBOX_FOLDER))

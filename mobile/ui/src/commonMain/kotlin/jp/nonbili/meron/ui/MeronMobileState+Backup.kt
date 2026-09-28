@@ -160,10 +160,10 @@ internal fun MeronMobileState.importBackup(
                 // language: the host holds those as `remember` values in the
                 // Activity / view controller, so only they need a restart, and
                 // only then is it worth saying so.
-                val needsRestart =
-                    rehydrated.keys.any {
-                        it == settingKeyFor(APPEARANCE_MODE_PREF) || it == settingKeyFor(APP_LANGUAGE_PREF)
-                    }
+                val hostHeldKeys =
+                    listOf(APPEARANCE_MODE_PREF, THEME_FOLLOW_SYSTEM_PREF, LIGHT_THEME_PREF, DARK_THEME_PREF, APP_LANGUAGE_PREF)
+                        .map { settingKeyFor(it) }
+                val needsRestart = rehydrated.keys.any { it in hostHeldKeys }
                 status =
                     when {
                         needsRestart -> {

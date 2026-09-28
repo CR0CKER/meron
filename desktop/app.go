@@ -122,6 +122,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.startMCP()
 	a.setupNotificationListener()
 	a.setupResumeListener()
+	a.setupAppearanceListener()
 }
 
 // onSystemResumed tells the sidecar the host woke from suspend so its IDLE
@@ -162,6 +163,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	a.closeNotificationListener()
 	a.closeResumeListener()
+	a.closeAppearanceListener()
 	if a.logFile != nil {
 		_ = a.logFile.Close()
 	}
@@ -195,6 +197,8 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.mcpSettings(command, payload)
 	case "system.check":
 		return a.systemCheck()
+	case "system.appearance":
+		return a.systemAppearance()
 	case "system.pickImageFile":
 		return a.pickImageFile(payload)
 	case "system.pickFiles":

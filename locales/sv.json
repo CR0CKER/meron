@@ -891,6 +891,8 @@
   "theme.fields.text": "Text",
   "theme.fields.textHint": "Primär textfärg",
   "theme.light": "Ljust",
+  "theme.matchSystem": "Följ systemets utseende",
+  "theme.matchSystemHint": "Växlar mellan ditt valda ljusa och mörka tema när systemet växlar.",
   "theme.namePlaceholder": "Temanamn",
   "theme.new": "Nytt tema",
   "theme.pickColor": "Välj färg för {label}",
