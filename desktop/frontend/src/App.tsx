@@ -12,6 +12,7 @@ import { useAppEffects } from './useAppEffects'
 import { SideNav } from './components/sidenav/SideNav'
 import { ThreadList } from './components/threads/ThreadList'
 import { KanbanView } from './components/kanban/KanbanView'
+import { KanbanConversationPane } from './components/kanban/KanbanConversationPane'
 import { TasksPanel } from './components/tasks/TasksPanel'
 import { MessagePane } from './components/chat/MessagePane'
 import { AboutDialog } from './components/dialog/AboutDialog'
@@ -86,23 +87,18 @@ export default function App() {
           <ErrorBoundary label="conversation">
             <MessagePane />
           </ErrorBoundary>
-        ) : showKanbanMessagePane ? (
-          <div
-            className="relative flex shrink-0 overflow-hidden border-l border-border bg-chat max-[768px]:w-full"
-            style={{ width: `${kanbanPaneWidth}%`, minWidth: 320 }}
+        ) : (
+          <KanbanConversationPane
+            open={showKanbanMessagePane}
+            widthPercent={kanbanPaneWidth}
+            resizeTitle={t('layout.resizeConversation')}
+            onResizeStart={(event) => startKanbanResize(event, mainRef.current)}
           >
-            <div
-              className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1 cursor-col-resize"
-              onPointerDown={(event) => startKanbanResize(event, mainRef.current)}
-              title={t('layout.resizeConversation')}
-            >
-              <div className="mx-auto h-full w-px bg-transparent hover:bg-accent" />
-            </div>
             <ErrorBoundary label="conversation">
               <MessagePane />
             </ErrorBoundary>
-          </div>
-        ) : null}
+          </KanbanConversationPane>
+        )}
 
         {/* Tasks is a panel, not a view: it sits to the right of whatever is
           open so a list can be worked against the thread list beside it. */}
