@@ -29,6 +29,7 @@ type App struct {
 	// close button keeps its long-standing behaviour of hiding to the tray.
 	closeToTray  atomic.Bool
 	quitting     atomic.Bool
+	closing      atomic.Bool
 	windowHidden atomic.Bool
 
 	windowMu        sync.Mutex
@@ -98,6 +99,7 @@ func NewApp() *App {
 
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.quitOnSignal()
 	a.queueStartupMailtoURLs(os.Args[1:])
 	if wailsRuntime.Environment(ctx).BuildType != "dev" {
 		installDesktopEntry()

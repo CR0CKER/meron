@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -164,6 +166,11 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		a.hideMainWindow()
 		return true
 	}
+	// A signal delivers two quits (ours and Wails' own); only the first may
+	// stop the main loop.
+	if a.closing.Swap(true) {
+		return true
+	}
 	a.rememberWindowState(ctx)
 	return false
 }
@@ -176,6 +183,19 @@ func (a *App) quit() {
 	}
 	a.quitting.Store(true)
 	wailsRuntime.Quit(ctx)
+}
+
+// quitOnSignal makes SIGTERM and SIGINT quit for real. Wails turns them into
+// the same quit request as the close button, which close-to-tray would
+// otherwise answer by hiding the window.
+func (a *App) quitOnSignal() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, os.Interrupt)
+	go func() {
+		for range signals {
+			a.quit()
+		}
+	}()
 }
 
 func (a *App) windowSetCloseToTray(payload map[string]any) (any, error) {
