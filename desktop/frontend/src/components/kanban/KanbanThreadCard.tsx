@@ -57,18 +57,23 @@ export function KanbanThreadCard({
     // real account/folder, which the drop resolves as the move's origin.
     data: { type: 'thread', threadId: thread.thread_id, source: column },
   })
-  const active = thread.thread_id === paneThreadId
+  // A starred feed item opens in its own reader tab rather than as the card
+  // conversation, so it reads as selected while that tab is on screen. Its
+  // thread_id is the whole feed's, so match the tab by the item's own id.
+  const activeTab = useValue(compose$.activeTab)
+  const active = starredFeed ? activeTab === thread.id : thread.thread_id === paneThreadId
 
   useEffect(() => {
     if (active) selectedItemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
   // Ctrl/Cmd+click and double-click. Starred feed items are single articles and
-  // open in a reader tab, as their plain click does.
+  // open in a reader tab, as their plain click does. The pane shows for any
+  // active tab, so paneThreadId stays the card conversation behind the tabs:
+  // pointing it at the tab would leave an empty, unclosable Current behind.
   const openInNewTab = () => {
     if (starredFeed) openMessageTab(thread)
     else openThreadTab(thread)
-    kanban$.paneThreadId.set(thread.thread_id)
     kanban$.paneColumnKey.set(kanbanBoardColumnKey(boardId, column))
     ui$.mobilePane.set('conversation')
   }
@@ -115,16 +120,11 @@ export function KanbanThreadCard({
             void openDraftConversationOrCompose(thread)
             return
           }
-          if (starredColumn) {
+          if (starredFeed) {
             // Feed rows carry their full body: open the item in a reader tab.
             // Mail rows are ordinary threads and open like any other card.
-            if (isRssAccount(account, thread.account_id)) {
-              openMessageTab(thread)
-              kanban$.paneThreadId.set(thread.thread_id)
-              kanban$.paneColumnKey.set(kanbanBoardColumnKey(boardId, column))
-              ui$.mobilePane.set('conversation')
-              return
-            }
+            openInNewTab()
+            return
           }
           focusKanbanThreadFolder(thread.folder_id)
           // Leave any open compose/reader/thread tab first so the selectedThread

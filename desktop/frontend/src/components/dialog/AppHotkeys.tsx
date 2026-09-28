@@ -17,6 +17,7 @@ import {
   closeKanbanBoard,
   openMailAccount,
   closeKanbanPane,
+  kanbanPaneThreadId,
 } from '../../states/kanban'
 import { openThreadSearch, thread$ } from '../../states/thread'
 import { syncMail, selectAdjacentThread } from '../../states/mail'
@@ -44,7 +45,7 @@ import {
 // Whether the conversation pane (and thus its in-thread search) is on screen.
 function threadSearchVisible(): boolean {
   if (!ui$.selectedThread.peek()) return false
-  return !kanban$.activeBoardId.peek() || !!kanban$.paneThreadId.peek()
+  return !kanban$.activeBoardId.peek() || !!kanbanPaneThreadId()
 }
 
 // Is the user currently typing into a field? Bare single-key shortcuts must
@@ -82,12 +83,11 @@ function chatArrowNavigationActive(): boolean {
   return !kanban$.activeBoardId.peek() && !modalOpen()
 }
 
-// The thread a bare action applies to. On a board the open card wins: an RSS
-// card opens in a reader tab without retargeting ui$.selectedThread, which would
-// otherwise leave a stale chat-list selection as the target. Same precedence as
-// selectAdjacentKanbanThread.
+// The thread a bare action applies to. On a board it's the one the pane shows:
+// an RSS card opens in a reader tab without retargeting ui$.selectedThread,
+// which would otherwise leave a stale chat-list selection as the target.
 function activeThreadId(): string {
-  if (kanban$.activeBoardId.peek()) return kanban$.paneThreadId.peek() || ui$.selectedThread.peek()
+  if (kanban$.activeBoardId.peek()) return kanbanPaneThreadId() || ui$.selectedThread.peek()
   return ui$.selectedThread.peek()
 }
 

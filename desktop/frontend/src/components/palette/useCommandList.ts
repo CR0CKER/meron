@@ -34,6 +34,7 @@ import {
   closeKanbanBoard,
   createKanbanBoard,
   kanban$,
+  kanbanPaneThreadId,
   markBoardAllRead,
   openMailAccount,
   selectKanbanBoard,
@@ -116,7 +117,7 @@ export function useCommandList(): Command[] {
         keywords: 'find conversation in',
         shortcut: 'search.thread',
         run: run(() => {
-          const visible = !!selectedThread && (!activeBoardId || !!kanban$.paneThreadId.peek())
+          const visible = !!selectedThread && (!activeBoardId || !!kanbanPaneThreadId())
           if (visible) thread$.searchOpen.set(true)
           else focusGlobalSearch()
         }),
@@ -217,7 +218,7 @@ export function useCommandList(): Command[] {
     ]
 
     // Actions on the open conversation — only when one is on screen.
-    if (selectedThread && (!activeBoardId || !!kanban$.paneThreadId.peek())) {
+    if (selectedThread && (!activeBoardId || !!kanbanPaneThreadId())) {
       list.push(
         {
           id: 'reply.focus',

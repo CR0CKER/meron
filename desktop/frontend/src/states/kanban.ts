@@ -57,7 +57,10 @@ export const kanban$ = observable({
   searchQuery: '',
   searchScope: 'all',
   movingThread: '',
+  // The card conversation in the pane, behind any tabs (see kanbanPaneThreadId).
   paneThreadId: '',
+  // The column of the card last opened, as a conversation or in a tab: j/k
+  // steps through it first.
   paneColumnKey: '',
 })
 
@@ -92,6 +95,17 @@ export function selectKanbanBoard(boardId: string) {
   kanban$.paneThreadId.set('')
   kanban$.paneColumnKey.set('')
   kanban$.activeBoardId.set(boardId)
+}
+
+// The thread the board's conversation pane is showing: an active thread or
+// reader tab's own thread, else the card conversation behind the tabs. Tabs
+// opened from a card leave paneThreadId alone, so it alone would point
+// shortcuts at the wrong thread, or at none when the pane was closed.
+export function kanbanPaneThreadId(): string {
+  const activeTab = compose$.activeTab.peek()
+  const tab = compose$.tabs.peek().find((item) => item.id === activeTab)
+  if (tab && tab.kind !== 'compose') return tab.threadId
+  return kanban$.paneThreadId.peek()
 }
 
 // Close the conversation a card opened in the pane. The pane itself only goes
@@ -658,11 +672,11 @@ export async function markBoardAllRead(boardId: string) {
 }
 
 // Open a card the keyboard moved onto, the same way clicking it would. Feed
-// rows in the starred column carry their full body and live in a reader tab;
-// everything else opens in the conversation pane, which means dropping any
-// reader tab a previous card left behind — MessagePane renders the active tab
-// over the conversation, so the old item would otherwise stay on screen while
-// only the card highlight moved.
+// rows in the starred column carry their full body and live in a reader tab,
+// leaving the card conversation behind the tabs alone; everything else opens in
+// the conversation pane, which means dropping any tab on screen — MessagePane
+// renders the active tab over the conversation, so the old item would otherwise
+// stay on screen while only the card highlight moved.
 function openAdjacentKanbanCard(thread: Message, column: KanbanColumn, boardKey: string) {
   if (
     isUnifiedStarredColumn(column) &&
@@ -676,16 +690,25 @@ function openAdjacentKanbanCard(thread: Message, column: KanbanColumn, boardKey:
     focusKanbanThreadFolder(thread.folder_id)
     compose$.activeTab.set('')
     ui$.selectedThread.set(thread.thread_id)
+    kanban$.paneThreadId.set(thread.thread_id)
   }
-  kanban$.paneThreadId.set(thread.thread_id)
   kanban$.paneColumnKey.set(boardKey)
   ui$.mobilePane.set('conversation')
 }
 
 // Move the open kanban conversation through the visible cards in its current
 // column. This mirrors chat-list adjacent navigation but uses the active board.
+// It starts from whatever the pane shows, a tab included.
 export function selectAdjacentKanbanThread(delta: number) {
-  const selected = kanban$.paneThreadId.get() || ui$.selectedThread.get()
+  const selected = kanbanPaneThreadId() || ui$.selectedThread.get()
+  // Items of one feed share a thread_id, so a reader tab's card is found by
+  // the item's own id first.
+  const activeTab = compose$.activeTab.get()
+  const selectedId = compose$.tabs.get().find((tab) => tab.id === activeTab && tab.kind === 'reader')?.messageId
+  const indexOfSelected = (list: Message[]) => {
+    const byId = selectedId ? list.findIndex((thread) => thread.id === selectedId) : -1
+    return byId !== -1 ? byId : list.findIndex((thread) => thread.thread_id === selected)
+  }
   const boardId = kanban$.activeBoardId.get()
   const columns = getKanbanColumns(boardId)
   const allThreads = kanban$.threads.get()
@@ -714,12 +737,12 @@ export function selectAdjacentKanbanThread(delta: number) {
     }
     if (!selected || !rawThreads.some((thread) => thread.thread_id === selected)) continue
 
-    const current = list.findIndex((thread) => thread.thread_id === selected)
+    const current = indexOfSelected(list)
     if (current === -1) continue
 
     const next = Math.min(list.length - 1, Math.max(0, current + delta))
     const target = list[next]
-    if (!target || target.thread_id === selected) return
+    if (!target || next === current) return
 
     openAdjacentKanbanCard(target, column, boardKey)
     return

@@ -505,8 +505,9 @@ function KanbanColumnContent({
           onOpenThread={(threadId) => {
             const thread = threads.find((item) => item.thread_id === threadId)
             if (!thread) return
+            // Leave paneThreadId on the card conversation behind the tabs (see
+            // KanbanThreadCard's openInNewTab).
             openThreadTab(thread)
-            kanban$.paneThreadId.set(threadId)
             kanban$.paneColumnKey.set(boardKey)
           }}
           onAfterAction={(action, _threadId, detail) => {
