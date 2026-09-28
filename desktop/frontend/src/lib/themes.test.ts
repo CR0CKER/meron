@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { isValidColor, luminance } from './color'
 import {
   BUILTIN_THEMES,
@@ -194,7 +195,7 @@ describe('theme coverage', () => {
   // dark theme. Surfaces must come from the token utilities (bg-header, ...).
   it('components take colors from theme tokens, not hard-coded hex values', () => {
     const offenders: string[] = []
-    for (const file of new Bun.Glob('components/**/*.tsx').scanSync(new URL('..', import.meta.url).pathname)) {
+    for (const file of new Bun.Glob('components/**/*.tsx').scanSync(fileURLToPath(new URL('..', import.meta.url)))) {
       if (file.endsWith('.test.tsx')) continue
       const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
       for (const match of source.matchAll(/[\w:/-]*-\[#[0-9a-f]{3,8}\][\w/]*/gi)) {
