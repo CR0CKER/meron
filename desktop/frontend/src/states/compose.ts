@@ -878,6 +878,21 @@ export async function closeMessageTab(id: string) {
   })
 }
 
+// Close several tabs at once (the tab strip's close others/left/right/all).
+// Compose tabs are skipped: closing one discards its draft, which a bulk close
+// must never do behind the user's back.
+export function closeMessageTabs(ids: string[]) {
+  const wanted = new Set(ids)
+  const closing = compose$.tabs
+    .get()
+    .filter((tab) => wanted.has(tab.id) && tab.kind !== 'compose')
+    .map((tab) => tab.id)
+  // Close the active tab last, so it falls back to a tab that stays open.
+  const active = compose$.activeTab.get()
+  for (const id of closing) if (id !== active) finishClosingMessageTab(id)
+  if (closing.includes(active)) finishClosingMessageTab(active)
+}
+
 // Reveal a message's remote content in the conversation and on any reader tab
 // already open for it. The tab needs its own copy because `resetThreadView`
 // clears the conversation's reveal map on the next thread switch while the tab

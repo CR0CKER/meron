@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, SquarePen, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
-import { closeMessageTab, activateConversationTab } from '../../states/compose'
+import { closeMessageTab, closeMessageTabs, activateConversationTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
 import { kanban$ } from '../../states/kanban'
 import { ui$ } from '../../states/ui'
+import type { MessageTab } from '../../types'
+import { FloatingContextMenu } from '../menu/FloatingContextMenu'
+import { MenuItem } from '../menu/MenuItem'
 
 // A wheel line or page in pixels, for devices that report deltas in those
 // units (deltaMode 1 and 2) rather than pixels.
@@ -92,6 +95,8 @@ export function ConversationTabs() {
     }
   }, [hasTabs, tabs.length, hasCurrentConversation])
 
+  const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+
   if (!hasTabs) return null
 
   return (
@@ -131,6 +136,10 @@ export function ConversationTabs() {
                 ? 'border-accent text-accent'
                 : 'border-transparent text-secondary hover:text-primary'
             }`}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setMenu({ x: event.clientX, y: event.clientY, tabId: tab.id })
+            }}
             title={tab.subject}
           >
             {tab.kind === 'thread' && <MessageSquare size={12} className="shrink-0" />}
@@ -149,6 +158,69 @@ export function ConversationTabs() {
           </div>
         ))}
       </div>
+      {menu && <TabContextMenu {...menu} tabs={tabs} onClose={() => setMenu(null)} />}
     </div>
+  )
+}
+
+// Right-click menu for a tab. The bulk entries skip compose tabs (see
+// closeMessageTabs) and are disabled when that leaves nothing to close.
+function TabContextMenu({
+  x,
+  y,
+  tabId,
+  tabs,
+  onClose,
+}: {
+  x: number
+  y: number
+  tabId: string
+  tabs: MessageTab[]
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const index = tabs.findIndex((tab) => tab.id === tabId)
+  if (index === -1) return null
+  const ids = (list: MessageTab[]) => list.filter((tab) => tab.kind !== 'compose').map((tab) => tab.id)
+  const bulk = [
+    { label: t('chat.closeOtherTabs'), ids: ids(tabs.filter((tab) => tab.id !== tabId)) },
+    { label: t('chat.closeTabsToLeft'), ids: ids(tabs.slice(0, index)) },
+    { label: t('chat.closeTabsToRight'), ids: ids(tabs.slice(index + 1)) },
+    { label: t('chat.closeAllTabs'), ids: ids(tabs) },
+  ]
+
+  return (
+    <FloatingContextMenu
+      x={x}
+      y={y}
+      offset={4}
+      onClose={onClose}
+      overlay
+      className="fixed z-50 min-w-[176px] rounded-xl border border-border bg-chats p-1 shadow-2xl animate-fade-in text-primary"
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+    >
+      <MenuItem
+        label={t('chat.closeTab')}
+        onClick={() => {
+          onClose()
+          void closeMessageTab(tabId)
+        }}
+      />
+      {bulk.map((item) => (
+        <MenuItem
+          key={item.label}
+          label={item.label}
+          className="disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={item.ids.length === 0}
+          onClick={() => {
+            onClose()
+            closeMessageTabs(item.ids)
+          }}
+        />
+      ))}
+    </FloatingContextMenu>
   )
 }

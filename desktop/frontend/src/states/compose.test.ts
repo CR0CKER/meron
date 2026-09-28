@@ -3,6 +3,7 @@ import type { Message, MessageTab } from '../types'
 import {
   activateConversationTab,
   closeMessageTab,
+  closeMessageTabs,
   draftShouldOpenConversation,
   openDraftCompose,
   openDraftConversationOrCompose,
@@ -456,6 +457,20 @@ describe('tab navigation', () => {
     expect(compose$.activeTab.get()).toBe('')
     expect(ui$.selectedThread.get()).toBe('t-current')
     expect(compose$.tabs.get()).toHaveLength(0)
+  })
+
+  it('bulk-closes thread and reader tabs but keeps compose tabs and their drafts', () => {
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message({ thread_id: 't-2', id: 'm2' }))
+    const composeId = openComposeTab({ subject: 'Unsent' })!
+    openMessageTab(message({ id: 'msg-x', thread_id: 't-3' }))
+    openThreadTab(message({ thread_id: 't-4', id: 'm4' }))
+
+    closeMessageTabs(compose$.tabs.get().map((tab) => tab.id))
+    expect(compose$.tabs.get().map((tab) => tab.id)).toEqual([composeId])
+    // The active tab closes last, so it lands on the compose tab still open
+    // rather than on a tab that was about to go.
+    expect(compose$.activeTab.get()).toBe(composeId)
   })
 })
 
