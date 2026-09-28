@@ -144,7 +144,15 @@ export function MessageRow({
         >
           {outgoing && recipientSummary ? t('chat.toRecipients', { recipients: recipientSummary }) : senderName}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-secondary/80">{collapsedPreview(message)}</span>
+        {/* Every item in a feed thread comes from the same feed, so the title is
+            what tells the collapsed rows apart. */}
+        {isRSS && message.subject ? (
+          <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-primary">{message.subject}</span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-secondary/80">
+            {collapsedPreview(message)}
+          </span>
+        )}
         <div className="flex shrink-0 items-center gap-1.5 text-[0.65625rem] text-secondary/80">
           {draftBadge}
           {message.has_attachments && <Paperclip size={12} />}

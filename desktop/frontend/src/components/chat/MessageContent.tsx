@@ -35,6 +35,14 @@ export function MessageContent({
 
   return (
     <>
+      {/* A feed thread is the whole feed, and every header above names the
+          feed, so the item's own title only shows here. Mirrors mobile. */}
+      {view.isRSS && message.subject && (
+        <h3 className="mb-1.5 font-message text-[calc(1rem*var(--me-message-scale))] leading-snug font-semibold break-words select-text">
+          {message.subject}
+        </h3>
+      )}
+
       {/* Image attachments */}
       {bubbleAttachmentImages.length > 0 &&
         (() => {
