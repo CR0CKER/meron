@@ -15,6 +15,7 @@ export function ThreadListItem({
   selectedThread,
   active,
   onSelect,
+  onOpenInNewTab,
   onContextMenu,
   draggable,
   onDragStart,
@@ -31,6 +32,8 @@ export function ThreadListItem({
   selectedThread: string
   active?: boolean
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void
+  // Double-click opens the row in its own tab (single click previews it).
+  onOpenInNewTab?: () => void
   onContextMenu?: (event: MouseEvent) => void
   draggable?: boolean
   onDragStart?: (event: DragEvent<HTMLDivElement>) => void
@@ -79,6 +82,7 @@ export function ThreadListItem({
                 : 'bg-chats hover:bg-hover text-primary',
         )}
         onClick={onSelect}
+        onDoubleClick={onOpenInNewTab}
         onContextMenu={onContextMenu}
         title={threadTitle}
       >

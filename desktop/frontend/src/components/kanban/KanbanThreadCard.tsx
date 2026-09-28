@@ -3,8 +3,8 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useValue } from '@legendapp/state/react'
 import { accounts$ } from '../../states/accounts'
-import { toggleBulkSelection, ui$, type BulkSelectionItem } from '../../states/ui'
-import { openMessageTab, openDraftConversationOrCompose } from '../../states/compose'
+import { ui$ } from '../../states/ui'
+import { openMessageTab, openDraftConversationOrCompose, openThreadTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
 import { isDraftFolder } from '../../states/mailFolders'
 import { thread$ } from '../../states/thread'
@@ -27,7 +27,6 @@ export function KanbanThreadCard({
   onBulkRangeSelect,
   onBulkModeSelect,
   onBulkPlainSelect,
-  bulkItem,
 }: {
   boardId: string
   thread: Message
@@ -41,7 +40,6 @@ export function KanbanThreadCard({
   onBulkRangeSelect?: () => void
   onBulkModeSelect?: () => void
   onBulkPlainSelect?: () => void
-  bulkItem?: BulkSelectionItem
 }) {
   const accounts = useValue(accounts$)
   // Highlight is keyed off the open pane, not ui$.selectedThread, so a card can
@@ -65,6 +63,16 @@ export function KanbanThreadCard({
     if (active) selectedItemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
+  // Ctrl/Cmd+click and double-click. Starred feed items are single articles and
+  // open in a reader tab, as their plain click does.
+  const openInNewTab = () => {
+    if (starredFeed) openMessageTab(thread)
+    else openThreadTab(thread)
+    kanban$.paneThreadId.set(thread.thread_id)
+    kanban$.paneColumnKey.set(kanbanBoardColumnKey(boardId, column))
+    ui$.mobilePane.set('conversation')
+  }
+
   const style = {
     transform: transform && !isDragging ? CSS.Translate.toString(transform) : undefined,
     opacity: isDragging ? 0.18 : movingThread === thread.thread_id ? 0.55 : undefined,
@@ -85,8 +93,8 @@ export function KanbanThreadCard({
         bulkSelectable={bulkSelectable}
         bulkSelected={bulkSelected}
         onSelect={(event) => {
-          if (bulkEnabled && bulkItem && (event.metaKey || event.ctrlKey)) {
-            toggleBulkSelection(bulkItem)
+          if (!bulkSelectable && (event.metaKey || event.ctrlKey)) {
+            openInNewTab()
             return
           }
           if (bulkEnabled && event.shiftKey) {
@@ -126,6 +134,11 @@ export function KanbanThreadCard({
           kanban$.paneThreadId.set(thread.thread_id)
           kanban$.paneColumnKey.set(kanbanBoardColumnKey(boardId, column))
           ui$.mobilePane.set('conversation')
+        }}
+        onOpenInNewTab={() => {
+          // A draft's first click already resumed it in the composer.
+          if (bulkSelectable || isDraftFolder(thread.folder_id, thread.account_id)) return
+          openInNewTab()
         }}
         onContextMenu={(event) => {
           if (bulkSelectable) {

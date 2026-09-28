@@ -213,6 +213,23 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
     }
   }
 
+  // Ctrl/Cmd+click and double-click. Starred feed rows are single articles, so
+  // they open in a reader tab, as their plain click does.
+  const openInNewTab = (thread: (typeof filteredThreads)[number]) => {
+    if (
+      isStarredView &&
+      isRssAccount(
+        accounts.find((acc) => acc.id === thread.account_id),
+        thread.account_id,
+      )
+    ) {
+      openMessageTab(thread)
+      ui$.mobilePane.set('conversation')
+      return
+    }
+    openThreadTab(thread)
+  }
+
   const selectRangeTo = (target: BulkSelectionItem) => {
     const anchor = ui$.bulkAnchorKey.peek()
     const rows = filteredThreads.map(bulkItemFor)
@@ -458,8 +475,8 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                   bulkSelectable={desktopBulk && bulkInThisList}
                   bulkSelected={!!bulkSelection[bulkItem.key]}
                   onSelect={(event) => {
-                    if (desktopBulk && (event.metaKey || event.ctrlKey)) {
-                      toggleBulkSelection(bulkItem)
+                    if (!bulkInThisList && (event.metaKey || event.ctrlKey)) {
+                      openInNewTab(thread)
                       return
                     }
                     if (desktopBulk && event.shiftKey) {
@@ -493,6 +510,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                     compose$.activeTab.set('')
                     ui$.selectedThread.set(thread.thread_id)
                     ui$.mobilePane.set('conversation')
+                  }}
+                  onOpenInNewTab={() => {
+                    // A draft's first click already resumed it in the composer.
+                    if (bulkInThisList || isDraftFolder(thread.folder_id, thread.account_id)) return
+                    openInNewTab(thread)
                   }}
                   onContextMenu={(event) => {
                     if (bulkInThisList) {

@@ -472,7 +472,6 @@ function KanbanColumnContent({
                   onBulkRangeSelect={() => selectRangeTo(bulkItem)}
                   onBulkModeSelect={() => toggleBulkSelection(bulkItem)}
                   onBulkPlainSelect={() => clearBulkSelection()}
-                  bulkItem={bulkItem}
                 />
               )
             })}
