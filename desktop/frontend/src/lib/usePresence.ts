@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export type PresencePhase = 'closed' | 'entering' | 'open' | 'exiting'
 
@@ -12,28 +12,28 @@ function prefersReducedMotion() {
  * close animation plays. Timers rather than `animationend`: a phase can never
  * get stuck when no animation runs (reduced motion, a hidden window). What is
  * already open at mount starts settled — only changes animate.
+ *
+ * The phase is derived during render from the last `open` seen, so the render
+ * that flips `open` already carries the new phase, and StrictMode's doubled
+ * mount effects cannot replay an animation.
  */
 export function usePresence(open: boolean, ms: number): PresencePhase {
-  const [phase, setPhase] = useState<PresencePhase>(open ? 'open' : 'closed')
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const first = useRef(true)
+  const [state, setState] = useState(() => ({ open, phase: (open ? 'open' : 'closed') as PresencePhase }))
+
+  let phase = state.phase
+  if (state.open !== open) {
+    phase = prefersReducedMotion() ? (open ? 'open' : 'closed') : open ? 'entering' : 'exiting'
+    setState({ open, phase })
+  }
 
   useEffect(() => {
-    if (first.current) {
-      first.current = false
-      return
-    }
-    if (timer.current) clearTimeout(timer.current)
-    if (prefersReducedMotion()) {
-      setPhase(open ? 'open' : 'closed')
-      return
-    }
-    setPhase(open ? 'entering' : 'exiting')
-    timer.current = setTimeout(() => setPhase(open ? 'open' : 'closed'), ms)
-    return () => {
-      if (timer.current) clearTimeout(timer.current)
-    }
-  }, [open, ms])
+    if (phase !== 'entering' && phase !== 'exiting') return
+    const timer = setTimeout(
+      () => setState((s) => (s.open === open ? { open, phase: open ? 'open' : 'closed' } : s)),
+      ms,
+    )
+    return () => clearTimeout(timer)
+  }, [phase, open, ms])
 
   return phase
 }

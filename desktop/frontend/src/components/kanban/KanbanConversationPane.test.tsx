@@ -8,6 +8,8 @@ const pane = (open: boolean) => (
   </KanbanConversationPane>
 )
 
+const originalMatchMedia = (globalThis as any).matchMedia
+
 describe('KanbanConversationPane', () => {
   beforeEach(() => {
     jest.useFakeTimers()
@@ -21,6 +23,7 @@ describe('KanbanConversationPane', () => {
   afterEach(() => {
     cleanup()
     jest.useRealTimers()
+    ;(globalThis as any).matchMedia = originalMatchMedia
   })
 
   const root = (view: ReturnType<typeof render>) =>
@@ -44,7 +47,19 @@ describe('KanbanConversationPane', () => {
 
   it('collapses as an empty pane, then unmounts', () => {
     const view = render(pane(true))
-    view.rerender(pane(false))
+    let renderedWhileClosed = false
+    const Probe = () => {
+      renderedWhileClosed = true
+      return null
+    }
+    view.rerender(
+      <KanbanConversationPane open={false} widthPercent={40} resizeTitle="Resize" onResizeStart={() => {}}>
+        <Probe />
+      </KanbanConversationPane>,
+    )
+    // The render that closes the pane already drops its content, so the
+    // cleared conversation's empty state never paints.
+    expect(renderedWhileClosed).toBe(false)
     expect(root(view)?.dataset.panePhase).toBe('exiting')
     expect(root(view)?.className).toContain('animate-pane-close')
     // The closed conversation has already been cleared from state; the pane

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { StrictMode } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { usePresence } from './usePresence'
 
@@ -10,6 +11,8 @@ const setReducedMotion = (reduce: boolean) => {
   })
 }
 
+const originalMatchMedia = (globalThis as any).matchMedia
+
 describe('usePresence', () => {
   beforeEach(() => {
     jest.useFakeTimers()
@@ -18,6 +21,7 @@ describe('usePresence', () => {
 
   afterEach(() => {
     jest.useRealTimers()
+    ;(globalThis as any).matchMedia = originalMatchMedia
   })
 
   const advance = (ms: number) =>
@@ -28,6 +32,16 @@ describe('usePresence', () => {
   it('starts settled, without animating what is already open at mount', () => {
     expect(renderHook(() => usePresence(true, 200)).result.current).toBe('open')
     expect(renderHook(() => usePresence(false, 200)).result.current).toBe('closed')
+  })
+
+  it('does not animate at mount under StrictMode', () => {
+    const closed = renderHook(() => usePresence(false, 200), { wrapper: StrictMode })
+    expect(closed.result.current).toBe('closed')
+    const open = renderHook(() => usePresence(true, 200), { wrapper: StrictMode })
+    expect(open.result.current).toBe('open')
+    advance(200)
+    expect(closed.result.current).toBe('closed')
+    expect(open.result.current).toBe('open')
   })
 
   it('enters, then settles open after the duration', () => {

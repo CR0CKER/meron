@@ -5,8 +5,9 @@ import { usePresence } from '../../lib/usePresence'
 export const PANE_ANIMATION_MS = 200
 
 // The board's conversation pane. It slides open by growing from zero width
-// while its content keeps the final width (`cqw` of <main>, the size
-// container), so the conversation — HTML frames that measure their own height
+// while its content keeps the final width (`vw`, since <main> spans the
+// window; a size container on <main> would trap its fixed-position menus and
+// dialogs), so the conversation — HTML frames that measure their own height
 // included — is laid out once and revealed rather than reflowed every frame.
 // Closing clears the conversation from state before the pane goes, so the
 // pane collapses as an empty panel instead of sliding out an empty-state view.
@@ -32,7 +33,7 @@ export function KanbanConversationPane({
   return (
     <div
       data-pane-phase={phase}
-      className={`relative flex shrink-0 overflow-hidden border-l border-border bg-chat max-[768px]:w-full${animation}`}
+      className={`relative flex shrink-0 overflow-hidden border-l border-border bg-chat${animation}`}
       style={{ width }}
     >
       {phase !== 'exiting' && (
@@ -44,7 +45,7 @@ export function KanbanConversationPane({
           >
             <div className="mx-auto h-full w-px bg-transparent hover:bg-accent" />
           </div>
-          <div className="flex h-full shrink-0" style={{ width: `max(320px, ${widthPercent}cqw)` }}>
+          <div className="flex h-full shrink-0" style={{ width: `max(320px, ${widthPercent}vw)` }}>
             {children}
           </div>
         </>

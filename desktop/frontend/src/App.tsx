@@ -72,7 +72,7 @@ export default function App() {
       <MacTitleBar />
       <ConnectivityBanner />
       <UpdateBanner />
-      <main ref={mainRef} className="@container flex min-h-0 w-full flex-1 overflow-hidden">
+      <main ref={mainRef} className="flex min-h-0 w-full flex-1 overflow-hidden">
         <ErrorBoundary label="side navigation">
           <SideNav />
         </ErrorBoundary>
