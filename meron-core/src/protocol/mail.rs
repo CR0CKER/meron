@@ -1648,7 +1648,7 @@ pub(crate) fn mark_mobile_folder_all_read(data_dir: &str, params: &Value) -> Res
                 return Err(format!("account needs reconnect: {account_id}"));
             }
             let select_folder = folder.clone();
-            crate::ffi::engine_block_on(engine.with_preflighted_write_session(
+            crate::ffi::engine_block_on(engine.with_flag_write_session(
                 &account_id,
                 move |session| {
                     let folder = select_folder.clone();

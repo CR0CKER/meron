@@ -137,22 +137,47 @@ pub async fn organize(engine: &Arc<Engine>, value: Value) -> Result<Value> {
         "Unknown organization action"
     );
     let account = input.account.clone();
-    let target = engine
-        .with_write_session(&account, |session| {
-            let input = input.clone();
-            Box::pin(async move {
-                match input.action.as_str() {
-                    "mark_read" | "mark_unread" => {
-                        imap::prepare_flag_update(session, &input.folder).await?;
-                        imap::store_seen(session, &input.uids, input.action == "mark_read").await?;
-                        Ok(None)
-                    }
-                    "star" | "unstar" => {
-                        imap::prepare_flag_update(session, &input.folder).await?;
-                        imap::store_starred(session, &input.uids, input.action == "star").await?;
-                        Ok(None)
-                    }
-                    _ => {
+    let target = match input.action.as_str() {
+        "mark_read" | "mark_unread" | "star" | "unstar" => {
+            engine
+                .with_flag_write_session(
+                    &account,
+                    |session| {
+                        let folder = input.folder.clone();
+                        Box::pin(async move { imap::prepare_flag_update(session, &folder).await })
+                    },
+                    |session| {
+                        let input = input.clone();
+                        Box::pin(async move {
+                            match input.action.as_str() {
+                                "mark_read" | "mark_unread" => {
+                                    imap::store_seen(
+                                        session,
+                                        &input.uids,
+                                        input.action == "mark_read",
+                                    )
+                                    .await
+                                }
+                                _ => {
+                                    imap::store_starred(
+                                        session,
+                                        &input.uids,
+                                        input.action == "star",
+                                    )
+                                    .await
+                                }
+                            }
+                        })
+                    },
+                )
+                .await?;
+            None
+        }
+        _ => {
+            engine
+                .with_write_session(&account, |session| {
+                    let input = input.clone();
+                    Box::pin(async move {
                         let target = match input.action.as_str() {
                             "archive" => imap::find_archive_folder(session)
                                 .await?
@@ -170,11 +195,11 @@ pub async fn organize(engine: &Arc<Engine>, value: Value) -> Result<Value> {
                         imap::move_to_folder_checked(session, &input.folder, &target, &input.uids)
                             .await?;
                         Ok(Some(target))
-                    }
-                }
-            })
-        })
-        .await?;
+                    })
+                })
+                .await?
+        }
+    };
     if target.is_none() {
         let db = engine.db.lock().unwrap();
         let seen = match input.action.as_str() {

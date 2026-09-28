@@ -552,7 +552,7 @@ pub(crate) async fn dispatch(
 
             if !uids.is_empty() {
                 engine
-                    .with_preflighted_write_session(
+                    .with_flag_write_session(
                         &account,
                         |session| {
                             let folder = folder.clone();

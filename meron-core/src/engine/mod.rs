@@ -407,14 +407,21 @@ impl Engine {
     }
 
     /// Pop the hottest non-expired pooled session for `account`, discarding any
-    /// that have been idle past `MAX_IDLE` (likely dropped by the server).
+    /// that have been idle past `MAX_IDLE` or whose socket the server has
+    /// already closed.
     pub fn take_pooled(&self, account: &str) -> Option<imap::Session> {
-        pool_take(
-            &mut self.pool.lock().unwrap(),
-            account,
-            std::time::Instant::now(),
-            MAX_IDLE,
-        )
+        loop {
+            let session = pool_take(
+                &mut self.pool.lock().unwrap(),
+                account,
+                std::time::Instant::now(),
+                MAX_IDLE,
+            )?;
+            if imap::session_looks_open(&session) {
+                return Some(session);
+            }
+            pool_debug(account, "closed-evict");
+        }
     }
 
     /// Return a healthy session to the pool, or drop it if the account is
@@ -616,6 +623,40 @@ impl Engine {
     pub async fn with_preflighted_write_session<T, P, F>(
         &self,
         account: &str,
+        preflight: P,
+        f: F,
+    ) -> anyhow::Result<T>
+    where
+        P: FnMut(&mut imap::Session) -> SessionOp<'_, ()> + Send,
+        F: FnMut(&mut imap::Session) -> SessionOp<'_, T> + Send,
+        T: Send,
+    {
+        self.preflighted_write(account, false, preflight, f).await
+    }
+
+    /// Like [`with_preflighted_write_session`](Self::with_preflighted_write_session),
+    /// for idempotent writes such as `+FLAGS`/`-FLAGS` stores. The server can
+    /// close a pooled connection between the preflight and the write, so when
+    /// the write fails on a pooled session with a dropped connection it is run
+    /// again, preflight included, on a fresh one. Applying it twice is harmless.
+    pub async fn with_flag_write_session<T, P, F>(
+        &self,
+        account: &str,
+        preflight: P,
+        f: F,
+    ) -> anyhow::Result<T>
+    where
+        P: FnMut(&mut imap::Session) -> SessionOp<'_, ()> + Send,
+        F: FnMut(&mut imap::Session) -> SessionOp<'_, T> + Send,
+        T: Send,
+    {
+        self.preflighted_write(account, true, preflight, f).await
+    }
+
+    async fn preflighted_write<T, P, F>(
+        &self,
+        account: &str,
+        replay_dropped: bool,
         mut preflight: P,
         mut f: F,
     ) -> anyhow::Result<T>
@@ -624,6 +665,17 @@ impl Engine {
         F: FnMut(&mut imap::Session) -> SessionOp<'_, T> + Send,
         T: Send,
     {
+        let replay = |err: &anyhow::Error| {
+            let dropped = replay_dropped && background_sync::is_transient_sync_error(err);
+            if dropped {
+                crate::mlog!(
+                    crate::log::Level::Warn,
+                    "net",
+                    "pooled connection dropped during write for {account}, replaying on a fresh one: {err:#}"
+                );
+            }
+            dropped
+        };
         if let Some(mut session) = self.take_pooled(account) {
             let ready =
                 match tokio::time::timeout(POOLED_READ_TIMEOUT, preflight(&mut session)).await {
@@ -644,9 +696,13 @@ impl Engine {
                         }
                         Err(err) => {
                             // The mutation may have reached the server. Drop
-                            // the connection and report the result as-is.
+                            // the connection, and report the result as-is
+                            // unless the write is safe to replay.
                             drop(session);
-                            return Err(err);
+                            if !replay(&err) {
+                                return Err(err);
+                            }
+                            pool_debug(account, "stale-replay");
                         }
                     }
                 }
@@ -691,7 +747,19 @@ impl Engine {
                             self.return_pooled(account, session);
                             return Ok(value);
                         }
-                        Err(error) => return Err(error),
+                        Err(error) => {
+                            drop(session);
+                            if !replay(&error) {
+                                return Err(error);
+                            }
+                            pool_debug(account, "stale-replay");
+                            connect_guard = tokio::time::timeout(
+                                connect_coordination_timeout(),
+                                connect_lock.lock(),
+                            )
+                            .await
+                            .ok();
+                        }
                     }
                 }
                 Err(_) => {
@@ -739,7 +807,7 @@ impl Engine {
             if uids.is_empty() {
                 continue;
             }
-            self.with_preflighted_write_session(
+            self.with_flag_write_session(
                 account,
                 |session| {
                     let folder = folder.clone();

@@ -109,7 +109,7 @@ export function ThemeDialog({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="rounded-2xl bg-raised/80 border border-border/60 overflow-hidden">
+            <div className="shrink-0 rounded-2xl bg-raised/80 border border-border/60 overflow-hidden">
               <ToggleRow
                 title={t('theme.matchSystem')}
                 hint={t('theme.matchSystemHint')}

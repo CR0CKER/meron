@@ -68,6 +68,31 @@ impl AsyncWrite for Stream {
 
 pub type Session = async_imap::Session<Stream>;
 
+/// Whether an idle session's socket still looks open. A server that drops an
+/// idle connection leaves its FIN (often behind a BYE or TLS close_notify)
+/// queued on the socket, and the runtime's reactor records that as read-closed
+/// readiness, so a dead pooled session can be spotted without a round trip.
+/// This cannot see a close that lands after the check; callers still need to
+/// handle a command failing on a dropped connection.
+pub fn session_looks_open(session: &Session) -> bool {
+    match session.get_ref() {
+        Stream::Plain(stream) => tcp_looks_open(stream),
+        Stream::Tls(stream) => tcp_looks_open(stream.get_ref().0),
+    }
+}
+
+fn tcp_looks_open(tcp: &TcpStream) -> bool {
+    use futures::FutureExt;
+    use tokio::io::Interest;
+
+    match tcp.ready(Interest::READABLE).now_or_never() {
+        Some(Ok(ready)) => !(ready.is_read_closed() || ready.is_error()),
+        Some(Err(_)) => false,
+        // Nothing pending on the socket: the connection is quiet, not closed.
+        None => true,
+    }
+}
+
 #[derive(Clone)]
 pub struct Creds {
     pub host: String,
@@ -1312,7 +1337,7 @@ pub async fn read_message(
 /// SELECT `folder` as the preflight of a flag update. Pooled sessions die
 /// silently, and the SELECT is the first command that notices, so running it
 /// as a separate phase lets a stale connection be replaced before any STORE
-/// reaches the server (see `Engine::with_preflighted_write_session`).
+/// reaches the server (see `Engine::with_flag_write_session`).
 pub async fn prepare_flag_update(session: &mut Session, folder: &str) -> Result<()> {
     session.select(folder).await.context("SELECT")?;
     Ok(())
@@ -2109,6 +2134,25 @@ fn first_message_id(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::tcp_looks_open;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn tcp_looks_open_spots_a_connection_the_peer_closed() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let client = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (server, _) = listener.accept().await.unwrap();
+        assert!(tcp_looks_open(&client));
+
+        drop(server);
+        // The reactor records the FIN asynchronously.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while tcp_looks_open(&client) {
+            assert!(std::time::Instant::now() < deadline, "close never observed");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
     use super::{
         MIN_PROTOCOL_TIMEOUT, civil_from_days, first_message_id, header_fields, imap_quote,
         interleave_address_families, looks_like_drafts, message_id_search_criteria,

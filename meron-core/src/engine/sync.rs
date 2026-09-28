@@ -44,7 +44,7 @@ pub async fn mark_starred_copies(
 ) -> anyhow::Result<()> {
     for (folder, uids) in targets {
         engine
-            .with_preflighted_write_session(
+            .with_flag_write_session(
                 account,
                 |session| {
                     let folder = folder.clone();
