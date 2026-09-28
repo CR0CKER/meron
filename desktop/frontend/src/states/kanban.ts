@@ -108,11 +108,13 @@ export function kanbanPaneThreadId(): string {
   return kanban$.paneThreadId.peek()
 }
 
-// Close the conversation a card opened in the pane. The pane itself only goes
-// away when nothing else is left in it: tabs opened over the conversation are
-// rendered by this same pane, so hiding it with them still open would strand
-// them out of sight (and still in the strip when a card reopens the pane).
-export function closeKanbanPane() {
+// Close the conversation behind the tabs (the Current tab): a card opened in
+// the kanban pane, or the selected thread in the mail view. The kanban pane
+// itself only goes away when nothing else is left in it: tabs opened over the
+// conversation are rendered by this same pane, so hiding it with them still
+// open would strand them out of sight (and still in the strip when a card
+// reopens the pane).
+export function closeCurrentConversation() {
   kanban$.paneThreadId.set('')
   kanban$.paneColumnKey.set('')
   // Nothing to return to once the card's conversation is closed, so the Current

@@ -264,6 +264,10 @@ export type MessageTab = {
   folderId?: string
   subject: string
   from: string
+  /** Sender address and, for feed items, the cached feed icon, snapshotted at
+   * open time for the tab strip's avatar. Thread and reader tabs only. */
+  fromAddr?: string
+  feedIcon?: string
   /** Raw correspondent header strings ("Name <addr>", comma-separated), snapshotted
    * at open time so the reader tab can show the full From/To/Cc/Reply-To list.
    * Present only on reader tabs. */

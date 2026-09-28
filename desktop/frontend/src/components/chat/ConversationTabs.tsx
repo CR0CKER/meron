@@ -4,9 +4,10 @@ import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { closeMessageTab, closeMessageTabs, activateConversationTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
-import { kanban$ } from '../../states/kanban'
+import { closeCurrentConversation, kanban$ } from '../../states/kanban'
 import { ui$ } from '../../states/ui'
 import type { MessageTab } from '../../types'
+import { Avatar } from '../avatar/Avatar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 
@@ -112,6 +113,10 @@ export function ConversationTabs() {
           <button
             data-tab-id=""
             onClick={() => activateConversationTab()}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setMenu({ x: event.clientX, y: event.clientY, tabId: '' })
+            }}
             className={`flex items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
               activeTab === '' ? 'border-accent text-accent' : 'border-transparent text-secondary hover:text-primary'
             }`}
@@ -142,8 +147,16 @@ export function ConversationTabs() {
             }}
             title={tab.subject}
           >
-            {tab.kind === 'thread' && <MessageSquare size={12} className="shrink-0" />}
-            {tab.kind === 'compose' && <SquarePen size={12} className="shrink-0" />}
+            {tab.kind === 'compose' ? (
+              <SquarePen size={12} className="shrink-0" />
+            ) : (
+              <Avatar
+                name={tab.from}
+                email={tab.fromAddr}
+                src={tab.feedIcon ? `/media/${tab.feedIcon}` : undefined}
+                size={18}
+              />
+            )}
             <span className="truncate">{tab.subject}</span>
             <button
               onClick={(event) => {
@@ -158,35 +171,49 @@ export function ConversationTabs() {
           </div>
         ))}
       </div>
-      {menu && <TabContextMenu {...menu} tabs={tabs} onClose={() => setMenu(null)} />}
+      {menu && (
+        <TabContextMenu {...menu} tabs={tabs} hasCurrent={hasCurrentConversation} onClose={() => setMenu(null)} />
+      )}
     </div>
   )
 }
 
-// Right-click menu for a tab. The bulk entries skip compose tabs (see
-// closeMessageTabs) and are disabled when that leaves nothing to close.
+// Right-click menu for a tab, the Current tab ('') included: it sits first in
+// the strip and closes like the conversation header's X. The bulk entries skip
+// compose tabs (see closeMessageTabs) and are disabled when that leaves
+// nothing to close.
 function TabContextMenu({
   x,
   y,
   tabId,
   tabs,
+  hasCurrent,
   onClose,
 }: {
   x: number
   y: number
   tabId: string
   tabs: MessageTab[]
+  hasCurrent: boolean
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const index = tabs.findIndex((tab) => tab.id === tabId)
+  const entries = [...(hasCurrent ? [''] : []), ...tabs.map((tab) => tab.id)]
+  const index = entries.indexOf(tabId)
   if (index === -1) return null
-  const ids = (list: MessageTab[]) => list.filter((tab) => tab.kind !== 'compose').map((tab) => tab.id)
+  const closable = (ids: string[]) =>
+    ids.filter((id) => id === '' || tabs.find((tab) => tab.id === id)?.kind !== 'compose')
+  const close = (ids: string[]) => {
+    onClose()
+    // Tabs first: closing Current hands the pane to a tab still open.
+    closeMessageTabs(ids.filter((id) => id !== ''))
+    if (ids.includes('')) closeCurrentConversation()
+  }
   const bulk = [
-    { label: t('chat.closeOtherTabs'), ids: ids(tabs.filter((tab) => tab.id !== tabId)) },
-    { label: t('chat.closeTabsToLeft'), ids: ids(tabs.slice(0, index)) },
-    { label: t('chat.closeTabsToRight'), ids: ids(tabs.slice(index + 1)) },
-    { label: t('chat.closeAllTabs'), ids: ids(tabs) },
+    { label: t('chat.closeOtherTabs'), ids: closable(entries.filter((id) => id !== tabId)) },
+    { label: t('chat.closeTabsToLeft'), ids: closable(entries.slice(0, index)) },
+    { label: t('chat.closeTabsToRight'), ids: closable(entries.slice(index + 1)) },
+    { label: t('chat.closeAllTabs'), ids: closable(entries) },
   ]
 
   return (
@@ -205,8 +232,10 @@ function TabContextMenu({
       <MenuItem
         label={t('chat.closeTab')}
         onClick={() => {
-          onClose()
-          void closeMessageTab(tabId)
+          if (tabId !== '') {
+            onClose()
+            void closeMessageTab(tabId)
+          } else close([''])
         }}
       />
       {bulk.map((item) => (
@@ -215,10 +244,7 @@ function TabContextMenu({
           label={item.label}
           className="disabled:cursor-not-allowed disabled:opacity-50"
           disabled={item.ids.length === 0}
-          onClick={() => {
-            onClose()
-            closeMessageTabs(item.ids)
-          }}
+          onClick={() => close(item.ids)}
         />
       ))}
     </FloatingContextMenu>

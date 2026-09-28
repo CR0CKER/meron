@@ -200,6 +200,13 @@ mail$.messages.onChange(({ value: messages }) => {
 // Open a single message in its own reader tab. The HTML is already on the
 // message (shipped with threadRead), so this is instant — no fetch. Re-opening
 // an already-open message just re-activates its tab.
+// What the tab strip's avatar needs, as ThreadListItem draws it: a feed item
+// shows its feed's icon rather than resolving the sender address.
+function tabAvatar(message: Message): Pick<MessageTab, 'fromAddr' | 'feedIcon'> {
+  if (message.feed_url) return { feedIcon: message.feed_icon }
+  return { fromAddr: message.from_addr }
+}
+
 export function openMessageTab(message: Message) {
   const existing = compose$.tabs.get().find((tab) => tab.messageId === message.id)
   if (existing) {
@@ -228,6 +235,7 @@ export function openMessageTab(message: Message) {
         )),
     subject: message.subject || '(no subject)',
     from: message.from_name || message.from_addr,
+    ...tabAvatar(message),
     fromRaw: message.from_name ? `${message.from_name} <${message.from_addr}>` : message.from_addr,
     to: message.to,
     cc: message.cc,
@@ -259,6 +267,7 @@ export function openThreadTab(thread: Message) {
       folderId: thread.folder_id,
       subject: thread.subject || '(no subject)',
       from: thread.from_name || thread.from_addr,
+      ...tabAvatar(thread),
       body: '',
       viewMode: 'plain',
     }

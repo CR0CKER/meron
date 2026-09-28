@@ -27,7 +27,7 @@ import { showToast, ui$ } from '../../states/ui'
 import { starThread } from '../../states/mailFlags'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
 import { thread$, type ConversationMode } from '../../states/thread'
-import { closeKanbanPane, kanban$, openCorrespondentMail } from '../../states/kanban'
+import { closeCurrentConversation, kanban$, openCorrespondentMail } from '../../states/kanban'
 import { openComposeTab, openReplyInFullEditor } from '../../states/compose'
 import { canReplyAllToThread } from '../../states/composeReply'
 import { compose$ } from '../../states/composeState'
@@ -139,7 +139,7 @@ export function ConversationHeader({
         {inKanban && !tabOwnsPane && (
           <button
             className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-hover text-secondary cursor-pointer max-[768px]:hidden"
-            onClick={closeKanbanPane}
+            onClick={closeCurrentConversation}
             title={t('chat.closeConversationEsc')}
           >
             <X size={18} />

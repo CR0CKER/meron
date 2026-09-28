@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { ConversationTabs } from './ConversationTabs'
 import { openThreadTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
@@ -62,5 +62,34 @@ describe('ConversationTabs', () => {
 
     act(() => kanban$.paneThreadId.set('t-card'))
     expect(view.queryByTitle('Current conversation')).not.toBeNull()
+  })
+
+  it('closes the Current conversation along with the tabs from its menu', () => {
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message())
+    openThreadTab(message({ thread_id: 't-other', subject: 'Other mail' }))
+    const view = render(<ConversationTabs />)
+
+    fireEvent.contextMenu(view.getByTitle('Current conversation'))
+    // Current sits first: nothing lies to its left.
+    expect((view.getByText('Close tabs to the left').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(view.getByText('Close all tabs'))
+
+    expect(compose$.tabs.get()).toHaveLength(0)
+    expect(compose$.conversationThread.get()).toBe('')
+    expect(ui$.selectedThread.get()).toBe('')
+  })
+
+  it("closes only the tabs from Current's close-others entry", () => {
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message())
+    const view = render(<ConversationTabs />)
+
+    fireEvent.contextMenu(view.getByTitle('Current conversation'))
+    fireEvent.click(view.getByText('Close other tabs'))
+
+    expect(compose$.tabs.get()).toHaveLength(0)
+    expect(compose$.activeTab.get()).toBe('')
+    expect(ui$.selectedThread.get()).toBe('t-current')
   })
 })

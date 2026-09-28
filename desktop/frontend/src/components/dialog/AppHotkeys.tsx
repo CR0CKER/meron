@@ -16,7 +16,7 @@ import {
   selectKanbanBoard,
   closeKanbanBoard,
   openMailAccount,
-  closeKanbanPane,
+  closeCurrentConversation,
   kanbanPaneThreadId,
 } from '../../states/kanban'
 import { openThreadSearch, thread$ } from '../../states/thread'
@@ -214,7 +214,7 @@ export function AppHotkeys() {
         kanban$.paneThreadId.peek()
       ) {
         event.preventDefault()
-        closeKanbanPane()
+        closeCurrentConversation()
         return
       }
 

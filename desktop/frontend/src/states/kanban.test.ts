@@ -5,7 +5,7 @@ import { compose$ } from './composeState'
 import type { MessageTab } from '../types'
 import {
   kanban$,
-  closeKanbanPane,
+  closeCurrentConversation,
   kanbanPaneThreadId,
   kanbanColumnKey,
   kanbanBoardColumnKey,
@@ -626,7 +626,7 @@ describe('removeKanbanBoard', () => {
   })
 })
 
-describe('closeKanbanPane', () => {
+describe('closeCurrentConversation', () => {
   const tab = (threadId: string): MessageTab => ({
     id: `thread-${threadId}`,
     kind: 'thread',
@@ -652,7 +652,7 @@ describe('closeKanbanPane', () => {
   })
 
   it('closes the pane when the card conversation is all it holds', () => {
-    closeKanbanPane()
+    closeCurrentConversation()
 
     expect(kanban$.paneThreadId.get()).toBe('')
     expect(ui$.selectedThread.get()).toBe('')
@@ -662,7 +662,7 @@ describe('closeKanbanPane', () => {
   it('keeps the pane on a still-open tab instead of hiding it', () => {
     compose$.tabs.set([tab('t-tab')])
 
-    closeKanbanPane()
+    closeCurrentConversation()
 
     expect(kanban$.paneThreadId.get()).toBe('')
     expect(compose$.activeTab.get()).toBe('thread-t-tab')
@@ -675,7 +675,7 @@ describe('closeKanbanPane', () => {
     compose$.activeTab.set('thread-t-tab')
     ui$.selectedThread.set('t-tab')
 
-    closeKanbanPane()
+    closeCurrentConversation()
 
     expect(kanban$.paneThreadId.get()).toBe('')
     expect(compose$.activeTab.get()).toBe('thread-t-tab')
