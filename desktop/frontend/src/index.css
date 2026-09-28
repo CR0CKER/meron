@@ -801,6 +801,41 @@ textarea,
   animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* The kanban conversation pane grows from / collapses to zero width; its
+   content keeps the final width meanwhile (KanbanConversationPane). Each
+   keyframe names one end only, so the other end is the pane's own width.
+   Duration matches PANE_ANIMATION_MS. */
+@keyframes paneOpen {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes paneClose {
+  to {
+    width: 0;
+    opacity: 0;
+  }
+}
+
+.animate-pane-open {
+  animation: paneOpen 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-pane-close {
+  animation: paneClose 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up,
+  .animate-fade-in,
+  .animate-slide-in-right,
+  .animate-pane-open,
+  .animate-pane-close {
+    animation: none;
+  }
+}
+
 /* Tiptap rich-text body — restore formatting stripped by Tailwind preflight. */
 .tiptap-body > * + * {
   margin-top: 0.6em;
