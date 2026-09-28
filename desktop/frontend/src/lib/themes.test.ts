@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { isValidColor, luminance } from './color'
 import {
   BUILTIN_THEMES,
@@ -185,5 +186,30 @@ describe('sanitizeCustomThemes', () => {
   it('defaults a blank name', () => {
     const out = sanitizeCustomThemes([{ ...valid, name: '  ' }])
     expect(out![0].name).toBe('Custom theme')
+  })
+})
+
+describe('theme coverage', () => {
+  // A literal color in a component class wins over the active theme: the
+  // kanban and thread list headers painted Indigo Dark's #0f172a under every
+  // dark theme. Surfaces must come from the token utilities (bg-header, ...).
+  it('components take colors from theme tokens, not hard-coded hex values', () => {
+    const offenders: string[] = []
+    for (const file of new Bun.Glob('components/**/*.tsx').scanSync(fileURLToPath(new URL('..', import.meta.url)))) {
+      if (file.endsWith('.test.tsx')) continue
+      const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+      for (const match of source.matchAll(/[\w:/-]*-\[#[0-9a-f]{3,8}\][\w/]*/gi)) {
+        offenders.push(`${file}: ${match[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  // Sortable rail items and rows are <div role="button" tabindex="0">. Without
+  // this rule a mouse click leaves WebKit's blue focus ring on them, whatever
+  // the theme; keyboard focus (:focus-visible) keeps its ring for reordering.
+  it('hides the pointer-focus ring on div buttons but keeps it for keyboard focus', () => {
+    const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\[role='button'\]:focus:not\(:focus-visible\)\s*\{[^}]*outline:\s*none;/)
   })
 })
