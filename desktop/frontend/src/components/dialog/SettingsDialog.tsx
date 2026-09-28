@@ -60,6 +60,7 @@ import { AccountProxyCard, ProxySettingsSection } from './ProxySettingsCard'
 import { AccountSignatureCard, SignatureSettingsSection } from './SignatureSettingsCard'
 import { AccountProfileGroup } from './AccountProfileGroup'
 import { useAccountAvatar } from './useAccountAvatar'
+import { RemoveImageBadge } from './RemoveImageBadge'
 import { AccountAliasesCard } from './AccountAliasesCard'
 import { AccountTogglesSection } from './AccountTogglesSection'
 import { AccountWallpaperCard } from './AccountWallpaperCard'
@@ -923,11 +924,11 @@ function OpmlGroup({ account }: { account: string }) {
   )
 }
 
-function AccountPanel({ account }: { account: Account }) {
+export function AccountPanel({ account }: { account: Account }) {
   const { t } = useTranslation()
   const { isRSS, displayName, subtitle } = accountMeta(account, t)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const { avatarBusy, persistAvatarFile } = useAccountAvatar(account.id)
+  const { avatarBusy, persistAvatarFile, persistAvatarUrl } = useAccountAvatar(account.id)
 
   const reconnectAccount = () => {
     ui$.reconnectAccountId.set(account.id)
@@ -952,18 +953,27 @@ function AccountPanel({ account }: { account: Account }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3 min-w-0">
-        <button
-          type="button"
-          title={t('settings.account.changeAvatar')}
-          disabled={avatarBusy}
-          onClick={() => void pickAvatarFile()}
-          className="relative shrink-0 rounded-2xl group disabled:cursor-default cursor-pointer"
-        >
-          <Avatar name={displayName} src={account.avatar_url} size={40} className="!rounded-2xl" />
-          <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Camera size={15} className="text-white" />
-          </span>
-        </button>
+        <div className="relative shrink-0 group">
+          <button
+            type="button"
+            title={t('settings.account.changeAvatar')}
+            disabled={avatarBusy}
+            onClick={() => void pickAvatarFile()}
+            className="relative block rounded-2xl disabled:cursor-default cursor-pointer"
+          >
+            <Avatar name={displayName} src={account.avatar_url} size={40} className="!rounded-2xl" />
+            <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera size={15} className="text-white" />
+            </span>
+          </button>
+          {account.avatar_url && (
+            <RemoveImageBadge
+              label={t('settings.account.removeAvatar')}
+              disabled={avatarBusy}
+              onRemove={() => void persistAvatarUrl('')}
+            />
+          )}
+        </div>
         {avatarFile && (
           <AvatarCropDialog
             file={avatarFile}
