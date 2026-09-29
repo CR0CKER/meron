@@ -146,7 +146,7 @@ internal const val DARK_MAIL_BODIES_PREF = "dark_mail_bodies_v1"
 internal const val AUTO_FIT_MESSAGES_PREF = "auto_fit_messages_v1"
 
 /** Whether the message reader puts reply, forward and delete in a bottom bar
- *  within thumb reach, instead of only in the top overflow menu. */
+ *  where they are easier to reach, instead of only in the top overflow menu. */
 internal const val READER_BOTTOM_ACTIONS_PREF = "reader_bottom_actions_v1"
 internal const val NOTIFICATION_BANNER_DISMISSED_PREF = "notification_banner_dismissed_v1"
 internal const val LIVE_MAIL_PUSH_PREF = "live_mail_push_v1"

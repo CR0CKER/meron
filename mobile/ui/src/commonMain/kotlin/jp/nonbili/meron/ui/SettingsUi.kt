@@ -825,8 +825,8 @@ internal fun SettingsGeneralPage(
             item {
                 SettingsToggleRow(
                     icon = Icons.Filled.FitScreen,
-                    title = tr("mobile.settings.autoFitMessages"),
-                    hint = tr("mobile.settings.autoFitMessagesHint"),
+                    title = tr("settings.appearance.autoFitMessages"),
+                    hint = tr("settings.appearance.autoFitMessagesHint"),
                     checked = autoFitMessages,
                     onToggle = onToggleAutoFitMessages,
                 )
@@ -835,8 +835,8 @@ internal fun SettingsGeneralPage(
         item {
             SettingsToggleRow(
                 icon = Icons.AutoMirrored.Filled.Reply,
-                title = tr("mobile.settings.readerBottomActions"),
-                hint = tr("mobile.settings.readerBottomActionsHint"),
+                title = tr("settings.appearance.readerBottomActions"),
+                hint = tr("settings.appearance.readerBottomActionsHint"),
                 checked = readerBottomActions,
                 onToggle = onToggleReaderBottomActions,
             )

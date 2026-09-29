@@ -113,6 +113,10 @@ export type Settings = {
   /** Whether a message that brings its own light design is drawn inverted under
    *  a dark theme, instead of as a light card (see `darkensCanvas`). */
   darkMessageBodies: boolean
+  /** Whether a bubble shrinks a table too wide for it to fit, instead of scrolling it. */
+  autoFitMessages: boolean
+  /** Whether reader tabs put reply, forward and delete in a bar at the bottom. */
+  readerBottomActions: boolean
   /** Whether to overlay an inbox unread-count badge on side navigation account avatars. */
   showUnreadAccountBadge: boolean
   sendShortcut: SendShortcut
@@ -192,6 +196,8 @@ const DB_KEY = {
   messageFontScale: 'message_font_scale',
   showRealAvatars: 'show_real_avatars',
   darkMessageBodies: 'dark_message_bodies',
+  autoFitMessages: 'auto_fit_messages',
+  readerBottomActions: 'reader_bottom_actions',
   showUnreadAccountBadge: 'show_unread_account_badge',
   sendShortcut: 'send_shortcut',
   conversationLayout: 'conversation_layout',
@@ -400,6 +406,8 @@ export const settings$ = observable<Settings>({
   messageFontScale: fontBootstrap.messageFontScale,
   showRealAvatars: false,
   darkMessageBodies: false,
+  autoFitMessages: false,
+  readerBottomActions: false,
   showUnreadAccountBadge: false,
   sendShortcut: 'mod_enter',
   conversationLayout: 'chat',
@@ -845,6 +853,14 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.darkMessageBodies] === 'boolean') {
       settings$.darkMessageBodies.set(prefs[DB_KEY.darkMessageBodies] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.autoFitMessages] === 'boolean') {
+      settings$.autoFitMessages.set(prefs[DB_KEY.autoFitMessages] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.readerBottomActions] === 'boolean') {
+      settings$.readerBottomActions.set(prefs[DB_KEY.readerBottomActions] as boolean)
     }
 
     if (typeof prefs[DB_KEY.showUnreadAccountBadge] === 'boolean') {

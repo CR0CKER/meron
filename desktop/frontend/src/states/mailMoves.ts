@@ -546,8 +546,9 @@ export async function discardSavedDraftCopy(
 // targets the mailbox the message actually lives in, not the thread's folder.
 // Drafts are discarded permanently (engine expunges them); other messages go to
 // Trash. The confirm/toast wording reflects which.
-export async function deleteMessage(message: Message) {
-  if (!message?.id) return
+/** Delete one message, after the user confirms. Resolves true once it is gone. */
+export async function deleteMessage(message: Message): Promise<boolean> {
+  if (!message?.id) return false
 
   // Local-only optimistic send (still sending, or failed): it has no
   // server-side copy under this id, so just drop it from the pane and forget
@@ -559,7 +560,7 @@ export async function deleteMessage(message: Message) {
     // still on the wire would leave its draft copy behind.
     cancelUnsentRescue(message.id)
     mail$.messages.set(mail$.messages.get().filter((item) => item.id !== message.id))
-    return
+    return true
   }
 
   const isDraft = isDraftFolder(message.folder_id, message.account_id)
@@ -572,7 +573,7 @@ export async function deleteMessage(message: Message) {
       tone: 'danger',
     }))
   ) {
-    return
+    return false
   }
 
   const threadId = message.thread_id
@@ -605,8 +606,10 @@ export async function deleteMessage(message: Message) {
     if (message.account_id && message.account_id !== selectedAcc) {
       void loadFolders(message.account_id, false)
     }
+    return true
   } catch (error) {
     mail$.messages.set(previousMessages)
     showToast(error instanceof Error ? error.message : t('mail.toast.deleteFailed'), 'error')
+    return false
   }
 }

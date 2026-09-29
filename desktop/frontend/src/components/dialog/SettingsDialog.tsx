@@ -29,6 +29,8 @@ import {
   Server,
   PanelTopClose,
   Moon,
+  Shrink,
+  PanelBottom,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { importOpml, exportOpml } from '../../states/feeds'
@@ -375,6 +377,8 @@ function GeneralSection() {
   const remoteImageSenders = useValue(settings$.remoteImageSenders)
   const showRealAvatars = useValue(settings$.showRealAvatars)
   const darkMessageBodies = useValue(settings$.darkMessageBodies)
+  const autoFitMessages = useValue(settings$.autoFitMessages)
+  const readerBottomActions = useValue(settings$.readerBottomActions)
   const showUnreadAccountBadge = useValue(settings$.showUnreadAccountBadge)
   const conversationLayout = useValue(settings$.conversationLayout)
   const sendShortcut = useValue(settings$.sendShortcut)
@@ -410,6 +414,20 @@ function GeneralSection() {
           hint={t('settings.appearance.darkMessageBodiesHint')}
           checked={darkMessageBodies}
           onChange={() => settings$.darkMessageBodies.set(!darkMessageBodies)}
+        />
+        <ToggleRow
+          icon={<Shrink size={15} />}
+          title={t('settings.appearance.autoFitMessages')}
+          hint={t('settings.appearance.autoFitMessagesHint')}
+          checked={autoFitMessages}
+          onChange={() => settings$.autoFitMessages.set(!autoFitMessages)}
+        />
+        <ToggleRow
+          icon={<PanelBottom size={15} />}
+          title={t('settings.appearance.readerBottomActions')}
+          hint={t('settings.appearance.readerBottomActionsHint')}
+          checked={readerBottomActions}
+          onChange={() => settings$.readerBottomActions.set(!readerBottomActions)}
         />
         <ToggleRow
           icon={<Inbox size={15} />}

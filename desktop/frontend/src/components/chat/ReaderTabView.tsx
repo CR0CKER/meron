@@ -1,12 +1,15 @@
-import { Code, FileText, Printer, X } from 'lucide-react'
+import { Code, FileText, Forward, Printer, Reply, ReplyAll, Trash2, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { printMail } from '../../lib/printMail'
 import { accounts$ } from '../../states/accounts'
-import { closeMessageTab, setTabViewMode } from '../../states/compose'
+import { closeMessageTab, forwardMessage, replyToMessage, setTabViewMode } from '../../states/compose'
+import { messageCanReplyAll } from '../../states/composeReply'
+import { deleteMessage } from '../../states/mailMoves'
 import { normalizeSenderAddr, settings$ } from '../../states/settings'
 import { thread$ } from '../../states/thread'
-import type { MessageTab } from '../../types'
+import type { Message, MessageTab } from '../../types'
 import { Composer } from '../composer/Composer'
 import { HtmlMessageView } from './HtmlMessageView'
 import { AddressRow } from './AddressList'
@@ -20,6 +23,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
   const accounts = useValue(accounts$)
   const allowedSenders = useValue(settings$.remoteImageSenders)
   const revealedRemote = useValue(thread$.revealedRemote)
+  const bottomActions = useValue(settings$.readerBottomActions)
   if (tab.kind === 'compose') {
     return <Composer key={tab.id} tabId={tab.id} />
   }
@@ -133,6 +137,83 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
         viewMode={tab.viewMode}
         allowRemote={allowRemote}
       />
+      {bottomActions && !isRSS && tab.message && (
+        <ReaderActionBar tabId={tab.id} message={tab.message} bodyMissing={!!tab.bodyMissing} />
+      )}
     </>
+  )
+}
+
+// Reply, forward and delete at the foot of the reader, where they are easier to
+// reach than the conversation's menus (the reader-bottom-actions setting).
+function ReaderActionBar({
+  tabId,
+  message,
+  bodyMissing,
+}: {
+  tabId: string
+  message: Message
+  /** Forwarding needs the body and its attachments, so it waits for them. */
+  bodyMissing: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border bg-header px-4 py-2 select-none">
+      <ReaderAction
+        icon={<Reply size={15} />}
+        label={t('chat.actions.reply')}
+        onClick={() => replyToMessage(message)}
+      />
+      {messageCanReplyAll(message) && (
+        <ReaderAction
+          icon={<ReplyAll size={15} />}
+          label={t('chat.actions.replyAll')}
+          onClick={() => replyToMessage(message, true)}
+        />
+      )}
+      <ReaderAction
+        icon={<Forward size={15} />}
+        label={t('chat.actions.forward')}
+        disabled={bodyMissing}
+        onClick={() => void forwardMessage(message)}
+      />
+      <ReaderAction
+        icon={<Trash2 size={15} />}
+        label={t('buttons.delete')}
+        danger
+        onClick={async () => {
+          // The tab would otherwise go on showing a message that is gone.
+          if (await deleteMessage(message)) void closeMessageTab(tabId)
+        }}
+      />
+    </footer>
+  )
+}
+
+function ReaderAction({
+  icon,
+  label,
+  danger = false,
+  disabled = false,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  danger?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer hover:bg-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent ${
+        danger ? 'text-red-500' : 'text-secondary hover:text-primary'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }

@@ -1,3 +1,4 @@
+import { useValue } from '@legendapp/state/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { Gallery, type GalleryItem } from './Gallery'
@@ -9,6 +10,7 @@ import { frameMetrics, measureFrameHeight } from './frameHeight'
 import { useMessageFrameFont } from './useMessageFrameFont'
 import { installFrameQuoteFold, isInFoldedQuote } from './quoteFold'
 import { useBubbleTheme } from './useFrameTheme'
+import { settings$ } from '../../states/settings'
 
 const DEFAULT_FRAME_HEIGHT = 120
 const HEIGHT_CHANGE_EPSILON = 1
@@ -42,13 +44,17 @@ export function BubbleHtmlFrame({
   const { t } = useTranslation()
   const messageFont = useMessageFrameFont()
   const bubbleTheme = useBubbleTheme(outgoing)
+  const autoFit = useValue(settings$.autoFitMessages)
+  const autoFitRef = useRef(autoFit)
+  autoFitRef.current = autoFit
   // Everything the frame's document is built from. Typography is part of it:
   // the same HTML measures to a different height once the message font or text
   // size changes, and so is remote content, since revealing it usually makes the
-  // document taller. A change here reloads the frame.
+  // document taller, and fitting wide tables, which makes it shorter. A change
+  // here reloads the frame.
   const documentKey = useMemo(
-    () => `${messageFont.family ?? ''}:${messageFont.zoom}:${allowRemote}:${bodyContentKey(html)}`,
-    [html, messageFont, allowRemote],
+    () => `${messageFont.family ?? ''}:${messageFont.zoom}:${allowRemote}:${autoFit}:${bodyContentKey(html)}`,
+    [html, messageFont, allowRemote, autoFit],
   )
   // What this document is called while it is the current one. The frame is wired
   // as soon as its srcDoc changes — while the document it replaces is still
@@ -192,7 +198,11 @@ export function BubbleHtmlFrame({
 
       // The body can't scroll sideways (the frame is `scrolling="no"` so it can
       // self-size), so anything wider than the frame would be clipped outright.
-      // Give the outermost overflowing table its own horizontal scroller.
+      // Give the outermost overflowing table its own horizontal scroller — or,
+      // with auto-fit on, shrink it to the bubble, the way the mobile reader
+      // fits fixed-width mail. `zoom` rather than a transform: it scales the
+      // layout box too, so the height measured below is the height drawn.
+      const fitTables = new Map<HTMLTableElement, { natural: number; zoom: number }>()
       const wrapOverflowingTables = () => {
         const limit = doc.documentElement?.clientWidth ?? 0
         if (!limit) return
@@ -207,6 +217,21 @@ export function BubbleHtmlFrame({
           wrapper.className = 'meron-table-scroll'
           table.parentNode?.insertBefore(wrapper, table)
           wrapper.appendChild(table)
+          // The width it lays out at unscaled, read once: re-reading it would
+          // mean dropping the zoom on every measurement.
+          if (autoFitRef.current) {
+            fitTables.set(table, { natural: Math.max(table.scrollWidth, table.offsetWidth), zoom: 1 })
+          }
+        }
+        for (const [table, fit] of fitTables) {
+          const room = table.parentElement?.clientWidth ?? 0
+          if (!room || !fit.natural) continue
+          const zoom = Math.min(1, room / fit.natural)
+          // Kept here, not read back off the style: the engine may serialise it
+          // differently, and a write every measurement would relayout forever.
+          if (Math.abs(zoom - fit.zoom) < 0.001) continue
+          fit.zoom = zoom
+          table.style.setProperty('zoom', String(zoom))
         }
       }
 

@@ -81,7 +81,7 @@ internal fun MessageReaderScreen(
     onComposeTo: (String) -> Unit,
     onForward: (MessageBody) -> Unit,
     // Reply, reply all, forward and delete move from the overflow menu to a
-    // bottom bar, within thumb reach (the reader-bottom-actions setting).
+    // bottom bar, where they are easier to reach (the reader-bottom-actions setting).
     bottomActions: Boolean,
     onReplyToMessage: (MessageBody) -> Unit,
     onReplyAllToMessage: (MessageBody) -> Unit,
@@ -319,7 +319,7 @@ internal fun MessageReaderScreen(
                 if (actionsEnabled && bottomActions) {
                     BottomAppBar {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            ReaderBottomAction(Icons.AutoMirrored.Filled.Reply, tr("mobile.actions.reply")) {
+                            ReaderBottomAction(Icons.AutoMirrored.Filled.Reply, tr("chat.actions.reply")) {
                                 onReplyToMessage(message)
                             }
                             if (canReplyAllToMessage(message)) {

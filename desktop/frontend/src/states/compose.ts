@@ -193,6 +193,9 @@ mail$.messages.onChange(({ value: messages }) => {
       bodyHtml: message.body_html,
       bodyMissing: false,
       attachments: message.attachments,
+      // The bottom bar forwards from this: without the body it would send
+      // an empty forward with none of the attachments the reader now shows.
+      message,
     })
   }
 })
@@ -223,9 +226,9 @@ export function openMessageTab(message: Message) {
     // Carried so the tab can resolve this message's remote-content policy.
     accountId: message.account_id,
     revealRemote: !!thread$.revealedRemote.peek()[message.id],
-    // Snapshotted rather than re-derived: the tab keeps no Message, and the
-    // From address alone misses an alias or a send still in flight (the same
-    // rule useMessageView applies in the conversation).
+    // Snapshotted at open time: the From address alone misses an alias or a
+    // send still in flight (the same rule useMessageView applies in the
+    // conversation).
     outgoing:
       !!message.send_status ||
       message.outgoing === true ||
@@ -247,6 +250,7 @@ export function openMessageTab(message: Message) {
     bodyMissing: message.body_missing,
     attachments: message.attachments,
     viewMode: message.body_html && preferHtml ? 'html' : 'plain',
+    message,
   }
   compose$.tabs.push(tab)
   compose$.activeTab.set(tab.id)
@@ -724,12 +728,18 @@ export async function openDraftConversationOrCompose(thread: Message) {
  * — the recipients are the point of the action, and only the full editor shows
  * them. The quick reply's own draft is left alone; this is a separate reply. */
 export function replyAllToMessage(message: Message) {
+  replyToMessage(message, true)
+}
+
+/** Reply (or reply-all) to one message in a compose tab, rather than to the
+ *  conversation's reply target in the quick reply bar. */
+export function replyToMessage(message: Message, replyAll = false) {
   const accounts = accounts$.get()
   if (accounts.filter(isSendableAccount).length === 0) {
     showToast(t('compose.toast.addMailAccountBeforeComposing'))
     return
   }
-  const { to, cc } = buildReplyRecipients(message, true)
+  const { to, cc } = buildReplyRecipients(message, replyAll)
   const { in_reply_to, references } = buildReplyThreading(message)
   const acc = accounts.find((a) => a.id === message.account_id)
   const subject = message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`

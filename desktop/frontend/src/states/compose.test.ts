@@ -399,6 +399,22 @@ describe('tab navigation', () => {
     expect(compose$.tabs.get().map((tab) => tab.id)).toEqual(['thread-t-2'])
   })
 
+  it("refreshes the reader tab's message once a missing body arrives", () => {
+    openMessageTab(message({ id: 'msg-late', body: '', body_missing: true }))
+    expect(compose$.tabs.get()[0].message?.body_missing).toBe(true)
+
+    const attachment = { filename: 'a.pdf', mime: 'application/pdf', size: 3, key: 'k', url: null }
+    mail$.messages.set([message({ id: 'msg-late', body: 'Full body', attachments: [attachment] })])
+
+    // The bottom bar forwards from the snapshot, so it has to carry what the
+    // reader now shows, not what was there when the tab opened.
+    const tab = compose$.tabs.get()[0]
+    expect(tab.bodyMissing).toBe(false)
+    expect(tab.message?.body).toBe('Full body')
+    expect(tab.message?.body_missing).toBeFalsy()
+    expect(tab.message?.attachments).toEqual([attachment])
+  })
+
   it('snapshots message attachments when opening a reader tab', () => {
     openMessageTab(
       message({

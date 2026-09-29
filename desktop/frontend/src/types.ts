@@ -288,10 +288,12 @@ export type MessageTab = {
    *  while the tab stays open. Reader tabs only. */
   revealRemote?: boolean
   /** Whether the message is the user's own (an identity of its account sent it),
-   *  snapshotted at open time: the tab has no Message to re-derive it from, and
-   *  trusting your own address is a no-op that still grows the allowlist.
-   *  Reader tabs only. */
+   *  snapshotted at open time: trusting your own address is a no-op that still
+   *  grows the allowlist. Reader tabs only. */
   outgoing?: boolean
+  /** The message a reader tab was opened from, for the actions its bottom bar
+   *  offers. Reader tabs are never persisted, so this lives only in memory. */
+  message?: Message
   /** Present only when kind === "compose". */
   compose?: ComposeDraft
 }
