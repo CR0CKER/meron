@@ -21,7 +21,12 @@ import androidx.compose.ui.unit.DpOffset
  *  readable. The height bridge reports pre-scale CSS pixels, so the script
  *  multiplies by the fit scale to keep reported height in dp. Only the
  *  full-screen reader enables it — in a chat bubble a 640px mail would scale to
- *  a thumbnail, so bubbles reflow only. iOS ignores it (see MailWebView.ios.kt). */
+ *  a thumbnail, so bubbles reflow only unless the reader opts in (the auto-fit
+ *  setting). iOS ignores it (see MailWebView.ios.kt).
+ *
+ *  [transparentBackground] lets whatever is behind the view show through where
+ *  the page paints nothing, which darkened mail relies on. WKWebView is already
+ *  non-opaque, so only Android acts on it. */
 @Composable
 expect fun MailWebView(
     html: String,
@@ -31,6 +36,7 @@ expect fun MailWebView(
     onOpenImage: (String) -> Unit = {},
     onLinkLongPress: (String, DpOffset) -> Unit = { _, _ -> },
     fitWideContent: Boolean = false,
+    transparentBackground: Boolean = false,
     /** The document's quote toggle was tapped: true when the quote is now open. */
     onQuoteToggle: (Boolean) -> Unit = {},
 )
@@ -47,3 +53,7 @@ expect fun MailWebView(
  * while every plain-text body around it grew.
  */
 internal expect val MailWebViewFollowsSystemFontScale: Boolean
+
+/** Whether [MailWebView]'s `fitWideContent` does anything here, so a setting
+ *  built on it is only offered where it works. */
+internal expect val MailWebViewFitsWideContent: Boolean

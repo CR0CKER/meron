@@ -58,6 +58,9 @@ internal val mobileSettings =
         MobileSetting(PrefStore.App, APP_LANGUAGE_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, MESSAGE_FONT_SCALE_PREF, PrefType.Int),
         MobileSetting(PrefStore.App, SHOW_SENDER_IMAGES_PREF, PrefType.Bool),
+        MobileSetting(PrefStore.App, DARK_MAIL_BODIES_PREF, PrefType.Bool),
+        MobileSetting(PrefStore.App, AUTO_FIT_MESSAGES_PREF, PrefType.Bool),
+        MobileSetting(PrefStore.App, READER_BOTTOM_ACTIONS_PREF, PrefType.Bool),
         MobileSetting(PrefStore.App, SHOW_UNREAD_BADGES_PREF, PrefType.Bool),
         // Layout and navigation.
         MobileSetting(PrefStore.App, SHOW_UNIFIED_INBOX_PREF, PrefType.Bool),

@@ -2,9 +2,11 @@ import { BUBBLE_CODE_BASE_PX, BUBBLE_HTML_BASE_PX, type MessageFrameFont } from 
 import { QUOTE_FOLDED_CLASS, QUOTE_TOGGLE_CLASS } from './quoteFold'
 import { allowRemoteContent, blockRemoteContent } from './remoteContentCsp'
 import {
+  DARKENED_CSS,
   DEFAULT_BUBBLE_THEME,
   LIGHT_ON_DARK_TEXT,
   colorTone,
+  darkensCanvas,
   disownStyleElements,
   frameCanvas,
   frameVar,
@@ -12,6 +14,7 @@ import {
   ownStyleElement,
   declaredCanvas,
   frameCanvasBackground,
+  setDarkened,
   type BubbleTheme,
 } from './frameTheme'
 
@@ -238,6 +241,7 @@ export function prepareBubbleHtml(
         background: #fcd34d;
         color: #000000;
       }
+      ${DARKENED_CSS}
     `
     doc.head.appendChild(style)
 
@@ -305,4 +309,5 @@ export function applyBubbleTheme(doc: Document, theme: BubbleTheme) {
     if (value === null) style.removeProperty(name)
     else style.setProperty(name, value)
   }
+  setDarkened(doc, darkensCanvas(theme.appearance, theme.darkenStyled, canvas))
 }

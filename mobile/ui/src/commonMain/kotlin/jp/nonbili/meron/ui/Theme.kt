@@ -390,6 +390,14 @@ val LocalChatColors = staticCompositionLocalOf { chatColors(IndigoLight) }
 /** Message body text size, as a percentage of the default (see AppFonts.kt). */
 val LocalMessageFontScale = staticCompositionLocalOf { DEFAULT_MESSAGE_FONT_SCALE }
 
+/** Whether HTML mail bodies are drawn darkened: the setting is on and the theme
+ *  in effect is a dark one (see HtmlMessageBody). */
+val LocalDarkMailBodies = staticCompositionLocalOf { false }
+
+/** Whether conversation bubbles shrink over-wide HTML mail to fit (see
+ *  MailWebView's `fitWideContent`). */
+val LocalAutoFitMessages = staticCompositionLocalOf { false }
+
 /** The handful of colors a theme swatch paints, mirroring desktop's ThemeSwatch. */
 internal data class ThemePreviewColors(
     val dark: Boolean,
@@ -425,6 +433,8 @@ internal fun themePreviewColors(
 fun MeronTheme(
     appearanceMode: AppAppearanceMode = AppAppearanceMode.Light,
     messageFontScale: Int = DEFAULT_MESSAGE_FONT_SCALE,
+    darkMailBodies: Boolean = false,
+    autoFitMessages: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val spec = mobileThemeSpec(appearanceMode)
@@ -432,6 +442,8 @@ fun MeronTheme(
     androidx.compose.runtime.CompositionLocalProvider(
         LocalChatColors provides chatColors(spec),
         LocalMessageFontScale provides messageFontScale,
+        LocalDarkMailBodies provides (darkMailBodies && spec.dark),
+        LocalAutoFitMessages provides autoFitMessages,
     ) {
         MaterialTheme(colorScheme = materialColors(spec), content = content)
     }

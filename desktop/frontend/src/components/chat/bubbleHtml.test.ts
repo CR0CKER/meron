@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'bun:test'
 import { applyBubbleTheme, prepareBubbleHtml } from './bubbleHtml'
-import { DEFAULT_BUBBLE_THEME, bubbleThemeFromTokens, frameVar, frameVarPrefix, type BubbleTheme } from './frameTheme'
+import {
+  DARKENED_ATTR,
+  DEFAULT_BUBBLE_THEME,
+  PICTURE_ATTR,
+  bubbleThemeFromTokens,
+  frameVar,
+  frameVarPrefix,
+  type BubbleTheme,
+} from './frameTheme'
 import { builtinTheme } from '../../lib/themes'
 
 const DARK_TOKENS = builtinTheme('dark')!.tokens
@@ -221,5 +229,50 @@ describe('prepareBubbleHtml', () => {
       expect(style).toMatch(new RegExp(`var\\(--meron-[a-z0-9]+-text, ${DEFAULT_BUBBLE_THEME.text}\\)`))
       expect(style).toMatch(new RegExp(`var\\(--meron-[a-z0-9]+-link, ${DEFAULT_BUBBLE_THEME.link}\\)`))
     })
+  })
+})
+
+describe('dark message bodies in a bubble', () => {
+  const darkened = (html: string, theme: BubbleTheme) => {
+    const doc = new DOMParser().parseFromString(prepareBubbleHtml(html), 'text/html')
+    applyBubbleTheme(doc, theme)
+    return doc.documentElement.hasAttribute(DARKENED_ATTR)
+  }
+  const DARKENING = bubbleThemeFromTokens('dark', DARK_TOKENS, false, true)
+  const styled = '<p style="color:#333">hi</p>'
+
+  it('inverts the light card a self-styled message is given, only when asked', () => {
+    expect(darkened(styled, DARKENING)).toBe(true)
+    expect(darkened(styled, DARK_IN)).toBe(false)
+  })
+
+  it('leaves unstyled mail in the bubble palette and light themes untouched', () => {
+    expect(darkened('<p>hi</p>', DARKENING)).toBe(false)
+    expect(darkened(styled, DEFAULT_BUBBLE_THEME)).toBe(false)
+  })
+
+  it('turns back only background pictures that carry no text', () => {
+    const doc = new DOMParser().parseFromString(
+      prepareBubbleHtml(
+        '<p style="color:#333">hi</p>' +
+          '<div id="none" style="background-image:none">plain text</div>' +
+          '<table><tr><td id="texted" style="background-image:url(https://example.com/hero.png)">over a photo</td></tr></table>' +
+          '<div id="picture" style="background-image:url(https://example.com/banner.png)"></div>',
+      ),
+      'text/html',
+    )
+    applyBubbleTheme(doc, DARKENING)
+    const picture = (id: string) => doc.getElementById(id)?.hasAttribute(PICTURE_ATTR)
+
+    expect(picture('none')).toBe(false)
+    expect(picture('texted')).toBe(false)
+    expect(picture('picture')).toBe(true)
+
+    applyBubbleTheme(doc, DARK_IN)
+    expect(picture('picture')).toBe(false)
+  })
+
+  it('carries the darkening rules in the frame stylesheet', () => {
+    expect(frameStyle(prepareBubbleHtml(styled))).toContain(`html[${DARKENED_ATTR}] body`)
   })
 })

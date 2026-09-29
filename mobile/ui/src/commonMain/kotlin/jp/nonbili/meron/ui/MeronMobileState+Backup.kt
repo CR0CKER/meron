@@ -304,6 +304,18 @@ internal fun MeronMobileState.applyHydratedSettings(changed: Map<String, Any>) {
                 showSenderImages = loadAppBoolean(prefs, SHOW_SENDER_IMAGES_PREF, false)
             }
 
+            settingKeyFor(DARK_MAIL_BODIES_PREF) -> {
+                darkMailBodies = loadAppBoolean(prefs, DARK_MAIL_BODIES_PREF, false)
+            }
+
+            settingKeyFor(AUTO_FIT_MESSAGES_PREF) -> {
+                autoFitMessages = loadAppBoolean(prefs, AUTO_FIT_MESSAGES_PREF, false)
+            }
+
+            settingKeyFor(READER_BOTTOM_ACTIONS_PREF) -> {
+                readerBottomActions = loadAppBoolean(prefs, READER_BOTTOM_ACTIONS_PREF, false)
+            }
+
             settingKeyFor(LIVE_MAIL_PUSH_PREF) -> {
                 liveMailPushEnabled = loadAppBoolean(prefs, LIVE_MAIL_PUSH_PREF, false)
                 mobileHost.syncLiveMailPush(liveMailPushEnabled)

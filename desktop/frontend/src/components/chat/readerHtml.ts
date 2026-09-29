@@ -1,13 +1,16 @@
 import { type MessageFrameFont } from '../../lib/fonts'
 import {
+  DARKENED_CSS,
   DEFAULT_READER_THEME,
   LIGHT_ON_DARK_TEXT,
+  darkensCanvas,
   disownStyleElements,
   frameCanvas,
   frameVar,
   frameVarPrefix,
   isOwnStyleElement,
   ownStyleElement,
+  setDarkened,
   type ReaderTheme,
 } from './frameTheme'
 
@@ -153,6 +156,7 @@ const readerCss = (v: (name: string) => string) => `
     width: 15px;
     height: 15px;
   }
+  ${DARKENED_CSS}
 `
 
 /**
@@ -198,6 +202,10 @@ export function applyReaderTheme(doc: Document, theme: ReaderTheme) {
   // readable foreground — a restored black page with the light-mode default on
   // it is the dark-on-dark case this whole path exists to avoid.
   if (canvasText) style.setProperty(v('text'), canvasText)
+
+  // The canvas is confined to the reader column in a dark appearance, so
+  // inverting the body turns that light card dark and leaves the gutter be.
+  setDarkened(doc, darkensCanvas(theme.appearance, theme.darkenStyled, canvas))
 }
 
 /**

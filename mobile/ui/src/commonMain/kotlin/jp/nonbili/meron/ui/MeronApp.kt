@@ -309,7 +309,12 @@ fun MeronApp(
         LocalPlatformServices provides services,
         LocalAvatarCore provides core,
     ) {
-        MeronTheme(appearanceMode = themeChoice.resolve(systemDark), messageFontScale = state.messageFontScale) {
+        MeronTheme(
+            appearanceMode = themeChoice.resolve(systemDark),
+            messageFontScale = state.messageFontScale,
+            darkMailBodies = state.darkMailBodies,
+            autoFitMessages = state.autoFitMessages,
+        ) {
             MeronMobileScreenContent(
                 state = state,
                 drawerState = drawerState,
@@ -1012,9 +1017,11 @@ private fun MeronMobileScreenContent(
                         if (quickReplyDraftSaved) autoSaveQuickReplyDraft()
                     },
                     onForward = { openMessageCompose(it, forward = true) },
+                    onReplyToMessage = { replyToMessage(it, replyAll = false) },
                     onReplyAllToMessage = ::replyAllToMessage,
                     canReplyAllToMessage = ::canReplyAllToMessage,
                     onEditAsNew = { openMessageCompose(it, forward = false) },
+                    readerBottomActions = readerBottomActions,
                     onOpenDraft = { message ->
                         selectedCoreThread?.let { thread ->
                             openDraftCompose(message, thread, returnScreen = Screen.Thread)
@@ -1288,6 +1295,21 @@ private fun MeronMobileScreenContent(
                     onToggleSenderImages = {
                         showSenderImages = !showSenderImages
                         saveAppBoolean(prefs, SHOW_SENDER_IMAGES_PREF, showSenderImages)
+                    },
+                    darkMailBodies = darkMailBodies,
+                    onToggleDarkMailBodies = {
+                        darkMailBodies = !darkMailBodies
+                        saveAppBoolean(prefs, DARK_MAIL_BODIES_PREF, darkMailBodies)
+                    },
+                    autoFitMessages = autoFitMessages,
+                    onToggleAutoFitMessages = {
+                        autoFitMessages = !autoFitMessages
+                        saveAppBoolean(prefs, AUTO_FIT_MESSAGES_PREF, autoFitMessages)
+                    },
+                    readerBottomActions = readerBottomActions,
+                    onToggleReaderBottomActions = {
+                        readerBottomActions = !readerBottomActions
+                        saveAppBoolean(prefs, READER_BOTTOM_ACTIONS_PREF, readerBottomActions)
                     },
                     showUnreadBadges = showUnreadBadges,
                     onToggleUnreadBadges = {

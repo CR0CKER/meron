@@ -136,6 +136,18 @@ internal const val SHOW_UNIFIED_INBOX_PREF = "show_unified_inbox_v1"
 /** Whether the optional Tasks screen is offered. Off until the user asks for it. */
 internal const val TASKS_ENABLED_PREF = "tasks_enabled_v1"
 internal const val SHOW_SENDER_IMAGES_PREF = "show_sender_images_v1"
+
+/** Whether HTML mail bodies are darkened under a dark theme. Off by default:
+ *  the sender's own colors are what the mail was designed in. */
+internal const val DARK_MAIL_BODIES_PREF = "dark_mail_bodies_v1"
+
+/** Whether conversation bubbles shrink over-wide HTML mail to fit, the way the
+ *  full-screen reader always does. Off by default. */
+internal const val AUTO_FIT_MESSAGES_PREF = "auto_fit_messages_v1"
+
+/** Whether the message reader puts reply, forward and delete in a bottom bar
+ *  within thumb reach, instead of only in the top overflow menu. */
+internal const val READER_BOTTOM_ACTIONS_PREF = "reader_bottom_actions_v1"
 internal const val NOTIFICATION_BANNER_DISMISSED_PREF = "notification_banner_dismissed_v1"
 internal const val LIVE_MAIL_PUSH_PREF = "live_mail_push_v1"
 internal const val BACKGROUND_SYNC_ENABLED_PREF = "background_sync_enabled_v1"

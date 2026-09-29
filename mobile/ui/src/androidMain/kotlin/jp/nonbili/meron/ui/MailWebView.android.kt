@@ -2,6 +2,7 @@ package jp.nonbili.meron.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -42,6 +43,7 @@ actual fun MailWebView(
     onOpenImage: (String) -> Unit,
     onLinkLongPress: (String, DpOffset) -> Unit,
     fitWideContent: Boolean,
+    transparentBackground: Boolean,
     onQuoteToggle: (Boolean) -> Unit,
 ) {
     val latestOnQuoteToggle = rememberUpdatedState(onQuoteToggle)
@@ -216,6 +218,9 @@ actual fun MailWebView(
                 // sp-sized body in the app and leave the open HTML one behind.
                 textZoom = htmlTextZoom
             }
+            // Both ways explicitly, as with the settings above: the view is
+            // retained, and white is WebView's own default.
+            webView.setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else Color.WHITE)
             if (webView.tag != html) {
                 webView.tag = html
                 webView.loadDataWithBaseURL(MAIL_WEB_VIEW_ORIGIN, html, "text/html", "UTF-8", null)
@@ -329,3 +334,5 @@ internal fun webViewLinkUrl(
         }
 
 internal actual val MailWebViewFollowsSystemFontScale: Boolean = true
+
+internal actual val MailWebViewFitsWideContent: Boolean = true

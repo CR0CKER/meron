@@ -162,9 +162,11 @@ internal fun ThreadScreen(
     quickReplySelectedFrom: SendIdentity?,
     onSelectQuickReplyFrom: (SendIdentity) -> Unit,
     onForward: (MessageBody) -> Unit,
+    onReplyToMessage: (MessageBody) -> Unit,
     onReplyAllToMessage: (MessageBody) -> Unit,
     canReplyAllToMessage: (MessageBody) -> Boolean,
     onEditAsNew: (MessageBody) -> Unit,
+    readerBottomActions: Boolean,
     onOpenDraft: (MessageBody) -> Unit,
     onToggleMessageRead: (MessageBody) -> Unit,
     onToggleMessageStarred: (MessageBody) -> Unit,
@@ -1058,6 +1060,11 @@ internal fun ThreadScreen(
                 onComposeTo = { email ->
                     readerMessage = null
                     onComposeTo(email)
+                },
+                bottomActions = readerBottomActions,
+                onReplyToMessage = { message ->
+                    readerMessage = null
+                    onReplyToMessage(message)
                 },
                 canReplyAllToMessage = canReplyAllToMessage,
                 onReplyAllToMessage = { message ->

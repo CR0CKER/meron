@@ -14,6 +14,8 @@ import type { Appearance, ThemeTokens } from '../../lib/themes'
  */
 export interface ReaderTheme {
   appearance: Appearance
+  /** Draw a light self-styled message inverted rather than as a light card. */
+  darkenStyled: boolean
   /** Behind the reader column — always themed, whatever the message declares. */
   pageBg: string
   text: string
@@ -28,6 +30,7 @@ export interface ReaderTheme {
 
 export const DEFAULT_READER_THEME: ReaderTheme = {
   appearance: 'light',
+  darkenStyled: false,
   pageBg: '#f8fafc',
   text: '#0f172a',
   surface: '#f1f5f9',
@@ -39,7 +42,7 @@ export const DEFAULT_READER_THEME: ReaderTheme = {
 }
 
 /** Map the active theme's tokens onto the frame's palette. */
-export function readerThemeFromTokens(appearance: Appearance, tokens: ThemeTokens): ReaderTheme {
+export function readerThemeFromTokens(appearance: Appearance, tokens: ThemeTokens, darkenStyled = false): ReaderTheme {
   if (appearance === 'light') {
     // Light frames keep the hand-picked slate palette; only the gutter follows
     // the theme, so a tinted light theme doesn't sit next to a grey letterbox.
@@ -47,6 +50,7 @@ export function readerThemeFromTokens(appearance: Appearance, tokens: ThemeToken
   }
   return {
     appearance,
+    darkenStyled,
     pageBg: tokens.bgChat,
     text: tokens.textPrimary,
     surface: tokens.bgRaised,
@@ -66,6 +70,8 @@ export function readerThemeFromTokens(appearance: Appearance, tokens: ThemeToken
  */
 export interface BubbleTheme {
   appearance: Appearance
+  /** Draw a light self-styled message inverted rather than as a light card. */
+  darkenStyled: boolean
   text: string
   link: string
   /** Code blocks and inline code. */
@@ -86,6 +92,7 @@ export const LIGHT_ON_DARK_TEXT = '#f8fafc'
 
 export const DEFAULT_BUBBLE_THEME: BubbleTheme = {
   appearance: 'light',
+  darkenStyled: false,
   text: '#0f172a',
   link: '#4f46e5',
   surface: '#f1f5f9',
@@ -99,11 +106,17 @@ export const DEFAULT_BUBBLE_THEME: BubbleTheme = {
 }
 
 /** Map the active theme's tokens onto a bubble frame's palette. */
-export function bubbleThemeFromTokens(appearance: Appearance, tokens: ThemeTokens, outgoing: boolean): BubbleTheme {
+export function bubbleThemeFromTokens(
+  appearance: Appearance,
+  tokens: ThemeTokens,
+  outgoing: boolean,
+  darkenStyled = false,
+): BubbleTheme {
   // Light bubbles are already the palette these frames were drawn for.
   if (appearance === 'light') return DEFAULT_BUBBLE_THEME
   return {
     appearance,
+    darkenStyled,
     text: outgoing ? tokens.bubbleOutText : tokens.bubbleInText,
     link: tokens.accent,
     surface: tokens.bgRaised,
@@ -517,4 +530,65 @@ export function canvasTextColor(doc: Document, canvas: string | null, fallback: 
   const { text } = declaredCanvas(doc)
   if (text) return text
   return colorTone(canvas) === 'dark' ? fallback : null
+}
+
+/**
+ * Set on a frame's `<html>` while its body is drawn inverted. The sanitiser
+ * drops every `data-*` attribute, so sender markup can't carry it.
+ */
+export const DARKENED_ATTR = 'data-meron-darkened'
+
+/** Set by `setDarkened` on an element that is a background picture and nothing else. */
+export const PICTURE_ATTR = 'data-meron-picture'
+
+/**
+ * The rules that draw a darkened body: inverted, with the hue turned back so
+ * links and brand colors stay recognisable, and pictures inverted a second time
+ * so they come out as sent — once only, so an image inside a re-inverted
+ * background picture is left alone. The search highlight keeps its yellow too.
+ */
+export const DARKENED_CSS = `
+  html[${DARKENED_ATTR}] body,
+  html[${DARKENED_ATTR}] body :is(img, video, [${PICTURE_ATTR}], mark.meron-search-hit) {
+    filter: invert(1) hue-rotate(180deg);
+  }
+  html[${DARKENED_ATTR}] body [${PICTURE_ATTR}] img {
+    filter: none;
+  }
+`
+
+/**
+ * Whether a frame should draw its body inverted: the reader asked for dark
+ * bodies, the theme is dark, and the message was given a light canvas of its
+ * own — the one case a dark theme otherwise leaves bright. Mail with no colors
+ * of its own is already painted in the theme's palette, and a dark canvas is
+ * dark already.
+ */
+export function darkensCanvas(appearance: Appearance, darkenStyled: boolean, canvas: string | null): boolean {
+  return darkenStyled && appearance === 'dark' && !!canvas && colorTone(canvas) === 'light'
+}
+
+/**
+ * Whether an element is a picture painted as a background, with no text of its
+ * own. Only those are turned back to their own colors: turning a box back also
+ * turns back the text in it, which would then read as sent — dark — on a canvas
+ * that is now dark too. `background-image: none` is no picture at all.
+ */
+function isBackgroundPicture(el: HTMLElement): boolean {
+  if (el.textContent?.trim()) return false
+  const win = el.ownerDocument.defaultView
+  // A document that was only parsed has no engine to resolve stylesheets; its
+  // inline declaration and the legacy attribute are all there is to go on.
+  const image = win ? win.getComputedStyle(el).backgroundImage : el.style.backgroundImage
+  return /url\(/i.test(image) || (!win && !!el.getAttribute('background')?.trim())
+}
+
+/** Mark or unmark a frame's document as darkened (see `DARKENED_CSS`). */
+export function setDarkened(doc: Document, darkened: boolean) {
+  doc.documentElement.toggleAttribute(DARKENED_ATTR, darkened)
+  for (const el of doc.querySelectorAll(`[${PICTURE_ATTR}]`)) el.removeAttribute(PICTURE_ATTR)
+  if (!darkened || !doc.body) return
+  for (const el of doc.body.querySelectorAll<HTMLElement>('*')) {
+    if (isBackgroundPicture(el)) el.setAttribute(PICTURE_ATTR, '')
+  }
 }

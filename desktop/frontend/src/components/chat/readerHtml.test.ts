@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { applyReaderLayout, applyReaderTheme } from './readerHtml'
 import {
+  DARKENED_ATTR,
   DEFAULT_READER_THEME,
   frameVar,
   frameVarPrefix,
@@ -422,5 +423,37 @@ describe('applyReaderTheme', () => {
       .map((style) => style.textContent ?? '')
       .find((css) => css.includes('max-width: 760px'))
     expect(sheet?.slice(sheet.indexOf('body {'), sheet.indexOf('*, *::before'))).not.toContain('background')
+  })
+})
+
+describe('dark message bodies', () => {
+  const DARKENING: ReaderTheme = { ...DARK, darkenStyled: true }
+  const darkened = (doc: Document) => doc.documentElement.hasAttribute(DARKENED_ATTR)
+
+  it('inverts a self-styled message that would otherwise sit on a light card', () => {
+    const doc = parse('<meta name="meron-body-bg" content="#f5f4f2"><p style="color:#333">hi</p>')
+    applyReaderTheme(doc, DARKENING)
+    expect(darkened(doc)).toBe(true)
+  })
+
+  it('leaves alone what the theme already paints dark, and stays off unless asked', () => {
+    const bare = parse('<p>hi</p>')
+    applyReaderTheme(bare, DARKENING)
+    expect(darkened(bare)).toBe(false)
+
+    const darkCanvas = parse('<meta name="meron-body-bg" content="#111111"><p style="color:#eee">hi</p>')
+    applyReaderTheme(darkCanvas, DARKENING)
+    expect(darkened(darkCanvas)).toBe(false)
+
+    const styled = parse('<meta name="meron-body-bg" content="#f5f4f2"><p style="color:#333">hi</p>')
+    applyReaderTheme(styled, DARK)
+    expect(darkened(styled)).toBe(false)
+  })
+
+  it('undoes the inversion when the theme turns light', () => {
+    const doc = parse('<meta name="meron-body-bg" content="#f5f4f2"><p style="color:#333">hi</p>')
+    applyReaderTheme(doc, DARKENING)
+    applyReaderTheme(doc, DEFAULT_READER_THEME)
+    expect(darkened(doc)).toBe(false)
   })
 })

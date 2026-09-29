@@ -28,6 +28,7 @@ import {
   Archive,
   Server,
   PanelTopClose,
+  Moon,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { importOpml, exportOpml } from '../../states/feeds'
@@ -373,6 +374,7 @@ function GeneralSection() {
   const [remoteSendersOpen, setRemoteSendersOpen] = useState(false)
   const remoteImageSenders = useValue(settings$.remoteImageSenders)
   const showRealAvatars = useValue(settings$.showRealAvatars)
+  const darkMessageBodies = useValue(settings$.darkMessageBodies)
   const showUnreadAccountBadge = useValue(settings$.showUnreadAccountBadge)
   const conversationLayout = useValue(settings$.conversationLayout)
   const sendShortcut = useValue(settings$.sendShortcut)
@@ -401,6 +403,13 @@ function GeneralSection() {
           hint={t('settings.appearance.showSenderImagesHint')}
           checked={showRealAvatars}
           onChange={() => settings$.showRealAvatars.set(!showRealAvatars)}
+        />
+        <ToggleRow
+          icon={<Moon size={15} />}
+          title={t('settings.appearance.darkMessageBodies')}
+          hint={t('settings.appearance.darkMessageBodiesHint')}
+          checked={darkMessageBodies}
+          onChange={() => settings$.darkMessageBodies.set(!darkMessageBodies)}
         />
         <ToggleRow
           icon={<Inbox size={15} />}

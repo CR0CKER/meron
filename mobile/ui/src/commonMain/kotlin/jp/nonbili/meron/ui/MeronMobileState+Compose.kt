@@ -608,11 +608,17 @@ internal fun MeronMobileState.canReplyAllToThread(): Boolean {
 /** The same question for one message, for its own menu. */
 internal fun MeronMobileState.canReplyAllToMessage(message: MessageBody): Boolean = replyAllAddsRecipients(message)
 
-/** Reply-all to one message, rather than to the conversation's reply target:
- * the message menu acts on the message it belongs to. Opens the full composer —
- * the recipients are the point of the action, and only the composer shows them.
- * The reply bar and any draft it holds are left untouched. */
-internal fun MeronMobileState.replyAllToMessage(message: MessageBody) {
+internal fun MeronMobileState.replyAllToMessage(message: MessageBody) = replyToMessage(message, replyAll = true)
+
+/** Reply (or reply-all) to one message, rather than to the conversation's reply
+ * target: the message menu and the reader act on the message they belong to.
+ * Opens the full composer — for reply-all the recipients are the point of the
+ * action, and only the composer shows them. The reply bar and any draft it
+ * holds are left untouched. */
+internal fun MeronMobileState.replyToMessage(
+    message: MessageBody,
+    replyAll: Boolean,
+) {
     val thread = selectedCoreThread
     val accountId = thread?.accountId?.ifBlank { defaultSendAccountId() }.orEmpty()
     if (accountId.isBlank() || thread == null) {
@@ -632,7 +638,7 @@ internal fun MeronMobileState.replyAllToMessage(message: MessageBody) {
             accountId = accountId,
             body = "",
             from = replyFrom,
-            replyAll = true,
+            replyAll = replyAll,
         )
     val generation = ++composeSessionGeneration
     val open: MeronMobileState.() -> Unit = open@{

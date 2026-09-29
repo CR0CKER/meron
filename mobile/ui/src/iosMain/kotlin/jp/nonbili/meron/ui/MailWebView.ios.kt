@@ -32,6 +32,8 @@ actual fun MailWebView(
     // is gated on the same flag and stays off here, so iOS keeps reflow-only
     // rendering and the height bridge's scale-1 assumption holds.
     @Suppress("UNUSED_PARAMETER") fitWideContent: Boolean,
+    // Unused: the view is always non-opaque (see the factory below).
+    @Suppress("UNUSED_PARAMETER") transparentBackground: Boolean,
     onQuoteToggle: (Boolean) -> Unit,
 ) {
     val latestOnHeight = rememberUpdatedState(onContentHeight)
@@ -135,3 +137,6 @@ private class ImageMessageHandler(
 }
 
 internal actual val MailWebViewFollowsSystemFontScale: Boolean = false
+
+// WKWebView has no shrink-to-fit counterpart (see fitWideContent above).
+internal actual val MailWebViewFitsWideContent: Boolean = false

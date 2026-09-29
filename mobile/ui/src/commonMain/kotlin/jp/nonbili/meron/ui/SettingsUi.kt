@@ -27,11 +27,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Inbox
@@ -142,6 +145,12 @@ internal fun SettingsScreen(
     onAppLanguageChange: (String) -> Unit,
     showSenderImages: Boolean,
     onToggleSenderImages: () -> Unit,
+    darkMailBodies: Boolean,
+    onToggleDarkMailBodies: () -> Unit,
+    autoFitMessages: Boolean,
+    onToggleAutoFitMessages: () -> Unit,
+    readerBottomActions: Boolean,
+    onToggleReaderBottomActions: () -> Unit,
     showUnreadBadges: Boolean,
     onToggleUnreadBadges: () -> Unit,
     showUnifiedInboxNav: Boolean,
@@ -318,6 +327,12 @@ internal fun SettingsScreen(
                     onOpenLanguage = { showLanguagePicker = true },
                     showSenderImages = showSenderImages,
                     onToggleSenderImages = onToggleSenderImages,
+                    darkMailBodies = darkMailBodies,
+                    onToggleDarkMailBodies = onToggleDarkMailBodies,
+                    autoFitMessages = autoFitMessages,
+                    onToggleAutoFitMessages = onToggleAutoFitMessages,
+                    readerBottomActions = readerBottomActions,
+                    onToggleReaderBottomActions = onToggleReaderBottomActions,
                     showUnreadBadges = showUnreadBadges,
                     onToggleUnreadBadges = onToggleUnreadBadges,
                     showUnifiedInboxNav = showUnifiedInboxNav,
@@ -677,6 +692,12 @@ internal fun SettingsGeneralPage(
     onOpenLanguage: () -> Unit,
     showSenderImages: Boolean,
     onToggleSenderImages: () -> Unit,
+    darkMailBodies: Boolean,
+    onToggleDarkMailBodies: () -> Unit,
+    autoFitMessages: Boolean,
+    onToggleAutoFitMessages: () -> Unit,
+    readerBottomActions: Boolean,
+    onToggleReaderBottomActions: () -> Unit,
     showUnreadBadges: Boolean,
     onToggleUnreadBadges: () -> Unit,
     showUnifiedInboxNav: Boolean,
@@ -719,7 +740,10 @@ internal fun SettingsGeneralPage(
     focusProxy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (focusProxy) 12 else 0)
+    // The mail-reading toggles above shift the proxy row down; auto-fit is not
+    // offered everywhere.
+    val proxyScrollIndex = 14 + if (MailWebViewFitsWideContent) 1 else 0
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (focusProxy) proxyScrollIndex else 0)
     LazyColumn(modifier.appScrollbar(listState), state = listState) {
         item { SettingsSectionLabel(tr("settings.pages.appearance")) }
         item {
@@ -786,6 +810,35 @@ internal fun SettingsGeneralPage(
                 hint = tr("settings.appearance.showSenderImagesHint"),
                 checked = showSenderImages,
                 onToggle = onToggleSenderImages,
+            )
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.Filled.DarkMode,
+                title = tr("settings.appearance.darkMessageBodies"),
+                hint = tr("settings.appearance.darkMessageBodiesHint"),
+                checked = darkMailBodies,
+                onToggle = onToggleDarkMailBodies,
+            )
+        }
+        if (MailWebViewFitsWideContent) {
+            item {
+                SettingsToggleRow(
+                    icon = Icons.Filled.FitScreen,
+                    title = tr("mobile.settings.autoFitMessages"),
+                    hint = tr("mobile.settings.autoFitMessagesHint"),
+                    checked = autoFitMessages,
+                    onToggle = onToggleAutoFitMessages,
+                )
+            }
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.AutoMirrored.Filled.Reply,
+                title = tr("mobile.settings.readerBottomActions"),
+                hint = tr("mobile.settings.readerBottomActionsHint"),
+                checked = readerBottomActions,
+                onToggle = onToggleReaderBottomActions,
             )
         }
         item {

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -11,18 +12,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.ReplyAll
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -37,9 +46,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -68,6 +80,10 @@ internal fun MessageReaderScreen(
     onCopy: (String, String) -> Unit,
     onComposeTo: (String) -> Unit,
     onForward: (MessageBody) -> Unit,
+    // Reply, reply all, forward and delete move from the overflow menu to a
+    // bottom bar, within thumb reach (the reader-bottom-actions setting).
+    bottomActions: Boolean,
+    onReplyToMessage: (MessageBody) -> Unit,
     onReplyAllToMessage: (MessageBody) -> Unit,
     canReplyAllToMessage: (MessageBody) -> Boolean,
     onEditAsNew: (MessageBody) -> Unit,
@@ -258,7 +274,7 @@ internal fun MessageReaderScreen(
                                         },
                                     )
                                 }
-                                if (actionsEnabled) {
+                                if (actionsEnabled && !bottomActions) {
                                     if (canReplyAllToMessage(message)) {
                                         DropdownMenuItem(
                                             text = { Text(tr("chat.actions.replyAll")) },
@@ -275,6 +291,8 @@ internal fun MessageReaderScreen(
                                             onForward(message)
                                         },
                                     )
+                                }
+                                if (actionsEnabled) {
                                     DropdownMenuItem(
                                         text = { Text(tr("chat.actions.editAsNewMessage")) },
                                         onClick = {
@@ -282,6 +300,8 @@ internal fun MessageReaderScreen(
                                             onEditAsNew(message)
                                         },
                                     )
+                                }
+                                if (actionsEnabled && !bottomActions) {
                                     DropdownMenuItem(
                                         text = { Text(tr("chat.actions.deleteMessage"), color = MaterialTheme.colorScheme.error) },
                                         onClick = {
@@ -294,6 +314,32 @@ internal fun MessageReaderScreen(
                         }
                     },
                 )
+            },
+            bottomBar = {
+                if (actionsEnabled && bottomActions) {
+                    BottomAppBar {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            ReaderBottomAction(Icons.AutoMirrored.Filled.Reply, tr("mobile.actions.reply")) {
+                                onReplyToMessage(message)
+                            }
+                            if (canReplyAllToMessage(message)) {
+                                ReaderBottomAction(Icons.AutoMirrored.Filled.ReplyAll, tr("chat.actions.replyAll")) {
+                                    onReplyAllToMessage(message)
+                                }
+                            }
+                            ReaderBottomAction(Icons.AutoMirrored.Filled.Forward, tr("chat.actions.forward")) {
+                                onForward(message)
+                            }
+                            ReaderBottomAction(
+                                Icons.Filled.Delete,
+                                tr("buttons.delete"),
+                                tint = MaterialTheme.colorScheme.error,
+                            ) {
+                                onDelete(message)
+                            }
+                        }
+                    }
+                }
             },
         ) { innerPadding ->
             Column(
@@ -383,5 +429,24 @@ internal fun MessageReaderScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ReaderBottomAction(
+    icon: ImageVector,
+    label: String,
+    tint: Color = LocalContentColor.current,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
     }
 }

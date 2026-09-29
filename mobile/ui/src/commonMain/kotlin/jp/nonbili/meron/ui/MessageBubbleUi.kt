@@ -521,6 +521,9 @@ internal fun ColumnScope.MessageBodyContent(
             maxHeight = bodyMaxHeight,
             onOpenUrl = onOpenUrl,
             onOpenImage = onOpenHtmlImage,
+            // Opt-in (the auto-fit setting): a bubble fitting a 640px mail
+            // renders it at about half size.
+            fitWideContent = LocalAutoFitMessages.current,
         )
     } else if (message.bodyMissing) {
         // The core has no cached body (the on-demand fetch failed) — a
@@ -797,8 +800,9 @@ internal fun HtmlMessageBody(
     val scriptNonce = remember(html, allowRemote) { randomScriptNonce() }
     val showQuotedLabel = tr("chat.showQuotedText")
     val hideQuotedLabel = tr("chat.hideQuotedText")
+    val darkBody = LocalDarkMailBodies.current
     val mobileHtml =
-        remember(html, quoteKey, allowRemote, scriptNonce, fitWideContent, bodyFontSize, showQuotedLabel, hideQuotedLabel) {
+        remember(html, quoteKey, allowRemote, scriptNonce, fitWideContent, darkBody, bodyFontSize, showQuotedLabel, hideQuotedLabel) {
             val body = applyRemoteContentPolicy(html, allowRemote)
             // The state the reader left the quote in, read once per document:
             // toggles inside the page don't rebuild (and so reload) it, they
@@ -807,6 +811,11 @@ internal fun HtmlMessageBody(
             // the body parses, and the script below only places the toggle.
             val quoteOpen = QuoteFoldMemory.isOpen(quoteKey)
             val quoteClass = if (html.contains(HTML_QUOTE_ATTR) && !quoteOpen) "meron-quote-folded" else ""
+            val rootClass = listOfNotNull(quoteClass.ifEmpty { null }, "meron-dark".takeIf { darkBody }).joinToString(" ")
+            // Inline for the same reason as the height override below: a
+            // sender's `html { background }` would otherwise sit, undarkened,
+            // behind the inverted body.
+            val rootBackground = if (darkBody) " background: transparent !important;" else ""
             """
             <!doctype html>
             <!-- The self-sizing WebView needs its document boxes to follow the
@@ -817,7 +826,7 @@ internal fun HtmlMessageBody(
                  specific !important rules the later one wins, while an inline
                  declaration outranks every stylesheet rule of the same
                  importance wherever the sender's <style> sits. -->
-            <html class="$quoteClass" style="height: auto !important; min-height: 0 !important;">
+            <html class="$rootClass" style="height: auto !important; min-height: 0 !important;$rootBackground">
             <head>
               <meta http-equiv="Content-Security-Policy" content="${mailBodyCsp(allowRemote, scriptNonce)}">
               <meta id="meron-viewport" name="viewport" content="width=device-width, initial-scale=1.0">
@@ -923,6 +932,24 @@ internal fun HtmlMessageBody(
                 }
                 button.meron-quote-toggle::before {
                   content: '•••';
+                }
+                /* Dark bodies: the mail is drawn inverted, light text on dark,
+                   with the hue turned back so links and brand colors stay
+                   recognisable. Pictures are inverted a second time to come
+                   out as sent (background ones are marked by applyDarkBody
+                   below, which also drops the class for mail designed dark).
+                   The root stays transparent (see above), so the bubble shows
+                   through wherever the mail paints nothing. */
+                html.meron-dark body,
+                html.meron-dark img,
+                html.meron-dark video,
+                html.meron-dark [data-meron-picture] {
+                  filter: invert(1) hue-rotate(180deg);
+                }
+                /* ...but only once: inside a re-inverted picture an image is
+                   already back to its own colors. */
+                html.meron-dark [data-meron-picture] img {
+                  filter: none;
                 }
               </style>
             </head>
@@ -1198,8 +1225,106 @@ internal fun HtmlMessageBody(
                   // Before the first report: every width the script measures,
                   // and the view height derived from them, is read under the
                   // viewport this leaves in place.
+                  // Dark bodies (see the meron-dark rules): a mail designed
+                  // dark already -- a dark page, or light text written for a
+                  // dark client -- would come out bright if inverted, so it
+                  // keeps its own colors. Judged the way the desktop frames
+                  // do: the page color the core hoisted or the body paints,
+                  // else the tone most of the visible text is drawn in.
+                  function colorTone(value) {
+                    var match = /^rgba?\(([^)]*)\)/.exec((value || '').trim());
+                    if (!match) return null;
+                    var parts = match[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+                    if (parts.length < 3 || (parts.length > 3 && parts[3] < 0.6)) return null;
+                    var lum = (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
+                    return lum > 0.55 ? 'light' : 'dark';
+                  }
+                  function bodyMeta(name) {
+                    var meta = document.querySelector('meta[name="' + name + '"]');
+                    return meta ? (meta.getAttribute('content') || '').trim() : '';
+                  }
+                  function canvasTone() {
+                    var probe = document.createElement('span');
+                    var declared = bodyMeta('meron-body-bg');
+                    if (declared) {
+                      probe.style.color = declared;
+                      document.body.appendChild(probe);
+                      var tone = colorTone(getComputedStyle(probe).color);
+                      probe.remove();
+                      if (tone) return tone;
+                    }
+                    return colorTone(getComputedStyle(document.body).backgroundColor);
+                  }
+                  function textTone() {
+                    var light = 0;
+                    var dark = 0;
+                    (function walk(el) {
+                      if (/^(STYLE|SCRIPT|BUTTON)$/.test(el.tagName)) return;
+                      var style = getComputedStyle(el);
+                      if (style.display === 'none' || style.visibility === 'hidden') return;
+                      if (style.opacity === '0' || style.fontSize === '0px') return;
+                      var tone = colorTone(style.color);
+                      for (var i = 0; i < el.childNodes.length; i++) {
+                        var node = el.childNodes[i];
+                        if (node.nodeType === 1) {
+                          walk(node);
+                        } else if (node.nodeType === 3 && tone) {
+                          var length = node.textContent.trim().length;
+                          if (tone === 'light') light += length;
+                          else dark += length;
+                        }
+                      }
+                    })(document.body);
+                    if (!light && !dark) return null;
+                    return light > dark ? 'light' : 'dark';
+                  }
+                  // A picture drawn as a background is turned back to its own
+                  // colors with the images -- but only where it is the whole
+                  // of the element: turning a box back also turns back the
+                  // text in it, which then reads as sent on a canvas that no
+                  // longer is.
+                  function markBackgroundPictures() {
+                    var all = document.body.getElementsByTagName('*');
+                    for (var i = 0; i < all.length; i++) {
+                      var el = all[i];
+                      if (getComputedStyle(el).backgroundImage.indexOf('url(') === -1) continue;
+                      if (el.textContent.trim()) continue;
+                      el.setAttribute('data-meron-picture', '');
+                    }
+                  }
+                  // The sanitiser drops <body>, so the core hoists its colors
+                  // into metas. A dark page shown as designed needs them back
+                  // as the pair they are -- its background alone, or the page
+                  // left transparent with the default black text on it, is
+                  // dark on dark. Put back as the inline declarations they
+                  // were, with the priority they were written at; a surviving
+                  // declaration of the mail's own is left alone.
+                  function restoreDeclaredCanvas() {
+                    var important = bodyMeta('meron-body-important').split(/\s+/);
+                    [['background-color', 'meron-body-bg'], ['color', 'meron-body-fg']].forEach(function (pair) {
+                      var value = bodyMeta(pair[1]);
+                      if (!value || document.body.style.getPropertyValue(pair[0])) return;
+                      document.body.style.setProperty(pair[0], value, important.indexOf(pair[0]) === -1 ? '' : 'important');
+                    });
+                  }
+                  function applyDarkBody() {
+                    var root = document.documentElement;
+                    if (!root.classList.contains('meron-dark')) return;
+                    var canvas = canvasTone();
+                    if (canvas === 'dark') {
+                      restoreDeclaredCanvas();
+                      root.classList.remove('meron-dark');
+                      return;
+                    }
+                    if (!canvas && textTone() === 'light') {
+                      root.classList.remove('meron-dark');
+                      return;
+                    }
+                    markBackgroundPictures();
+                  }
                   dropForeignViewports();
                   groupConsecutiveImages();
+                  applyDarkBody();
                   window.addEventListener('load', report);
                   document.addEventListener('DOMContentLoaded', report);
                   if (window.ResizeObserver) {
@@ -1252,6 +1377,7 @@ internal fun HtmlMessageBody(
             onQuoteToggle = { open -> QuoteFoldMemory.setOpen(quoteKey, open) },
             modifier = webViewModifier,
             fitWideContent = fitWideContent,
+            transparentBackground = darkBody,
         )
     }
 }
@@ -1267,6 +1393,7 @@ private fun MailWebViewWithLinkMenu(
     onQuoteToggle: (Boolean) -> Unit,
     modifier: Modifier,
     fitWideContent: Boolean,
+    transparentBackground: Boolean,
 ) {
     var menuTarget by remember { mutableStateOf<MessageLinkMenuTarget?>(null) }
     Box(modifier) {
@@ -1277,6 +1404,7 @@ private fun MailWebViewWithLinkMenu(
             onOpenImage = onOpenImage,
             onLinkLongPress = { url, offset -> menuTarget = MessageLinkMenuTarget(url, offset) },
             fitWideContent = fitWideContent,
+            transparentBackground = transparentBackground,
             onQuoteToggle = onQuoteToggle,
             modifier = Modifier.fillMaxSize(),
         )

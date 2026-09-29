@@ -327,6 +327,9 @@ internal class MeronMobileState(
     var tasks by mutableStateOf(emptyList<TaskSummary>())
     var tasksLoading by mutableStateOf(false)
     var showSenderImages by mutableStateOf(loadAppBoolean(prefs, SHOW_SENDER_IMAGES_PREF, false))
+    var darkMailBodies by mutableStateOf(loadAppBoolean(prefs, DARK_MAIL_BODIES_PREF, false))
+    var autoFitMessages by mutableStateOf(loadAppBoolean(prefs, AUTO_FIT_MESSAGES_PREF, false))
+    var readerBottomActions by mutableStateOf(loadAppBoolean(prefs, READER_BOTTOM_ACTIONS_PREF, false))
     var liveMailPushEnabled by mutableStateOf(loadAppBoolean(prefs, LIVE_MAIL_PUSH_PREF, false))
     var backgroundSyncEnabled by mutableStateOf(loadAppBoolean(prefs, BACKGROUND_SYNC_ENABLED_PREF, true))
     var pollIntervalMinutes by mutableStateOf(

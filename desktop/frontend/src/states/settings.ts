@@ -110,6 +110,9 @@ export type Settings = {
   /** Message body text size, in percent, applied on top of `fontScale`. */
   messageFontScale: number
   showRealAvatars: boolean
+  /** Whether a message that brings its own light design is drawn inverted under
+   *  a dark theme, instead of as a light card (see `darkensCanvas`). */
+  darkMessageBodies: boolean
   /** Whether to overlay an inbox unread-count badge on side navigation account avatars. */
   showUnreadAccountBadge: boolean
   sendShortcut: SendShortcut
@@ -188,6 +191,7 @@ const DB_KEY = {
   fontScale: 'font_scale',
   messageFontScale: 'message_font_scale',
   showRealAvatars: 'show_real_avatars',
+  darkMessageBodies: 'dark_message_bodies',
   showUnreadAccountBadge: 'show_unread_account_badge',
   sendShortcut: 'send_shortcut',
   conversationLayout: 'conversation_layout',
@@ -395,6 +399,7 @@ export const settings$ = observable<Settings>({
   fontScale: fontBootstrap.fontScale,
   messageFontScale: fontBootstrap.messageFontScale,
   showRealAvatars: false,
+  darkMessageBodies: false,
   showUnreadAccountBadge: false,
   sendShortcut: 'mod_enter',
   conversationLayout: 'chat',
@@ -836,6 +841,10 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.showRealAvatars] === 'boolean') {
       settings$.showRealAvatars.set(prefs[DB_KEY.showRealAvatars] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.darkMessageBodies] === 'boolean') {
+      settings$.darkMessageBodies.set(prefs[DB_KEY.darkMessageBodies] as boolean)
     }
 
     if (typeof prefs[DB_KEY.showUnreadAccountBadge] === 'boolean') {
