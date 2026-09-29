@@ -63,6 +63,20 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.3.10" date="2026-09-29">
+      <description>
+        <ul>
+          <li>Open threads in new tabs on double-click or Ctrl/Cmd+click with tab context menus</li>
+          <li>Add match-system theme following OS appearance and support dark message bodies</li>
+          <li>Share and import custom themes as a color string</li>
+          <li>Remember window size and maximized state, and add close-to-tray setting</li>
+          <li>Reorganize settings into General, Messages, and Composer sections</li>
+          <li>Slide Kanban conversation pane open and closed</li>
+          <li>Auto-fit chat bubbles and add bottom reader actions</li>
+          <li>Remove account avatars and board images from settings headers</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.9" date="2026-09-27">
       <description>
         <ul>
