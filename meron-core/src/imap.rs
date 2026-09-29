@@ -919,7 +919,7 @@ pub async fn fetch_recent(session: &mut Session, folder: &str, limit: u32) -> Re
             subject: ef.subject,
             from_name: ef.from_name,
             from_addr: ef.from_addr,
-            date: ef.date,
+            date: message_date(ef.date, &fetch),
             seen,
             starred,
             thread_key,
@@ -1107,7 +1107,11 @@ pub async fn fetch_by_message_ids(
                 folder: folder.to_string(),
                 uid,
             };
-            let message = parse::parse_message(&raw, Some(&media));
+            let mut message = parse::parse_message(&raw, Some(&media));
+            let date = message_date(ef.date, &fetch);
+            if message.date == 0 {
+                message.date = date;
+            }
             out.push(FetchedMessage {
                 header: MessageHeader {
                     uid,
@@ -1115,7 +1119,7 @@ pub async fn fetch_by_message_ids(
                     subject: ef.subject,
                     from_name: ef.from_name,
                     from_addr: ef.from_addr,
-                    date: ef.date,
+                    date,
                     seen,
                     starred,
                     thread_key,
@@ -1187,7 +1191,7 @@ pub async fn fetch_headers_by_uid(
                 subject: ef.subject,
                 from_name: ef.from_name,
                 from_addr: ef.from_addr,
-                date: ef.date,
+                date: message_date(ef.date, &fetch),
                 seen,
                 starred,
                 thread_key,
@@ -1205,10 +1209,10 @@ pub async fn fetch_headers_by_uid(
     Ok(out)
 }
 
-/// Each of `uids`' Date header as epoch seconds (0 when absent or unparseable),
-/// the same date [`fetch_headers_by_uid`] reports. Fetches only that one header
-/// field, so a search can order a large hit set by date without downloading
-/// every header. UIDs the server no longer has are left out.
+/// Each of `uids`' Date header as epoch seconds (INTERNALDATE when absent or
+/// unparseable), the same date [`fetch_headers_by_uid`] reports. Fetches only
+/// that one header field, so a search can order a large hit set by date without
+/// downloading every header. UIDs the server no longer has are left out.
 pub async fn fetch_dates_by_uid(
     session: &mut Session,
     folder: &str,
@@ -1221,7 +1225,10 @@ pub async fn fetch_dates_by_uid(
     let mut out = Vec::with_capacity(uids.len());
     for uid_set in uid_set_chunks(uids, MAX_UID_SET_LEN) {
         let mut stream = session
-            .uid_fetch(uid_set, "(UID BODY.PEEK[HEADER.FIELDS (DATE)])")
+            .uid_fetch(
+                uid_set,
+                "(UID INTERNALDATE BODY.PEEK[HEADER.FIELDS (DATE)])",
+            )
             .await
             .context("UID FETCH search dates")?;
         while let Some(item) = stream.next().await {
@@ -1235,7 +1242,7 @@ pub async fn fetch_dates_by_uid(
                 .and_then(|(headers, _)| headers.get_first_value("Date"))
                 .map(|raw| parse::parse_date_to_epoch(&raw))
                 .unwrap_or_default();
-            out.push((uid, date));
+            out.push((uid, message_date(date, &fetch)));
         }
     }
     Ok(out)
@@ -1825,21 +1832,27 @@ pub async fn fetch_full_message(
     media: &parse::MediaCtx,
     peek: bool,
 ) -> Result<Option<parse::Message>> {
-    let item = if peek { "(BODY.PEEK[])" } else { "(RFC822)" };
+    let item = if peek {
+        "(INTERNALDATE BODY.PEEK[])"
+    } else {
+        "(INTERNALDATE RFC822)"
+    };
     let mut stream = session
         .uid_fetch(uid.to_string(), item)
         .await
         .context("UID FETCH")?;
-    let mut raw: Option<Vec<u8>> = None;
+    let mut message: Option<parse::Message> = None;
     while let Some(item) = stream.next().await {
         let fetch = item.context("UID FETCH item")?;
         if let Some(body) = fetch.body() {
-            raw = Some(body.to_vec());
+            let mut parsed = parse::parse_message(body, Some(media));
+            parsed.date = message_date(parsed.date, &fetch);
+            message = Some(parsed);
             break;
         }
     }
     drop(stream);
-    Ok(raw.map(|bytes| parse::parse_message(&bytes, Some(media))))
+    Ok(message)
 }
 
 /// Select `folder` and fetch full bodies for `uids`, parsing each into a
@@ -2033,14 +2046,28 @@ fn push_recipient(out: &mut Vec<Recipient>, info: &mailparse::SingleInfo) {
     });
 }
 
+/// The message's send time: its `Date` header when that parses, otherwise the
+/// server's INTERNALDATE (arrival time). Some senders omit the header or write
+/// one chrono rejects; without the fallback such a message is dated 1970 and
+/// sinks to the bottom of every date-ordered list.
+fn message_date(header_date: i64, fetch: &async_imap::types::Fetch) -> i64 {
+    if header_date != 0 {
+        return header_date;
+    }
+    fetch
+        .internal_date()
+        .map(|date| date.timestamp())
+        .unwrap_or_default()
+}
+
 /// FETCH item list. Adds `X-GM-THRID` on Gmail so messages thread by Gmail's
 /// server-side thread id, and `BODY.PEEK[]` when the full message is wanted.
 fn fetch_items(gmail: bool, body: bool) -> &'static str {
     match (gmail, body) {
-        (true, true) => "(UID FLAGS RFC822.HEADER X-GM-MSGID X-GM-THRID BODY.PEEK[])",
-        (true, false) => "(UID FLAGS RFC822.HEADER X-GM-MSGID X-GM-THRID)",
-        (false, true) => "(UID FLAGS RFC822.HEADER BODY.PEEK[])",
-        (false, false) => "(UID FLAGS RFC822.HEADER)",
+        (true, true) => "(UID FLAGS INTERNALDATE RFC822.HEADER X-GM-MSGID X-GM-THRID BODY.PEEK[])",
+        (true, false) => "(UID FLAGS INTERNALDATE RFC822.HEADER X-GM-MSGID X-GM-THRID)",
+        (false, true) => "(UID FLAGS INTERNALDATE RFC822.HEADER BODY.PEEK[])",
+        (false, false) => "(UID FLAGS INTERNALDATE RFC822.HEADER)",
     }
 }
 

@@ -2304,6 +2304,41 @@ fn save_cached_message_preserves_envelope_recipients_in_json() {
 }
 
 #[test]
+fn save_cached_message_keeps_the_header_date_when_the_body_has_none() {
+    use crate::imap::MessageHeader;
+    let conn = test_conn();
+    let header = MessageHeader {
+        uid: 7,
+        subject: "No Date header".into(),
+        date: 1_790_645_280, // the sync's INTERNALDATE fallback
+        ..Default::default()
+    };
+    upsert_messages(&conn, "acct", "INBOX", &[header]).unwrap();
+
+    let body = Message {
+        subject: "No Date header".into(),
+        body: "hello".into(),
+        ..Default::default()
+    };
+    save_cached_message(&conn, "acct", "INBOX", 7, &body).unwrap();
+    let message = get_cached_message(&conn, "acct", "INBOX", 7)
+        .unwrap()
+        .unwrap();
+    assert_eq!(message.date, 1_790_645_280);
+
+    // A body that does carry a date still wins.
+    let dated = Message {
+        date: 1_790_600_000,
+        ..body
+    };
+    save_cached_message(&conn, "acct", "INBOX", 7, &dated).unwrap();
+    let message = get_cached_message(&conn, "acct", "INBOX", 7)
+        .unwrap()
+        .unwrap();
+    assert_eq!(message.date, 1_790_600_000);
+}
+
+#[test]
 fn run_migrations_creates_schema_and_bumps_version() {
     let conn = Connection::open_in_memory().unwrap();
     db::run_migrations(&conn).unwrap();

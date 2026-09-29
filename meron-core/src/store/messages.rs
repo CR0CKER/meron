@@ -945,7 +945,9 @@ pub fn save_cached_message(
            subject = excluded.subject,
            from_name = excluded.from_name,
            from_addr = excluded.from_addr,
-           date = excluded.date,
+           -- A body whose Date header didn't parse must not undo the header
+           -- sync's INTERNALDATE fallback.
+           date = CASE WHEN excluded.date = 0 THEN messages.date ELSE excluded.date END,
            body = excluded.body,
            json = json_patch(messages.json, excluded.json),
            files = excluded.files",
