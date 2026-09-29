@@ -1270,8 +1270,16 @@ struct BodySources {
 /// carries both text/plain and text/html; the plain part is the source for the
 /// conversation/plain reader, and HTML is kept for the HTML reader.
 fn body_sources(part: &mailparse::ParsedMail) -> BodySources {
-    let plain = find_text_part(part, "text/plain");
+    let mut plain = find_text_part(part, "text/plain");
     let html = find_text_part(part, "text/html");
+    // Some senders put their HTML into the text/plain alternative as well.
+    // Shown as text it is a wall of tags (and a notification snippet reading
+    // `<div style=...`), so fall back to rendering the real HTML part. Only
+    // then: that part is what the HTML tab shows, so nothing is lost, while a
+    // plain-only message is always kept as the sender wrote it.
+    if html.is_some() && plain.as_deref().is_some_and(plain_is_markup) {
+        plain = None;
+    }
     if plain.is_some() || html.is_some() {
         return BodySources { plain, html };
     }
@@ -1295,6 +1303,33 @@ fn body_sources(part: &mailparse::ParsedMail) -> BodySources {
         };
     }
     BodySources::default()
+}
+
+/// Whether a text/plain part is really an HTML document: it opens and closes
+/// on a tag, and tags make up most of it. Prose that quotes tags as examples
+/// (`<p>hello</p>` then an explanation) is mostly text and stays plain.
+fn plain_is_markup(plain: &str) -> bool {
+    let trimmed = plain.trim();
+    if !trimmed.starts_with('<') || !trimmed.ends_with('>') {
+        return false;
+    }
+    let (mut markup, mut total) = (0usize, 0usize);
+    let mut in_tag = false;
+    for c in trimmed.chars() {
+        if c == '<' {
+            in_tag = true;
+        }
+        if !c.is_whitespace() {
+            total += 1;
+            if in_tag {
+                markup += 1;
+            }
+        }
+        if c == '>' {
+            in_tag = false;
+        }
+    }
+    markup * 2 >= total
 }
 
 fn find_text_part(part: &ParsedMail, mime: &str) -> Option<String> {
@@ -1651,6 +1686,70 @@ mod tests {
         let msg = parse_message(raw, None);
         assert!(msg.body_html.is_none());
         assert_eq!(msg.body, "hello world");
+    }
+
+    #[test]
+    fn markup_in_the_plain_part_renders_as_html() {
+        // A sender that stuffs its HTML into text/plain: the real HTML part
+        // renders instead, so neither the reader nor the snippet shows tags.
+        let raw = b"From: a@b.com\r\n\
+Subject: x\r\n\
+Content-Type: multipart/alternative; boundary=sep\r\n\
+\r\n\
+--sep\r\n\
+Content-Type: text/plain; charset=utf-8\r\n\
+\r\n\
+<div style=\"font-family: Arial\"><p>plain markup</p></div>\r\n\
+--sep\r\n\
+Content-Type: text/html; charset=utf-8\r\n\
+\r\n\
+<p><strong>html part</strong></p>\r\n\
+--sep--\r\n";
+        let msg = parse_message(raw, None);
+        assert_eq!(msg.body, "**html part**");
+        assert_eq!(msg.preview, "html part");
+
+        // Prose that opens on a tag example keeps its plain part, tags and all.
+        let raw = b"From: a@b.com\r\n\
+Subject: x\r\n\
+Content-Type: multipart/alternative; boundary=sep\r\n\
+\r\n\
+--sep\r\n\
+Content-Type: text/plain; charset=utf-8\r\n\
+\r\n\
+<p>hello</p>\r\n\
+\r\n\
+Please replace <p> with <div> in this example.\r\n\
+--sep\r\n\
+Content-Type: text/html; charset=utf-8\r\n\
+\r\n\
+<p>&lt;p&gt;hello&lt;/p&gt;</p>\r\n\
+--sep--\r\n";
+        let msg = parse_message(raw, None);
+        assert!(msg.body.starts_with("<p>hello</p>"));
+        assert!(msg.body.contains("replace <p> with <div>"));
+
+        // A plain-only message is never reclassified, even when it is all tags.
+        let raw = b"From: a@b.com\r\nSubject: x\r\nContent-Type: text/plain\r\n\r\n\
+<div style=\"font-family: Arial\"><p>hello</p></div>";
+        let msg = parse_message(raw, None);
+        assert!(msg.body_html.is_none());
+        assert!(msg.body.starts_with("<div style="));
+    }
+
+    #[test]
+    fn plain_markup_needs_tags_to_dominate() {
+        assert!(plain_is_markup(
+            "<div style=\"font-family: Arial\">\n<p style=\"color: #1a2b3c\">Connect</p>\n</div>"
+        ));
+        // Tag examples in prose, even when the message ends on one.
+        assert!(!plain_is_markup(
+            "<p>hello</p>\n\nPlease replace <p> with <div> in this example."
+        ));
+        assert!(!plain_is_markup(
+            "<p>hello</p>\n\nPlease replace <p> with <div>"
+        ));
+        assert!(!plain_is_markup("hello <b>world</b>"));
     }
 
     #[test]
