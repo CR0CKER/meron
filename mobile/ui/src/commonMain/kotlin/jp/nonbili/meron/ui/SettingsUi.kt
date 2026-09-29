@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.HideImage
@@ -207,6 +208,8 @@ internal fun SettingsScreen(
     val page =
         when (settingsBackStackEntry?.destination?.route ?: SettingsRoutes.Root) {
             SettingsRoutes.General -> SettingsPage.General
+            SettingsRoutes.Messages -> SettingsPage.Messages
+            SettingsRoutes.Composer -> SettingsPage.Composer
             SettingsRoutes.Account -> selectedSettingsAccountId?.let { SettingsPage.AccountDetail(it) } ?: SettingsPage.Root
             SettingsRoutes.AccountWallpaper -> selectedSettingsAccountId?.let { SettingsPage.AccountWallpaper(it) } ?: SettingsPage.Root
             SettingsRoutes.KanbanBoard -> selectedSettingsBoardId?.let { SettingsPage.KanbanBoardDetail(it) } ?: SettingsPage.Root
@@ -284,6 +287,8 @@ internal fun SettingsScreen(
                         when (page) {
                             SettingsPage.Root -> tr("settings.label")
                             SettingsPage.General -> tr("settings.sections.general")
+                            SettingsPage.Messages -> tr("settings.sections.messages")
+                            SettingsPage.Composer -> tr("settings.sections.composer")
                             is SettingsPage.AccountDetail -> tr("settings.account.account")
                             is SettingsPage.AccountWallpaper -> tr("settings.account.chatBackground")
                             is SettingsPage.KanbanBoardDetail -> tr("kanban.board.label")
@@ -327,12 +332,6 @@ internal fun SettingsScreen(
                     onOpenLanguage = { showLanguagePicker = true },
                     showSenderImages = showSenderImages,
                     onToggleSenderImages = onToggleSenderImages,
-                    darkMailBodies = darkMailBodies,
-                    onToggleDarkMailBodies = onToggleDarkMailBodies,
-                    autoFitMessages = autoFitMessages,
-                    onToggleAutoFitMessages = onToggleAutoFitMessages,
-                    readerBottomActions = readerBottomActions,
-                    onToggleReaderBottomActions = onToggleReaderBottomActions,
                     showUnreadBadges = showUnreadBadges,
                     onToggleUnreadBadges = onToggleUnreadBadges,
                     showUnifiedInboxNav = showUnifiedInboxNav,
@@ -341,18 +340,8 @@ internal fun SettingsScreen(
                     onToggleTasks = onToggleTasks,
                     kanbanColumnWidth = kanbanColumnWidth,
                     onCycleKanbanColumnWidth = onCycleKanbanColumnWidth,
-                    sendShortcutMode = sendShortcutMode,
-                    onToggleSendShortcut = onToggleSendShortcut,
-                    conversationLayout = conversationLayout,
-                    onToggleConversationLayout = onToggleConversationLayout,
-                    messageFontScale = messageFontScale,
-                    onOpenMessageTextSize = { showMessageTextSize = true },
                     appProxy = appProxy,
                     onSaveAppProxy = onSaveAppProxy,
-                    appSignatureHtml = appSignatureHtml,
-                    onSaveAppSignature = onSaveAppSignature,
-                    remoteImageSenderCount = remoteImageSenders.size,
-                    onOpenRemoteSenders = { settingsNavController.navigate(SettingsRoutes.RemoteSenders) },
                     notificationsNeedPermission = notificationsNeedPermission,
                     onEnableNotifications = onEnableNotifications,
                     supportsBackgroundPush = supportsBackgroundPush,
@@ -373,6 +362,34 @@ internal fun SettingsScreen(
                     onRestoreBackup = onRestoreBackup,
                     backupBusy = backupBusy,
                     focusProxy = directOpenRoute == SettingsRoutes.General,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            composable(SettingsRoutes.Messages) {
+                SettingsMessagesPage(
+                    conversationLayout = conversationLayout,
+                    onToggleConversationLayout = onToggleConversationLayout,
+                    messageFontScale = messageFontScale,
+                    onOpenMessageTextSize = { showMessageTextSize = true },
+                    darkMailBodies = darkMailBodies,
+                    onToggleDarkMailBodies = onToggleDarkMailBodies,
+                    autoFitMessages = autoFitMessages,
+                    onToggleAutoFitMessages = onToggleAutoFitMessages,
+                    readerBottomActions = readerBottomActions,
+                    onToggleReaderBottomActions = onToggleReaderBottomActions,
+                    remoteImageSenderCount = remoteImageSenders.size,
+                    onOpenRemoteSenders = { settingsNavController.navigate(SettingsRoutes.RemoteSenders) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            composable(SettingsRoutes.Composer) {
+                SettingsComposerPage(
+                    sendShortcutMode = sendShortcutMode,
+                    onToggleSendShortcut = onToggleSendShortcut,
+                    appSignatureHtml = appSignatureHtml,
+                    onSaveAppSignature = onSaveAppSignature,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -529,8 +546,8 @@ internal fun SettingsScreen(
             }
 
             composable(SettingsRoutes.Root) {
-                // Mirrors the desktop Settings sidebar: a single "General" entry,
-                // then Kanban boards, Mail accounts, and Feed accounts sections.
+                // Mirrors the desktop Settings sidebar: General, Messages and
+                // Composer, then Kanban boards, Mail accounts, and Feed accounts.
                 val mailAccounts = accounts.filter { !accountSummaryIsRss(it) }
                 val feedAccounts = accounts.filter { accountSummaryIsRss(it) }
                 val rootListState = rememberLazyListState()
@@ -541,6 +558,22 @@ internal fun SettingsScreen(
                             title = tr("settings.sections.general"),
                             subtitle = null,
                             onClick = { settingsNavController.navigate(SettingsRoutes.General) },
+                        )
+                    }
+                    item {
+                        SettingsRow(
+                            icon = Icons.AutoMirrored.Filled.Chat,
+                            title = tr("settings.sections.messages"),
+                            subtitle = null,
+                            onClick = { settingsNavController.navigate(SettingsRoutes.Messages) },
+                        )
+                    }
+                    item {
+                        SettingsRow(
+                            icon = Icons.Filled.Edit,
+                            title = tr("settings.sections.composer"),
+                            subtitle = null,
+                            onClick = { settingsNavController.navigate(SettingsRoutes.Composer) },
                         )
                     }
                     item { SettingsSectionLabel(tr("settings.sections.kanbanBoards")) }
@@ -649,6 +682,10 @@ private sealed class SettingsPage {
 
     data object General : SettingsPage()
 
+    data object Messages : SettingsPage()
+
+    data object Composer : SettingsPage()
+
     data object RemoteSenders : SettingsPage()
 
     data class AccountDetail(
@@ -673,6 +710,8 @@ private sealed class SettingsPage {
 private object SettingsRoutes {
     const val Root = "settings/root"
     const val General = "settings/general"
+    const val Messages = "settings/messages"
+    const val Composer = "settings/composer"
     const val Account = "settings/account"
     const val AccountWallpaper = "settings/account-wallpaper"
     const val KanbanBoard = "settings/kanban-board"
@@ -681,8 +720,8 @@ private object SettingsRoutes {
     const val RemoteSenders = "settings/remote-senders"
 }
 
-// Combines the desktop "General" section: Appearance, Sidebar, Kanban,
-// Composer, Sync & notifications, and Storage in one scrollable page.
+// Appearance, Side navigation, Kanban, Network, Sync & notifications and Data
+// in one scrollable page; how mail is read and written have pages of their own.
 @Composable
 internal fun SettingsGeneralPage(
     themeChoice: ThemeChoice,
@@ -692,12 +731,6 @@ internal fun SettingsGeneralPage(
     onOpenLanguage: () -> Unit,
     showSenderImages: Boolean,
     onToggleSenderImages: () -> Unit,
-    darkMailBodies: Boolean,
-    onToggleDarkMailBodies: () -> Unit,
-    autoFitMessages: Boolean,
-    onToggleAutoFitMessages: () -> Unit,
-    readerBottomActions: Boolean,
-    onToggleReaderBottomActions: () -> Unit,
     showUnreadBadges: Boolean,
     onToggleUnreadBadges: () -> Unit,
     showUnifiedInboxNav: Boolean,
@@ -706,18 +739,8 @@ internal fun SettingsGeneralPage(
     onToggleTasks: () -> Unit,
     kanbanColumnWidth: Int,
     onCycleKanbanColumnWidth: () -> Unit,
-    sendShortcutMode: SendShortcutMode,
-    onToggleSendShortcut: () -> Unit,
-    conversationLayout: ConversationLayout,
-    onToggleConversationLayout: () -> Unit,
-    messageFontScale: Int,
-    onOpenMessageTextSize: () -> Unit,
     appProxy: ProxySpec,
     onSaveAppProxy: (ProxySpec) -> Unit,
-    appSignatureHtml: String,
-    onSaveAppSignature: (String) -> Unit,
-    remoteImageSenderCount: Int,
-    onOpenRemoteSenders: () -> Unit,
     notificationsNeedPermission: Boolean,
     onEnableNotifications: () -> Unit,
     supportsBackgroundPush: Boolean,
@@ -740,10 +763,9 @@ internal fun SettingsGeneralPage(
     focusProxy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    // The mail-reading toggles above shift the proxy row down; auto-fit is not
-    // offered everywhere.
-    val proxyScrollIndex = 14 + if (MailWebViewFitsWideContent) 1 else 0
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (focusProxy) proxyScrollIndex else 0)
+    // The Network label: Appearance (label + 3 rows), Side navigation (label +
+    // 3 rows) and Kanban (2) come before it on every platform.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (focusProxy) 10 else 0)
     LazyColumn(modifier.appScrollbar(listState), state = listState) {
         item { SettingsSectionLabel(tr("settings.pages.appearance")) }
         item {
@@ -779,15 +801,6 @@ internal fun SettingsGeneralPage(
         }
         item {
             SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Chat,
-                title = tr("settings.appearance.conversationLayout"),
-                hint = tr("settings.appearance.conversationLayoutHint"),
-                onClick = onToggleConversationLayout,
-                trailing = { Text(conversationLayout.label(), color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-        item {
-            SettingsRow(
                 icon = Icons.Filled.Settings,
                 title = tr("settings.language.label"),
                 onClick = onOpenLanguage,
@@ -812,46 +825,14 @@ internal fun SettingsGeneralPage(
                 onToggle = onToggleSenderImages,
             )
         }
+
+        item { SettingsSectionLabel(tr("settings.sections.sideNav")) }
         item {
             SettingsToggleRow(
-                icon = Icons.Filled.DarkMode,
-                title = tr("settings.appearance.darkMessageBodies"),
-                hint = tr("settings.appearance.darkMessageBodiesHint"),
-                checked = darkMailBodies,
-                onToggle = onToggleDarkMailBodies,
-            )
-        }
-        if (MailWebViewFitsWideContent) {
-            item {
-                SettingsToggleRow(
-                    icon = Icons.Filled.FitScreen,
-                    title = tr("settings.appearance.autoFitMessages"),
-                    hint = tr("settings.appearance.autoFitMessagesHint"),
-                    checked = autoFitMessages,
-                    onToggle = onToggleAutoFitMessages,
-                )
-            }
-        }
-        item {
-            SettingsToggleRow(
-                icon = Icons.AutoMirrored.Filled.Reply,
-                title = tr("settings.appearance.readerBottomActions"),
-                hint = tr("settings.appearance.readerBottomActionsHint"),
-                checked = readerBottomActions,
-                onToggle = onToggleReaderBottomActions,
-            )
-        }
-        item {
-            SettingsRow(
-                icon = Icons.Filled.FormatSize,
-                title = tr("settings.appearance.messageTextSize"),
-                onClick = onOpenMessageTextSize,
-                trailing = {
-                    Text(
-                        trf("settings.appearance.textSizeValue", messageFontScale),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
+                icon = Icons.Filled.Inbox,
+                title = tr("settings.sideNav.showUnifiedInbox"),
+                checked = showUnifiedInboxNav,
+                onToggle = onToggleUnifiedInboxNav,
             )
         }
         item {
@@ -863,18 +844,6 @@ internal fun SettingsGeneralPage(
                 onToggle = onToggleUnreadBadges,
             )
         }
-
-        item { SettingsSectionLabel(tr("settings.sections.sideNav")) }
-        item {
-            SettingsToggleRow(
-                icon = Icons.Filled.Inbox,
-                title = tr("settings.sideNav.showUnifiedInbox"),
-                checked = showUnifiedInboxNav,
-                onToggle = onToggleUnifiedInboxNav,
-            )
-        }
-
-        item { SettingsSectionLabel(tr("settings.sections.tasks")) }
         item {
             SettingsToggleRow(
                 icon = Icons.Filled.Checklist,
@@ -892,44 +861,6 @@ internal fun SettingsGeneralPage(
                 title = tr("settings.kanban.columnWidth"),
                 onClick = onCycleKanbanColumnWidth,
                 trailing = { Text(trf("settings.kanban.columnWidthValue", kanbanColumnWidth), color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-
-        item { SettingsSectionLabel(tr("settings.sections.composer")) }
-        item {
-            SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Send,
-                title = tr("settings.composer.sendMessageWith"),
-                onClick = onToggleSendShortcut,
-                trailing = { Text(sendShortcutMode.label(), color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-
-        item { SettingsSectionLabel(tr("settings.sections.signature")) }
-        item {
-            SettingsSignatureRow(
-                html = appSignatureHtml,
-                onSave = onSaveAppSignature,
-            )
-        }
-
-        item { SettingsSectionLabel(tr("settings.sections.privacy")) }
-        item {
-            SettingsRow(
-                icon = Icons.Filled.HideImage,
-                title = tr("settings.privacy.remoteSenders"),
-                hint = tr("settings.privacy.remoteSendersHint"),
-                onClick = onOpenRemoteSenders,
-                trailing = {
-                    Text(
-                        if (remoteImageSenderCount == 0) {
-                            tr("settings.privacy.remoteSendersNone")
-                        } else {
-                            tr("settings.privacy.remoteSendersCount", mapOf("count" to remoteImageSenderCount))
-                        },
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
             )
         }
 
@@ -1010,7 +941,7 @@ internal fun SettingsGeneralPage(
             )
         }
 
-        item { SettingsSectionLabel(tr("settings.sections.backup")) }
+        item { SettingsSectionLabel(tr("settings.sections.data")) }
         item {
             SettingsRow(
                 icon = Icons.Filled.Save,
@@ -1027,8 +958,6 @@ internal fun SettingsGeneralPage(
                 onClick = { if (!backupBusy) onRestoreBackup() },
             )
         }
-
-        item { SettingsSectionLabel(tr("settings.sections.storage")) }
         item {
             SettingsRow(
                 icon = Icons.Filled.Info,
@@ -1051,6 +980,134 @@ internal fun SettingsGeneralPage(
                 subtitle = if (storageBusy) tr("settings.storage.working") else tr("settings.storage.clearCachedAttachmentsOnly"),
                 onClick = onClearStorageCache,
                 trailing = storageUsage?.cacheBytes?.takeIf { it > 0 }?.let { { Text(formatBytes(it)) } },
+            )
+        }
+
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+// How received mail is shown and handled.
+@Composable
+internal fun SettingsMessagesPage(
+    conversationLayout: ConversationLayout,
+    onToggleConversationLayout: () -> Unit,
+    messageFontScale: Int,
+    onOpenMessageTextSize: () -> Unit,
+    darkMailBodies: Boolean,
+    onToggleDarkMailBodies: () -> Unit,
+    autoFitMessages: Boolean,
+    onToggleAutoFitMessages: () -> Unit,
+    readerBottomActions: Boolean,
+    onToggleReaderBottomActions: () -> Unit,
+    remoteImageSenderCount: Int,
+    onOpenRemoteSenders: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    LazyColumn(modifier.appScrollbar(listState), state = listState) {
+        item { SettingsSectionLabel(tr("settings.pages.appearance")) }
+        item {
+            SettingsRow(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                title = tr("settings.appearance.conversationLayout"),
+                hint = tr("settings.appearance.conversationLayoutHint"),
+                onClick = onToggleConversationLayout,
+                trailing = { Text(conversationLayout.label(), color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            SettingsRow(
+                icon = Icons.Filled.FormatSize,
+                title = tr("settings.appearance.messageTextSize"),
+                onClick = onOpenMessageTextSize,
+                trailing = {
+                    Text(
+                        trf("settings.appearance.textSizeValue", messageFontScale),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
+            )
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.Filled.DarkMode,
+                title = tr("settings.appearance.darkMessageBodies"),
+                hint = tr("settings.appearance.darkMessageBodiesHint"),
+                checked = darkMailBodies,
+                onToggle = onToggleDarkMailBodies,
+            )
+        }
+        if (MailWebViewFitsWideContent) {
+            item {
+                SettingsToggleRow(
+                    icon = Icons.Filled.FitScreen,
+                    title = tr("settings.appearance.autoFitMessages"),
+                    hint = tr("settings.appearance.autoFitMessagesHint"),
+                    checked = autoFitMessages,
+                    onToggle = onToggleAutoFitMessages,
+                )
+            }
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.AutoMirrored.Filled.Reply,
+                title = tr("settings.appearance.readerBottomActions"),
+                hint = tr("settings.appearance.readerBottomActionsHint"),
+                checked = readerBottomActions,
+                onToggle = onToggleReaderBottomActions,
+            )
+        }
+
+        item { SettingsSectionLabel(tr("settings.sections.privacy")) }
+        item {
+            SettingsRow(
+                icon = Icons.Filled.HideImage,
+                title = tr("settings.privacy.remoteSenders"),
+                hint = tr("settings.privacy.remoteSendersHint"),
+                onClick = onOpenRemoteSenders,
+                trailing = {
+                    Text(
+                        if (remoteImageSenderCount == 0) {
+                            tr("settings.privacy.remoteSendersNone")
+                        } else {
+                            tr("settings.privacy.remoteSendersCount", mapOf("count" to remoteImageSenderCount))
+                        },
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
+            )
+        }
+
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+internal fun SettingsComposerPage(
+    sendShortcutMode: SendShortcutMode,
+    onToggleSendShortcut: () -> Unit,
+    appSignatureHtml: String,
+    onSaveAppSignature: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    LazyColumn(modifier.appScrollbar(listState), state = listState) {
+        item { SettingsSectionLabel(tr("settings.sections.general")) }
+        item {
+            SettingsRow(
+                icon = Icons.AutoMirrored.Filled.Send,
+                title = tr("settings.composer.sendMessageWith"),
+                onClick = onToggleSendShortcut,
+                trailing = { Text(sendShortcutMode.label(), color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+
+        item { SettingsSectionLabel(tr("settings.sections.signature")) }
+        item {
+            SettingsSignatureRow(
+                html = appSignatureHtml,
+                onSave = onSaveAppSignature,
             )
         }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import type { LucideIcon } from 'lucide-react'
@@ -31,6 +32,7 @@ import {
   Moon,
   Shrink,
   PanelBottom,
+  SquarePen,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { importOpml, exportOpml } from '../../states/feeds'
@@ -75,11 +77,16 @@ import { invoke } from '../../lib/bridge'
 import { isMac } from '../../lib/shortcuts'
 import { McpSettingsPanel } from './McpSettingsPanel'
 
-// General uses the empty selection; MCP has its own section below. Account
-// and board IDs share the selection state with these settings sections.
-const SECTIONS: { id: 'general'; label: string; icon: LucideIcon }[] = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
+// General uses the empty selection; Messages, Composer and MCP have ids of
+// their own. Account and board IDs share the selection state with these
+// settings sections.
+type SectionId = 'general' | 'messages' | 'composer'
+const SECTIONS: { id: SectionId; labelKey: string; icon: LucideIcon }[] = [
+  { id: 'general', labelKey: 'settings.sections.general', icon: SlidersHorizontal },
+  { id: 'messages', labelKey: 'settings.sections.messages', icon: MessagesSquare },
+  { id: 'composer', labelKey: 'settings.sections.composer', icon: SquarePen },
 ]
+const PAGE_IDS = new Set<string>(['messages', 'composer', 'mcp'])
 
 const SEND_SHORTCUT_OPTIONS: { value: SendShortcut; label: string }[] = [
   { value: 'enter', label: sendShortcutLabel('enter') },
@@ -136,7 +143,7 @@ export function SettingsDialog() {
   const selectedAccount = accounts.find((acc) => acc.id === selected)
   const selectedBoard = !selectedAccount ? boards.find((board) => board.id === selected) : undefined
   // A removed account/board (or a stale id) falls back to General.
-  const activeKey: string = selectedAccount || selectedBoard || selected === 'mcp' ? selected : 'general'
+  const activeKey: string = selectedAccount || selectedBoard || PAGE_IDS.has(selected) ? selected : 'general'
 
   const mailAccounts = accounts.filter((acc) => !isRssAccount(acc))
   const feedAccounts = accounts.filter(isRssAccount)
@@ -183,10 +190,14 @@ export function SettingsDialog() {
         <div className="flex flex-1 min-h-0">
           {/* Nav rail */}
           <nav className="w-56 shrink-0 border-r border-border/60 p-3.5 flex flex-col gap-1 bg-raised/70 overflow-y-auto">
-            {SECTIONS.map(({ id, label, icon: Icon }) => (
-              <NavItem key={id} active={activeKey === id} onClick={selectGeneral}>
+            {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
+              <NavItem
+                key={id}
+                active={activeKey === id}
+                onClick={id === 'general' ? selectGeneral : () => selectAccount(id)}
+              >
                 <Icon size={15} className="shrink-0" />
-                <span className="truncate">{id === 'general' ? t('settings.sections.general') : label}</span>
+                <span className="truncate">{t(labelKey)}</span>
               </NavItem>
             ))}
 
@@ -221,6 +232,10 @@ export function SettingsDialog() {
               <BoardPanel board={selectedBoard} />
             ) : selected === 'mcp' ? (
               <McpSettingsPanel />
+            ) : selected === 'messages' ? (
+              <MessagesSection />
+            ) : selected === 'composer' ? (
+              <ComposerSection />
             ) : (
               <GeneralSection />
             )}
@@ -373,16 +388,8 @@ function BoardGroup({
 
 function GeneralSection() {
   const { t } = useTranslation()
-  const [remoteSendersOpen, setRemoteSendersOpen] = useState(false)
-  const remoteImageSenders = useValue(settings$.remoteImageSenders)
   const showRealAvatars = useValue(settings$.showRealAvatars)
-  const darkMessageBodies = useValue(settings$.darkMessageBodies)
-  const autoFitMessages = useValue(settings$.autoFitMessages)
-  const readerBottomActions = useValue(settings$.readerBottomActions)
   const showUnreadAccountBadge = useValue(settings$.showUnreadAccountBadge)
-  const conversationLayout = useValue(settings$.conversationLayout)
-  const sendShortcut = useValue(settings$.sendShortcut)
-  const spellCheck = useValue(settings$.spellCheck)
   const showUnifiedInbox = useValue(settings$.showUnifiedInboxInSideNav)
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const kanbanColumnWidth = useValue(settings$.kanbanColumnWidth)
@@ -393,56 +400,6 @@ function GeneralSection() {
     <div className="flex flex-col gap-4">
       <SettingsGroup title={t('settings.pages.appearance')}>
         <ThemeSettingsSection />
-        <SegmentedRow
-          icon={<MessagesSquare size={15} />}
-          title={t('settings.appearance.conversationLayout')}
-          hint={t('settings.appearance.conversationLayoutHint')}
-          value={conversationLayout}
-          options={CONVERSATION_LAYOUT_OPTIONS(t)}
-          onChange={(value) => settings$.conversationLayout.set(value)}
-        />
-        <ToggleRow
-          icon={<ImageIcon size={15} />}
-          title={t('settings.appearance.showSenderImages')}
-          hint={t('settings.appearance.showSenderImagesHint')}
-          checked={showRealAvatars}
-          onChange={() => settings$.showRealAvatars.set(!showRealAvatars)}
-        />
-        <ToggleRow
-          icon={<Moon size={15} />}
-          title={t('settings.appearance.darkMessageBodies')}
-          hint={t('settings.appearance.darkMessageBodiesHint')}
-          checked={darkMessageBodies}
-          onChange={() => settings$.darkMessageBodies.set(!darkMessageBodies)}
-        />
-        <ToggleRow
-          icon={<Shrink size={15} />}
-          title={t('settings.appearance.autoFitMessages')}
-          hint={t('settings.appearance.autoFitMessagesHint')}
-          checked={autoFitMessages}
-          onChange={() => settings$.autoFitMessages.set(!autoFitMessages)}
-        />
-        <ToggleRow
-          icon={<PanelBottom size={15} />}
-          title={t('settings.appearance.readerBottomActions')}
-          hint={t('settings.appearance.readerBottomActionsHint')}
-          checked={readerBottomActions}
-          onChange={() => settings$.readerBottomActions.set(!readerBottomActions)}
-        />
-        <ToggleRow
-          icon={<Inbox size={15} />}
-          title={t('settings.appearance.showUnreadAccountBadge')}
-          hint={t('settings.appearance.showUnreadAccountBadgeHint')}
-          checked={showUnreadAccountBadge}
-          onChange={() => settings$.showUnreadAccountBadge.set(!showUnreadAccountBadge)}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title={t('settings.sections.typography')}>
-        <FontSettingsSection />
-      </SettingsGroup>
-
-      <SettingsGroup title={t('settings.language.label')}>
         <SelectRow
           icon={<Globe size={15} />}
           title={t('settings.language.label')}
@@ -459,6 +416,17 @@ function GeneralSection() {
             settings$.language.set(value === '' ? null : (value as SupportedI18nLanguage))
           }}
         />
+        <ToggleRow
+          icon={<ImageIcon size={15} />}
+          title={t('settings.appearance.showSenderImages')}
+          hint={t('settings.appearance.showSenderImagesHint')}
+          checked={showRealAvatars}
+          onChange={() => settings$.showRealAvatars.set(!showRealAvatars)}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.sections.typography')}>
+        <FontSettingsSection part="interface" />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings.sections.sideNav')}>
@@ -468,9 +436,13 @@ function GeneralSection() {
           checked={showUnifiedInbox}
           onChange={() => setUnifiedInboxSideNavVisible(!showUnifiedInbox)}
         />
-      </SettingsGroup>
-
-      <SettingsGroup title={t('settings.sections.tasks')}>
+        <ToggleRow
+          icon={<Inbox size={15} />}
+          title={t('settings.appearance.showUnreadAccountBadge')}
+          hint={t('settings.appearance.showUnreadAccountBadgeHint')}
+          checked={showUnreadAccountBadge}
+          onChange={() => settings$.showUnreadAccountBadge.set(!showUnreadAccountBadge)}
+        />
         <ToggleRow
           icon={<ListTodo size={15} />}
           title={t('settings.tasks.enable')}
@@ -479,26 +451,6 @@ function GeneralSection() {
           onChange={() => setTasksEnabled(!tasksEnabled)}
         />
       </SettingsGroup>
-
-      <SettingsGroup title={t('settings.sections.privacy')}>
-        <SettingRow
-          title={t('settings.privacy.remoteSenders')}
-          hint={t('settings.privacy.remoteSendersHint')}
-          control={
-            <button
-              onClick={() => setRemoteSendersOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors"
-            >
-              {remoteImageSenders.length > 0
-                ? t('settings.privacy.remoteSendersCount', { count: remoteImageSenders.length })
-                : t('settings.privacy.remoteSendersNone')}
-            </button>
-          }
-        />
-      </SettingsGroup>
-      {remoteSendersOpen && <RemoteSendersDialog onClose={() => setRemoteSendersOpen(false)} />}
-
-      <ProxySettingsSection />
 
       <SettingsGroup title={t('settings.sections.kanban')}>
         <NumberRow
@@ -523,7 +475,113 @@ function GeneralSection() {
         />
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.sections.composer')}>
+      <ProxySettingsSection />
+
+      <SettingsGroup title={t('settings.sections.app')}>
+        <SettingRow
+          title={t('shortcuts.title')}
+          hint={t('shortcuts.customizeHint')}
+          control={
+            <button
+              onClick={() => ui$.shortcutsOpen.set(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors"
+            >
+              <Keyboard size={12} />
+              {t('shortcuts.customize')}
+            </button>
+          }
+        />
+        <CloseToTrayRow />
+        <AutoUpdateRow />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.sections.data')}>
+        <BackupRow />
+        <StorageRows />
+        <LogsRow />
+      </SettingsGroup>
+    </div>
+  )
+}
+
+// How received mail is shown and handled: layout, rendering, the reader's
+// actions, message typography, and whose remote content loads.
+function MessagesSection() {
+  const { t } = useTranslation()
+  const [remoteSendersOpen, setRemoteSendersOpen] = useState(false)
+  const remoteImageSenders = useValue(settings$.remoteImageSenders)
+  const conversationLayout = useValue(settings$.conversationLayout)
+  const darkMessageBodies = useValue(settings$.darkMessageBodies)
+  const autoFitMessages = useValue(settings$.autoFitMessages)
+  const readerBottomActions = useValue(settings$.readerBottomActions)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <SettingsGroup title={t('settings.pages.appearance')}>
+        <SegmentedRow
+          icon={<MessagesSquare size={15} />}
+          title={t('settings.appearance.conversationLayout')}
+          hint={t('settings.appearance.conversationLayoutHint')}
+          value={conversationLayout}
+          options={CONVERSATION_LAYOUT_OPTIONS(t)}
+          onChange={(value) => settings$.conversationLayout.set(value)}
+        />
+        <ToggleRow
+          icon={<Moon size={15} />}
+          title={t('settings.appearance.darkMessageBodies')}
+          hint={t('settings.appearance.darkMessageBodiesHint')}
+          checked={darkMessageBodies}
+          onChange={() => settings$.darkMessageBodies.set(!darkMessageBodies)}
+        />
+        <ToggleRow
+          icon={<Shrink size={15} />}
+          title={t('settings.appearance.autoFitMessages')}
+          hint={t('settings.appearance.autoFitMessagesHint')}
+          checked={autoFitMessages}
+          onChange={() => settings$.autoFitMessages.set(!autoFitMessages)}
+        />
+        <ToggleRow
+          icon={<PanelBottom size={15} />}
+          title={t('settings.appearance.readerBottomActions')}
+          hint={t('settings.appearance.readerBottomActionsHint')}
+          checked={readerBottomActions}
+          onChange={() => settings$.readerBottomActions.set(!readerBottomActions)}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.sections.typography')}>
+        <FontSettingsSection part="message" />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.sections.privacy')}>
+        <SettingRow
+          title={t('settings.privacy.remoteSenders')}
+          hint={t('settings.privacy.remoteSendersHint')}
+          control={
+            <button
+              onClick={() => setRemoteSendersOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors"
+            >
+              {remoteImageSenders.length > 0
+                ? t('settings.privacy.remoteSendersCount', { count: remoteImageSenders.length })
+                : t('settings.privacy.remoteSendersNone')}
+            </button>
+          }
+        />
+      </SettingsGroup>
+      {remoteSendersOpen && <RemoteSendersDialog onClose={() => setRemoteSendersOpen(false)} />}
+    </div>
+  )
+}
+
+function ComposerSection() {
+  const { t } = useTranslation()
+  const sendShortcut = useValue(settings$.sendShortcut)
+  const spellCheck = useValue(settings$.spellCheck)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <SettingsGroup title={t('settings.sections.general')}>
         <ToggleRow
           icon={<SpellCheck size={15} />}
           title={t('settings.composer.spellCheck')}
@@ -546,28 +604,6 @@ function GeneralSection() {
       </SettingsGroup>
 
       <SignatureSettingsSection />
-
-      <SettingsGroup title={t('shortcuts.title')}>
-        <SettingRow
-          title={t('shortcuts.title')}
-          hint={t('shortcuts.customizeHint')}
-          control={
-            <button
-              onClick={() => ui$.shortcutsOpen.set(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors"
-            >
-              <Keyboard size={12} />
-              {t('shortcuts.customize')}
-            </button>
-          }
-        />
-      </SettingsGroup>
-
-      <WindowGroup />
-      <UpdatesGroup />
-      <BackupGroup />
-      <StorageGroup />
-      <LogsGroup />
     </div>
   )
 }
@@ -578,7 +614,7 @@ function GeneralSection() {
 // Both buttons hand off to a passphrase dialog: exporting to offer encryption,
 // restoring only when the chosen file turns out to be encrypted (which the
 // bridge reports back with the path, so the file dialog isn't shown twice).
-function BackupGroup() {
+function BackupRow() {
   const { t } = useTranslation()
   const [prompt, setPrompt] = useState<BackupPassphraseMode | null>(null)
   const [busy, setBusy] = useState(false)
@@ -646,75 +682,75 @@ function BackupGroup() {
 
   return (
     <>
-      <SettingsGroup title={t('settings.sections.backup')}>
-        <SettingRow
-          title={t('settings.backup.fileTitle')}
-          hint={t('settings.backup.fileHint')}
-          control={
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => runImport('', '')}
-                disabled={busy}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Upload size={12} />
-                {t('settings.backup.restoreAction')}
-              </button>
-              <button
-                onClick={() => {
-                  setError('')
-                  setPrompt('export')
-                }}
-                disabled={busy}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Archive size={12} />
-                {t('common.export')}
-              </button>
-            </div>
-          }
-        />
-      </SettingsGroup>
+      <SettingRow
+        title={t('settings.backup.fileTitle')}
+        hint={t('settings.backup.fileHint')}
+        control={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => runImport('', '')}
+              disabled={busy}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Upload size={12} />
+              {t('settings.backup.restoreAction')}
+            </button>
+            <button
+              onClick={() => {
+                setError('')
+                setPrompt('export')
+              }}
+              disabled={busy}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Archive size={12} />
+              {t('common.export')}
+            </button>
+          </div>
+        }
+      />
 
-      {prompt && (
-        <BackupPassphraseDialog
-          mode={prompt}
-          busy={busy}
-          error={error}
-          onCancel={closePrompt}
-          onSubmit={(passphrase, includeSecrets) =>
-            prompt === 'export' ? runExport(passphrase, includeSecrets) : runImport(pendingPath, passphrase)
-          }
-        />
-      )}
+      {/* Portalled: the row sits in a divided card, whose dividers would
+          otherwise land on the overlay too. */}
+      {prompt &&
+        createPortal(
+          <BackupPassphraseDialog
+            mode={prompt}
+            busy={busy}
+            error={error}
+            onCancel={closePrompt}
+            onSubmit={(passphrase, includeSecrets) =>
+              prompt === 'export' ? runExport(passphrase, includeSecrets) : runImport(pendingPath, passphrase)
+            }
+          />,
+          document.body,
+        )}
     </>
   )
 }
 
 // macOS has its own split between closing a window and quitting (⌘Q), so the
 // close button's behaviour is only a choice elsewhere.
-function WindowGroup() {
+function CloseToTrayRow() {
   const { t } = useTranslation()
   const closeToTray = useValue(settings$.closeToTray)
 
   if (isMac) return null
 
   return (
-    <SettingsGroup title={t('settings.sections.window')}>
-      <ToggleRow
-        icon={<PanelTopClose size={15} />}
-        title={t('settings.window.closeToTray')}
-        hint={t('settings.window.closeToTrayHint', { quit: t('tray.quitMeron') })}
-        checked={closeToTray}
-        onChange={() => settings$.closeToTray.set(!closeToTray)}
-      />
-    </SettingsGroup>
+    <ToggleRow
+      icon={<PanelTopClose size={15} />}
+      title={t('settings.window.closeToTray')}
+      hint={t('settings.window.closeToTrayHint', { quit: t('tray.quitMeron') })}
+      checked={closeToTray}
+      onChange={() => settings$.closeToTray.set(!closeToTray)}
+    />
   )
 }
 
 // Only meaningful where the app can actually replace itself; store-managed and
 // dev builds get no toggle at all rather than one that does nothing.
-function UpdatesGroup() {
+function AutoUpdateRow() {
   const { t } = useTranslation()
   const status = useValue(update$.status)
   const autoUpdateCheck = useValue(settings$.autoUpdateCheck)
@@ -722,15 +758,13 @@ function UpdatesGroup() {
   if (!status.supported) return null
 
   return (
-    <SettingsGroup title={t('settings.sections.updates')}>
-      <ToggleRow
-        icon={<RefreshCw size={15} />}
-        title={t('settings.updates.autoCheck')}
-        hint={t('settings.updates.autoCheckHint')}
-        checked={autoUpdateCheck}
-        onChange={() => settings$.autoUpdateCheck.set(!autoUpdateCheck)}
-      />
-    </SettingsGroup>
+    <ToggleRow
+      icon={<RefreshCw size={15} />}
+      title={t('settings.updates.autoCheck')}
+      hint={t('settings.updates.autoCheckHint')}
+      checked={autoUpdateCheck}
+      onChange={() => settings$.autoUpdateCheck.set(!autoUpdateCheck)}
+    />
   )
 }
 
@@ -744,7 +778,7 @@ function formatBytes(bytes: number): string {
   return `${value >= 100 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`
 }
 
-function StorageGroup() {
+function StorageRows() {
   const { t } = useTranslation()
   const [usage, setUsage] = useState<StorageUsage | null>(null)
   const [clearing, setClearing] = useState(false)
@@ -789,7 +823,7 @@ function StorageGroup() {
   }
 
   return (
-    <SettingsGroup title={t('settings.sections.storage')}>
+    <>
       <SettingRow
         title={t('settings.storage.usageTitle')}
         hint={t('settings.storage.usageHint')}
@@ -817,15 +851,15 @@ function StorageGroup() {
           </button>
         }
       />
-    </SettingsGroup>
+    </>
   )
 }
 
-function LogsGroup() {
+function LogsRow() {
   const { t } = useTranslation()
   const [viewerOpen, setViewerOpen] = useState(false)
   return (
-    <SettingsGroup title={t('settings.sections.logs')}>
+    <>
       <SettingRow
         title={t('settings.sections.logs')}
         hint={t('settings.syncDiagnosticLogHint')}
@@ -839,8 +873,8 @@ function LogsGroup() {
           </button>
         }
       />
-      {viewerOpen && <LogViewerDialog onClose={() => setViewerOpen(false)} />}
-    </SettingsGroup>
+      {viewerOpen && createPortal(<LogViewerDialog onClose={() => setViewerOpen(false)} />, document.body)}
+    </>
   )
 }
 
