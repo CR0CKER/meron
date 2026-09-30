@@ -103,15 +103,15 @@ internal fun QuoteToggle(
         Modifier
             .padding(vertical = 6.dp)
             .clip(shape)
-            .border(1.dp, color.copy(alpha = 0.25f), shape)
-            .background(color.copy(alpha = 0.06f))
+            .border(1.dp, color.copy(alpha = if (open) 0.55f else 0.25f), shape)
+            .background(color.copy(alpha = if (open) 0.16f else 0.06f))
             .clickable(onClickLabel = label, onClick = onToggle)
             .semantics { contentDescription = label }
             .padding(horizontal = 10.dp, vertical = 2.dp),
     ) {
         Text(
             text = "•••",
-            color = color.copy(alpha = 0.65f),
+            color = color.copy(alpha = if (open) 0.95f else 0.65f),
             fontSize = 11.sp,
             lineHeight = 12.sp,
             fontWeight = FontWeight.Bold,

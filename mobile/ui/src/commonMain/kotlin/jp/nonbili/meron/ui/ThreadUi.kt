@@ -88,6 +88,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -275,6 +276,12 @@ internal fun ThreadScreen(
     var endFollowRequest by remember(thread?.id) { mutableStateOf(0) }
     var followNextLocalSend by remember(thread?.id) { mutableStateOf(false) }
     var keyboardAnchor by remember(thread?.id) { mutableStateOf<Pair<String, Int>?>(null) }
+    // Expanding or collapsing a card can dispose the view that holds focus (the
+    // tapped card, or its web view), and focus then falls to the next focusable
+    // thing, the quick reply, which opens the keyboard. Drop focus first, unless
+    // the reply is what the reader is typing in.
+    val focusManager = LocalFocusManager.current
+    val releaseFocusBeforeToggle = { if (keyboardAnchor == null) focusManager.clearFocus() }
     val currentMessages by rememberUpdatedState(messages)
     val currentHeaderItemCount by rememberUpdatedState(threadHeaderItemCount(canLoadOlder || loadingOlder))
 
@@ -849,6 +856,7 @@ internal fun ThreadScreen(
                                         activeSearchMatch = message.id == activeSearchId,
                                         expanded = expanded,
                                         onToggleExpanded = {
+                                            releaseFocusBeforeToggle()
                                             expandOverrides = expandOverrides + (message.id to !expanded)
                                             if (!expanded) scrollToExpandedId = message.id
                                         },
@@ -962,6 +970,7 @@ internal fun ThreadScreen(
                                             actionsEnabled = !isRss,
                                             itemActionsEnabled = true,
                                             onToggleExpanded = {
+                                                releaseFocusBeforeToggle()
                                                 expandOverrides = expandOverrides + (message.id to false)
                                             },
                                             onForward = onForward,

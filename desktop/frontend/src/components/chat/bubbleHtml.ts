@@ -227,9 +227,14 @@ export function prepareBubbleHtml(
         cursor: pointer;
       }
       .${QUOTE_TOGGLE_CLASS}::before { content: '•••'; }
-      .${QUOTE_TOGGLE_CLASS}:hover {
+      .${QUOTE_TOGGLE_CLASS}:hover,
+      .${QUOTE_TOGGLE_CLASS}[aria-expanded="true"] {
         background: var(${v('raised-hover')}, ${DEFAULT_BUBBLE_THEME.raisedHover});
         color: var(${v('text')}, ${DEFAULT_BUBBLE_THEME.text});
+      }
+      /* Open: the chip stays lit, so it reads as the state, not a bare hover. */
+      .${QUOTE_TOGGLE_CLASS}[aria-expanded="true"] {
+        border-color: var(${v('muted')}, ${DEFAULT_BUBBLE_THEME.muted});
       }
       /* In-thread search hits, applied to the live document by BubbleHtmlFrame. */
       mark.meron-search-hit {

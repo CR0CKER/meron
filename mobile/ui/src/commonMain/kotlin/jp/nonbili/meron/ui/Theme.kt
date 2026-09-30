@@ -524,7 +524,13 @@ private class ResolvedTheme(
 private fun resolveThemeSpec(mode: AppAppearanceMode): ResolvedTheme {
     val fallback = mobileThemeSpec(mode)
     if (!mode.isDynamic) return ResolvedTheme(fallback)
-    val scheme = platformDynamicColorScheme(fallback.dark) ?: return ResolvedTheme(fallback)
+    val platform = platformDynamicColorScheme(fallback.dark) ?: return ResolvedTheme(fallback)
+    // Material's background and surface are one color, which would melt the
+    // message cards (drawn on surface) into the canvas behind them. Meron's own
+    // themes set the canvas apart from the cards, so do the same here: a tinted
+    // canvas under lighter cards, or a deeper one under them in dark.
+    val canvas = if (fallback.dark) platform.surfaceContainerLowest else platform.surfaceContainer
+    val scheme = platform.copy(background = canvas)
     return ResolvedTheme(dynamicThemeSpec(scheme, fallback.dark), scheme)
 }
 

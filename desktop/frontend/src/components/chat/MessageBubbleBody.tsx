@@ -233,7 +233,7 @@ export function MessageBubbleBody({
               title={quoteLabel}
               aria-label={quoteLabel}
               aria-expanded={showQuote}
-              className="flex h-3.5 w-7 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-black/5 font-sans text-[10px] leading-none font-bold tracking-[1px] text-secondary hover:bg-black/10 hover:text-primary dark:bg-white/10 dark:hover:bg-white/15"
+              className="flex h-3.5 w-7 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-black/5 font-sans text-[10px] leading-none font-bold tracking-[1px] text-secondary hover:bg-black/10 hover:text-primary dark:bg-white/10 dark:hover:bg-white/15 aria-expanded:border-secondary aria-expanded:bg-black/15 aria-expanded:text-primary dark:aria-expanded:bg-white/25"
             >
               •••
             </button>

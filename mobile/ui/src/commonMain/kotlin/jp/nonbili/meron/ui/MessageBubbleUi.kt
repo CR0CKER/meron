@@ -934,6 +934,12 @@ internal fun HtmlMessageBody(
                   font: 700 11px/1 sans-serif;
                   letter-spacing: 1px;
                 }
+                /* Open: the chip stays lit, so it reads as a state rather than
+                   as the same button as when folded. */
+                button.meron-quote-toggle[aria-expanded="true"] {
+                  opacity: 0.9;
+                  background: color-mix(in srgb, currentColor 16%, transparent);
+                }
                 button.meron-quote-toggle::before {
                   content: '•••';
                 }
