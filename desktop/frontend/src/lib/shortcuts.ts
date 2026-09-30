@@ -48,6 +48,14 @@ export function isBareKeystroke(event: KeyboardEvent): boolean {
   return !(isMac ? event.metaKey : event.ctrlKey) && !event.altKey
 }
 
+/** Is the user currently typing into a field? Bare single-key shortcuts must
+ * stand down so they don't clobber text entry. */
+export function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+}
+
 export type Chord = {
   mod?: boolean
   shift?: boolean
@@ -258,8 +266,14 @@ export function matchShortcut(event: KeyboardEvent): ShortcutId | null {
 /** Same lookup for a chord reconstructed by hand — e.g. a keystroke forwarded
  * out of a message iframe, which arrives as data rather than a KeyboardEvent. */
 export function shortcutForChord(chord: Chord): ShortcutId | null {
+  // User rebindings first, so a newly added default can't take over a chord the
+  // user already claimed for another shortcut.
   for (const id of SHORTCUT_IDS) {
-    if (chordEquals(shortcutChord(id), chord)) return id
+    const override = overrides[id]
+    if (override && chordEquals(override, chord)) return id
+  }
+  for (const id of SHORTCUT_IDS) {
+    if (!overrides[id] && chordEquals(DEFAULT_SHORTCUTS[id], chord)) return id
   }
   for (const [id, alias] of SHORTCUT_ALIASES) {
     if (chordEquals(alias, chord)) return id

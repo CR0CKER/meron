@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
-import { isMac } from '../../lib/shortcuts'
+import { isMac, setShortcutOverrides } from '../../lib/shortcuts'
+import { ui$ } from '../../states/ui'
 import { QuitHotkey } from './QuitHotkey'
 
 let calls: string[]
@@ -20,6 +21,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  setShortcutOverrides({})
+  ui$.settingsOpen.set(false)
   delete (window as any).go
 })
 
@@ -52,4 +55,26 @@ test.if(isMac)('leaves ⌘Q to macOS', () => {
   const event = press('q', { metaKey: true })
   expect(calls).toEqual([])
   expect(event.defaultPrevented).toBe(false)
+})
+
+test.skipIf(isMac)('quit rebound to a single key stands down while typing or in a modal', () => {
+  setShortcutOverrides({ 'app.quit': { key: 'Enter' } })
+  render(<QuitHotkey />)
+
+  const input = document.createElement('input')
+  document.body.appendChild(input)
+  const typed = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true })
+  input.dispatchEvent(typed)
+  input.remove()
+
+  ui$.settingsOpen.set(true)
+  const inModal = press('Enter')
+  ui$.settingsOpen.set(false)
+
+  expect(calls).toEqual([])
+  expect(typed.defaultPrevented).toBe(false)
+  expect(inModal.defaultPrevented).toBe(false)
+
+  press('Enter')
+  expect(calls).toEqual(['app.quit'])
 })

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { invoke } from '../../lib/bridge'
-import { isMac, matchShortcut } from '../../lib/shortcuts'
+import { isBareKeystroke, isMac, isTyping, matchShortcut } from '../../lib/shortcuts'
+import { modalOpen } from '../../states/ui'
 
 // The quit shortcut, kept apart from AppHotkeys so it can be mounted on the
 // first-run setup screen too, where the rest of the app's shortcuts have
@@ -13,6 +14,9 @@ export function QuitHotkey() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (matchShortcut(event) !== 'app.quit') return
+      // Quit rebound to a single key follows the other single-key shortcuts:
+      // never while typing or with a modal open (Enter on a dialog button).
+      if (isBareKeystroke(event) && (isTyping(event.target) || modalOpen())) return
       // The Go side decides: hide to the tray with close-to-tray on, quit with
       // it off.
       event.preventDefault()

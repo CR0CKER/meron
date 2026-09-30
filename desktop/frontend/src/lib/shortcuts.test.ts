@@ -135,6 +135,11 @@ describe('shortcutForChord', () => {
     setShortcutOverrides({ 'compose.new': { mod: true, shift: true, key: 'k' } })
     expect(shortcutForChord({ mod: true, shift: true, key: 'k' })).toBe('compose.new')
   })
+
+  it("lets a user's override win over another shortcut's default on the same chord", () => {
+    setShortcutOverrides({ 'thread.delete': { mod: true, key: 'q' } })
+    expect(shortcutForChord({ mod: true, key: 'q' })).toBe('thread.delete')
+  })
 })
 
 describe('chordFromEvent', () => {
