@@ -65,15 +65,24 @@ func setNativeWindowDark(dark bool) {
 	C.setPreferDarkTheme(value)
 }
 
+// roundedDecorationCss rounds all four corners of the frame (outline and
+// shadow) GTK draws around a floating window; stock GTK 3 rounds only the top
+// two. The webview rounds its own bottom corners to match (html.window-rounded).
+const roundedDecorationCss = `window.csd:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-bottom):not(.tiled-left):not(.tiled-right) decoration {
+	border-radius: 8px;
+}
+`
+
 // setNativeTitlebarColors paints the title bar GTK draws itself (client-side
 // decorations, e.g. GNOME on Wayland) in the side nav's colors, so the window
 // top reads as one piece with the rail. Server-side frames drawn by the window
 // manager ignore it and keep following setNativeWindowDark. Anything but an
-// opaque #rrggbb pair clears the override: the values are spliced into CSS.
+// opaque #rrggbb pair clears the color override (the values are spliced into
+// CSS); the rounded corners stay.
 func setNativeTitlebarColors(bg, fg string) {
-	css := ""
+	css := roundedDecorationCss
 	if opaqueHexColor.MatchString(bg) && opaqueHexColor.MatchString(fg) {
-		css = fmt.Sprintf(`.titlebar.default-decoration, .titlebar.default-decoration:backdrop {
+		css += fmt.Sprintf(`.titlebar.default-decoration, .titlebar.default-decoration:backdrop {
 	background: %[1]s;
 	color: %[2]s;
 	border-color: %[1]s;

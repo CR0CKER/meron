@@ -146,6 +146,21 @@ body,
   margin: 0;
 }
 
+/* A floating Linux window: the webview is transparent, so clipping the page
+   rounds the bottom corners to match the title bar's (see useAppEffects). */
+html.window-rounded {
+  clip-path: inset(0 round 0 0 8px 8px);
+}
+
+/* The body's background would go to the canvas, which the clip doesn't reach. */
+html.window-rounded body {
+  background: transparent;
+}
+
+html.window-rounded #root {
+  background: var(--me-bg-app);
+}
+
 body {
   background: var(--me-bg-app);
   color: var(--me-text-primary);

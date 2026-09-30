@@ -83,10 +83,15 @@ export function useAppEffects() {
   // The backend samples the window on every resize (the webview fires at most
   // one per frame) and saves once it settles. Sampling has to keep pace: a
   // debounced sample taken after a maximise would miss the unmaximised size.
+  // The reply also says whether to round the window's bottom corners (Linux,
+  // while the window floats; see roundedWindowCorners in Go).
   useEffect(() => {
     const onResize = () => {
-      void invoke('window.resized').catch(() => {})
+      void invoke<{ rounded?: boolean }>('window.resized')
+        .then((result) => document.documentElement.classList.toggle('window-rounded', result?.rounded === true))
+        .catch(() => {})
     }
+    onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])

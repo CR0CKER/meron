@@ -123,6 +123,7 @@ func (a *App) windowResized() (any, error) {
 		return map[string]any{"ok": true}, nil
 	}
 	a.sampleWindowState(ctx)
+	rounded := roundedWindowCorners && windowIsNormal(ctx)
 	a.windowMu.Lock()
 	defer a.windowMu.Unlock()
 	if a.window != a.windowSaved {
@@ -132,7 +133,7 @@ func (a *App) windowResized() (any, error) {
 			a.windowSaveTimer.Reset(windowSaveDelay)
 		}
 	}
-	return map[string]any{"ok": true}, nil
+	return map[string]any{"ok": true, "rounded": rounded}, nil
 }
 
 // rememberWindowState samples the window and saves it straight away, for

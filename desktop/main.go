@@ -47,13 +47,15 @@ func main() {
 		WindowStartState:         startWindowState(startMaximised),
 		HideWindowOnClose:        hideOnCloseNatively,
 		EnableDefaultContextMenu: true,
+		BackgroundColour:         windowBackgroundColour(),
 		AssetServer: &assetserver.Options{
 			Assets:     assets,
 			Handler:    mediaHandler(),
 			Middleware: cspMiddleware,
 		},
 		Linux: &linux.Options{
-			Icon: appIconPNG,
+			Icon:                appIconPNG,
+			WindowIsTranslucent: roundedWindowCorners,
 		},
 		Mac: &mac.Options{
 			// Hide the native title bar and extend content to the top edge,

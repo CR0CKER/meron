@@ -161,3 +161,36 @@ func TestBeforeClose(t *testing.T) {
 		t.Fatalf("explicit quit: state not saved, got %+v", got)
 	}
 }
+
+// The frontend rounds the window's bottom corners only while it floats: square
+// when maximised or fullscreen, and never where the platform doesn't ask for it.
+func TestWindowResizedReportsRoundedCorners(t *testing.T) {
+	rounded := roundedWindowCorners
+	t.Cleanup(func() { roundedWindowCorners = rounded })
+	w := &fakeWindow{width: 1000, height: 600, normal: true}
+	stubWindowState(t, w)
+	app := newWindowStateApp(t)
+
+	cases := []struct {
+		name     string
+		platform bool
+		window   fakeWindow
+		want     bool
+	}{
+		{"floating", true, fakeWindow{width: 1000, height: 600, normal: true}, true},
+		{"maximised", true, fakeWindow{width: 1920, height: 1080, maximised: true}, false},
+		{"fullscreen", true, fakeWindow{width: 1920, height: 1080}, false},
+		{"other platform", false, fakeWindow{width: 1000, height: 600, normal: true}, false},
+	}
+	for _, c := range cases {
+		roundedWindowCorners = c.platform
+		*w = c.window
+		result, err := app.windowResized()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := result.(map[string]any)["rounded"]; got != c.want {
+			t.Errorf("%s: rounded = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

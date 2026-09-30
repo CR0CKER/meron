@@ -2,12 +2,19 @@ package main
 
 import (
 	"regexp"
+	"runtime"
 
+	"github.com/wailsapp/wails/v2/pkg/options"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // opaqueHexColor is the only title bar color form the native layers accept.
 var opaqueHexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// roundedWindowCorners: on Linux the window is translucent so the frontend can
+// round the bottom corners to match the ones GTK draws on the title bar
+// (GTK 3 clips neither the webview nor its own frame to them).
+var roundedWindowCorners = runtime.GOOS == "linux"
 
 // setWindowAppearance tells the native window chrome which appearance the
 // frontend is painting, so the parts of the window the webview does not draw —
@@ -32,4 +39,14 @@ func (a *App) setWindowAppearance(payload map[string]any) (any, error) {
 	fg, _ := payload["titlebarText"].(string)
 	setNativeTitlebarColors(bg, fg)
 	return map[string]any{"ok": true}, nil
+}
+
+// windowBackgroundColour is what shows through where the page is transparent:
+// nothing on Linux, so the rounded corners show the desktop; the Wails default
+// (white) elsewhere.
+func windowBackgroundColour() *options.RGBA {
+	if roundedWindowCorners {
+		return &options.RGBA{R: 0, G: 0, B: 0, A: 0}
+	}
+	return nil
 }
