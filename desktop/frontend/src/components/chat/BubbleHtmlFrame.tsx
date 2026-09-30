@@ -1,5 +1,5 @@
 import { useValue } from '@legendapp/state/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
@@ -16,6 +16,11 @@ const DEFAULT_FRAME_HEIGHT = 120
 const HEIGHT_CHANGE_EPSILON = 1
 const FRAME_OVERSCAN = '150% 0px'
 const measuredHeights = new Map<string, number>()
+// What each document last reported to onNaturalWidth, so a remounted bubble takes
+// its width before it first paints instead of flashing at full width.
+const naturalWidths = new Map<string, number | null>()
+// Anything whose layout depends on the width it is given rather than on its text.
+const NON_TEXT_SELECTOR = 'table, img, video, iframe, svg, pre, [width], [style*="width"]'
 
 // Renders an email's HTML body in a self-sizing sandboxed iframe, wraps each
 // standalone <pre> in a copy-code affordance and tracks the content height so
@@ -28,6 +33,7 @@ export function BubbleHtmlFrame({
   activeSearchOffset = -1,
   onLinkHover,
   onUserScrollIntent,
+  onNaturalWidth,
 }: {
   html: string
   /** Which bubble the frame sits in: its colors are the ones the frame paints with. */
@@ -40,11 +46,15 @@ export function BubbleHtmlFrame({
   activeSearchOffset?: number
   onLinkHover?: (url: string | null) => void
   onUserScrollIntent?: () => void
+  /** Reports the width a text-only document needs, or null for one that should fill the bubble. */
+  onNaturalWidth?: (width: number | null) => void
 }) {
   const { t } = useTranslation()
   const messageFont = useMessageFrameFont()
   const bubbleTheme = useBubbleTheme(outgoing)
   const autoFit = useValue(settings$.autoFitMessages)
+  const onNaturalWidthRef = useRef(onNaturalWidth)
+  onNaturalWidthRef.current = onNaturalWidth
   const autoFitRef = useRef(autoFit)
   autoFitRef.current = autoFit
   // Everything the frame's document is built from. Typography is part of it:
@@ -125,6 +135,13 @@ export function BubbleHtmlFrame({
     [openImage],
   )
 
+  // A document measured before sizes its bubble before the first paint; the frame
+  // only loads after that, so waiting for its measurement would show the bubble
+  // at full width first.
+  useLayoutEffect(() => {
+    if (naturalWidths.has(documentKey)) onNaturalWidthRef.current?.(naturalWidths.get(documentKey) ?? null)
+  }, [documentKey])
+
   // Only a new document starts over from the placeholder height. A theme change
   // keeps the height it has — the frame is still showing a measured document —
   // and the resize observer files the new one if the canvas changes its box.
@@ -189,8 +206,37 @@ export function BubbleHtmlFrame({
         })
       }
 
+      // Only a document of plain flowing text can shrink its bubble: tables,
+      // images and the like lay out against the width they are given. The body
+      // is briefly laid out at max-content to read what its longest line needs;
+      // it is restored before anything paints or any observer is delivered.
+      const reportNaturalWidth = () => {
+        const report = onNaturalWidthRef.current
+        if (!report || !doc.body) return
+        const commit = (width: number | null) => {
+          naturalWidths.set(documentKey, width)
+          report(width)
+        }
+        if (doc.querySelector(NON_TEXT_SELECTOR)) return commit(null)
+        const style = doc.body.style
+        // The base stylesheet caps the body at the frame's width (!important), which
+        // would make this read no more than the current width: lift it while measuring.
+        const saved = (prop: string) => [style.getPropertyValue(prop), style.getPropertyPriority(prop)] as const
+        const [previous, previousPriority] = saved('width')
+        const [previousMax, previousMaxPriority] = saved('max-width')
+        style.setProperty('width', 'max-content', 'important')
+        style.setProperty('max-width', 'none', 'important')
+        const natural = Math.ceil(doc.body.getBoundingClientRect().width)
+        if (previous) style.setProperty('width', previous, previousPriority)
+        else style.removeProperty('width')
+        if (previousMax) style.setProperty('max-width', previousMax, previousMaxPriority)
+        else style.removeProperty('max-width')
+        commit(natural > 0 ? natural : null)
+      }
+
       const measure = () => {
         wrapOverflowingTables()
+        reportNaturalWidth()
         const measurement = measureFrameHeight(frameMetrics(doc), overflowExtent)
         overflowExtent = measurement.overflowExtent
         commitHeight(measurement.height)

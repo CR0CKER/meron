@@ -19,6 +19,7 @@ export function MessageContent({
   fullHeight = false,
   onLinkHover,
   onUserScrollIntent,
+  onNaturalWidth,
 }: {
   message: Message
   view: MessageView
@@ -28,6 +29,7 @@ export function MessageContent({
   fullHeight?: boolean
   onLinkHover?: (url: string | null) => void
   onUserScrollIntent?: () => void
+  onNaturalWidth?: (width: number | null) => void
 }) {
   const { t } = useTranslation()
   const { attachmentImages, bubbleAttachmentImages, videos, files } = view
@@ -113,6 +115,7 @@ export function MessageContent({
         fullHeight={fullHeight}
         onLinkHover={onLinkHover}
         onUserScrollIntent={onUserScrollIntent}
+        onNaturalWidth={onNaturalWidth}
       />
 
       {/* File attachments — click opens in the default app, the icon saves via

@@ -30,6 +30,7 @@ export function MessageBubbleBody({
   fullHeight = false,
   onLinkHover,
   onUserScrollIntent,
+  onNaturalWidth,
 }: {
   message: Message
   useHtmlBody: boolean
@@ -48,6 +49,8 @@ export function MessageBubbleBody({
   fullHeight?: boolean
   onLinkHover?: (url: string | null) => void
   onUserScrollIntent?: () => void
+  /** HTML body only: the width a plain-text-like document needs, null when it should fill the bubble. */
+  onNaturalWidth?: (width: number | null) => void
 }) {
   const { t } = useTranslation()
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -79,6 +82,7 @@ export function MessageBubbleBody({
           activeSearchOffset={activeSearchOffset}
           onLinkHover={onLinkHover}
           onUserScrollIntent={onUserScrollIntent}
+          onNaturalWidth={onNaturalWidth}
         />
       </div>
     )

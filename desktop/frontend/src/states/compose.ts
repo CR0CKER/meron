@@ -696,6 +696,7 @@ export async function openDraftConversationOrCompose(thread: Message) {
       if (ui$.selectedThread.peek() === thread.thread_id) {
         mail$.messages.set(messages)
         mail$.messagesCursor.set('')
+        mail$.messagesCursorThread.set(thread.thread_id)
         mail$.messagesLoadingMore.set(false)
         mail$.threadLoading.set(false)
       }

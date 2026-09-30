@@ -39,6 +39,9 @@ export const mail$ = observable({
   messages: [] as Message[],
   // Opaque pagination cursor for older messages in the current thread; "" = no more.
   messagesCursor: '',
+  // The thread messagesCursor pages. Right after a switch the cursor is still the
+  // previous thread's, until the new thread's first page lands.
+  messagesCursorThread: '',
   // Loading flag for "Load earlier messages".
   messagesLoadingMore: false,
   // True while threadRead is in flight for a newly-selected thread. The reader
@@ -822,6 +825,7 @@ export async function loadThread(threadId: string) {
     const messages = mergeRefreshedThreadMessages(mail$.messages.get(), refreshed, threadId)
     mail$.messages.set(messages)
     mail$.messagesCursor.set(result.next_cursor ?? '')
+    mail$.messagesCursorThread.set(threadId)
     mail$.messagesLoadingMore.set(false)
     // Reconcile against the unfiltered page: a hidden placeholder can still be
     // unread, and dropping it must not mark the thread read early.
@@ -965,6 +969,9 @@ export async function loadMoreMessages(threadId: string) {
   if (!cursor || mail$.messagesLoadingMore.get()) return
   // Guard against a stale click after the thread switched out from under us.
   if (ui$.selectedThread.get() !== threadId) return
+  // Paging the new thread with the previous thread's cursor would prepend to the
+  // wrong messages.
+  if (mail$.messagesCursorThread.get() !== threadId) return
   mail$.messagesLoadingMore.set(true)
   try {
     const result = await invoke<{ messages: Message[]; next_cursor?: string }>('mail.threadRead', {
