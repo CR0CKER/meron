@@ -318,6 +318,17 @@ jobs:
           installer=$(ls desktop/build/bin/*installer.exe)
           cp "$installer" "dist/${{ matrix.artifact }}.exe"
 
+      - name: build windows appx exe
+        if: startsWith(matrix.os, 'windows')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The appx ships meron-core.exe beside meron.exe, so its exe is built
+          # without embed_sidecar rather than carrying a second, unused copy.
+          # -s reuses the frontend assets from the release build above.
+          cd desktop
+          wails build -s -platform ${{ matrix.platform }} -o meron-appx.exe
+
       - name: package windows appx
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
@@ -336,7 +347,11 @@ jobs:
           $assets = Join-Path $stage 'Assets'
           Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $assets | Out-Null
-          Copy-Item desktop/build/bin/meron.exe (Join-Path $stage 'meron.exe')
+          Copy-Item desktop/build/bin/meron-appx.exe (Join-Path $stage 'meron.exe')
+          # Ship the sidecar inside the package so it is covered by the package
+          # signature. Smart App Control / WDAC block the unsigned copy meron.exe
+          # would otherwise extract to AppData; bundledSidecarPath finds it there.
+          Copy-Item desktop/build/sidecar/meron-core (Join-Path $stage 'meron-core.exe')
 
           # Generate the tile/logo assets from the 1024px app icon.
           choco install imagemagick.app --no-progress -y | Out-Null
