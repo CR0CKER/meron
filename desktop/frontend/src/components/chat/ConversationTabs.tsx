@@ -101,12 +101,12 @@ export function ConversationTabs() {
   if (!hasTabs) return null
 
   return (
-    <div className="relative shrink-0 border-b border-border bg-header">
+    <div className="relative shrink-0 border-b border-border/60 bg-chat">
       {overflow.left && (
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-header to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-chat to-transparent" />
       )}
       {overflow.right && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-header to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-chat to-transparent" />
       )}
       <div ref={stripRef} className="flex h-10 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
         {hasCurrentConversation && (

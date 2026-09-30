@@ -62,33 +62,20 @@ export function ThreadListItem({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={clsx(
-        'group relative border-b border-border/50 last:border-b-0',
-        draggable && 'cursor-grab active:cursor-grabbing',
-        className,
-      )}
+      className={clsx('group relative', draggable && 'cursor-grab active:cursor-grabbing', className)}
     >
       <button
         className={clsx(
-          'relative w-full px-2 py-3 transition-all duration-150 flex items-center gap-2 cursor-pointer select-none text-left',
-          bulkSelectable
-            ? bulkSelected
-              ? 'bg-accent/[0.13] text-primary'
-              : 'bg-chats hover:bg-hover text-primary'
-            : isActive
-              ? 'bg-accent/20 dark:bg-accent/30 text-primary'
-              : unread
-                ? 'bg-accent/[0.07] hover:bg-accent/[0.12] text-primary'
-                : 'bg-chats hover:bg-hover text-primary',
+          // Rows are inset pills, told apart by spacing rather than divider
+          // lines; unread weight and the count badge mark unread, not a tint.
+          'relative w-full rounded-lg px-2.5 py-2.5 text-primary transition-colors duration-150 flex items-center gap-2.5 cursor-pointer select-none text-left',
+          (bulkSelectable ? bulkSelected : isActive) ? 'bg-accent/[0.13] dark:bg-accent/20' : 'hover:bg-hover',
         )}
         onClick={onSelect}
         onDoubleClick={onOpenInNewTab}
         onContextMenu={onContextMenu}
         title={threadTitle}
       >
-        {!bulkSelectable && isActive && (
-          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />
-        )}
         {bulkSelectable ? (
           <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center">
             <span
@@ -121,7 +108,10 @@ export function ThreadListItem({
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex min-w-0 items-center gap-1">
               <span
-                className={clsx('text-[0.8125rem] font-semibold truncate', unread ? 'text-primary' : 'text-primary/85')}
+                className={clsx(
+                  'text-[0.8125rem] truncate',
+                  unread ? 'font-semibold text-primary' : 'font-medium text-primary/80',
+                )}
               >
                 {thread.senders && thread.senders.length > 1
                   ? thread.senders

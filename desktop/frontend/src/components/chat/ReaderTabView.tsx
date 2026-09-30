@@ -60,7 +60,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-header px-4 z-10 select-none">
+      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-4 z-10 select-none">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold text-primary leading-tight" title={tab.subject}>
             {tab.subject}
@@ -120,7 +120,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
         </button>
       </header>
       {hasAddresses && (
-        <div className="shrink-0 space-y-1 border-b border-border bg-header px-4 py-2.5 text-secondary select-text">
+        <div className="shrink-0 space-y-1 border-b border-border/60 bg-chat px-4 py-2.5 text-secondary select-text">
           {tab.fromRaw && <AddressRow label={t('composer.fields.from')} rawList={tab.fromRaw} />}
           {tab.to && <AddressRow label={t('composer.fields.to')} rawList={tab.to} />}
           {tab.cc && <AddressRow label={t('composer.fields.cc')} rawList={tab.cc} />}
@@ -158,7 +158,7 @@ function ReaderActionBar({
 }) {
   const { t } = useTranslation()
   return (
-    <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border bg-header px-4 py-2 select-none">
+    <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border/60 bg-chat px-4 py-2 select-none">
       <ReaderAction
         icon={<Reply size={15} />}
         label={t('chat.actions.reply')}

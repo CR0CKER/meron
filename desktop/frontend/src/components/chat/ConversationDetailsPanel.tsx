@@ -105,7 +105,7 @@ export function ConversationDetailsPanel({
         className="
           absolute inset-y-0 right-0 z-30 w-[340px] max-w-[85vw] shadow-2xl
           min-[1100px]:relative min-[1100px]:inset-auto min-[1100px]:z-auto min-[1100px]:shadow-none min-[1100px]:max-w-none
-          flex shrink-0 flex-col border-l border-border bg-header
+          flex shrink-0 flex-col bg-header
           animate-slide-in-right
         "
       >

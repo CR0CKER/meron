@@ -31,8 +31,8 @@ export function QuickReplyComposer() {
   const canSend = !sendingReply && !isQuickReplyBlank()
 
   return (
-    <footer className="p-3.5 bg-header border-t border-border z-10 flex flex-col items-center justify-center">
-      <div className="flex flex-col gap-2 w-full bg-hover p-2 rounded-2xl border border-border/50 shadow-sm focus-within:ring-1 focus-within:ring-accent focus-within:bg-chats transition-all duration-150">
+    <footer className="px-3.5 pb-3.5 pt-1 bg-chat z-10 flex flex-col items-center justify-center">
+      <div className="flex flex-col gap-2 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-sm focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
         {/* One line, not two: From and To are both single-address disclosures,
             and stacking them pushed the box itself down the window. Recipients
             lead — they are what changes from thread to thread — and the send-as

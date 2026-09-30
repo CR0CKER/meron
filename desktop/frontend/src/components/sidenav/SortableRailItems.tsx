@@ -28,13 +28,18 @@ function sortableStyle(
   }
 }
 
-const activeIndicator = (active: boolean) => (
+/** The pill at the rail's edge: a stub on hover, full height when active. */
+export const railIndicator = (active: boolean) => (
   <div
-    className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r bg-accent transition-all duration-200 ${
-      active ? 'h-7' : 'h-0 group-hover:h-3'
+    className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r bg-accent transition-[height] duration-200 ease-out ${
+      active ? 'h-9' : 'h-0 group-hover:h-5'
     }`}
   />
 )
+
+/** Rail tiles are round at rest and square up when hovered or active. */
+export const railTileShape = (active: boolean) =>
+  `transition-all duration-200 ease-out ${active ? 'rounded-2xl' : 'rounded-[22px] group-hover:rounded-2xl'}`
 
 interface SortableBoardProps {
   shortcut?: string
@@ -58,23 +63,21 @@ export function SortableBoard({ board, active, onSelect, onContextMenu, shortcut
       className="relative w-full flex justify-center group cursor-move"
       title={board.name + (shortcut ? ` (${shortcut})` : '')}
     >
-      {activeIndicator(active)}
+      {railIndicator(active)}
       {board.avatarUrl ? (
         <div
-          className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 ${
-            active
-              ? 'ring-2 ring-accent ring-offset-2 ring-offset-sidenav scale-105'
-              : 'opacity-75 hover:opacity-100 hover:scale-105'
+          className={`flex h-11 w-11 items-center justify-center overflow-hidden ${railTileShape(active)} ${
+            active ? '' : 'opacity-75 group-hover:opacity-100'
           }`}
         >
-          <Avatar name={board.name} src={board.avatarUrl} size={44} className="!rounded-2xl pointer-events-none" />
+          <Avatar name={board.name} src={board.avatarUrl} size={44} className="!rounded-none pointer-events-none" />
         </div>
       ) : (
         <div
-          className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 ${
+          className={`flex h-11 w-11 items-center justify-center ${railTileShape(active)} ${
             active
-              ? 'bg-accent text-white scale-105'
-              : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink hover:scale-105'
+              ? 'bg-accent text-accent-label'
+              : 'bg-sidenav-ink/10 text-sidenav-ink/60 group-hover:bg-sidenav-ink/20 group-hover:text-sidenav-ink'
           }`}
         >
           <Columns3 size={19} />
@@ -132,18 +135,14 @@ export function SortableAccount({
       className="relative w-full flex justify-center group cursor-move"
       title={baseTooltip + stateSuffix + (shortcut ? ` (${shortcut})` : '')}
     >
-      {activeIndicator(active)}
+      {railIndicator(active)}
       {/* Badges live on this wrapper, not the dimmed avatar div, so the unread
           count stays full-opacity for inactive accounts (matching the rail's
           other badges). */}
       <div className="relative">
         <div
-          className={`relative flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 ${
-            active
-              ? 'ring-2 ring-accent ring-offset-2 ring-offset-sidenav scale-105'
-              : isPaused || needsReconnect
-                ? 'opacity-100 hover:scale-105'
-                : 'opacity-75 hover:opacity-100 hover:scale-105'
+          className={`relative flex h-11 w-11 items-center justify-center overflow-hidden ${railTileShape(active)} ${
+            active || isPaused || needsReconnect ? '' : 'opacity-75 group-hover:opacity-100'
           }`}
         >
           <Avatar
@@ -151,7 +150,7 @@ export function SortableAccount({
             src={account.avatar_url}
             size={44}
             fallback={isRSS ? <Rss size={20} /> : undefined}
-            className={`!rounded-2xl pointer-events-none transition-all ${
+            className={`!rounded-none pointer-events-none transition-all ${
               isPaused || needsReconnect ? 'grayscale opacity-40' : ''
             }`}
           />

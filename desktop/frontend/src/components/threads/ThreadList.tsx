@@ -256,7 +256,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   return (
     <section
       data-thread-list
-      className={`relative flex w-full shrink-0 flex-col border-r border-border bg-chats min-[769px]:w-[var(--thread-list-width)] ${
+      className={`relative flex w-full shrink-0 flex-col bg-chats min-[769px]:w-[var(--thread-list-width)] ${
         mobilePane === 'threads' ? 'max-[768px]:flex' : 'max-[768px]:hidden'
       }`}
       onKeyDownCapture={(event) => {
@@ -278,7 +278,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
       ) : (
         // Less padding on the right than the left: the trailing icon buttons carry
         // their own, so px-4 on both sides left the row lopsided.
-        <div className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border bg-header dark:bg-header/40">
+        <div className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60">
           <div className="flex items-center gap-2 w-full">
             {/* Current folder, doubling as a picker: switching here retargets the
               list the same way it retargets a kanban column. Capped so a deep
@@ -425,7 +425,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
 
       {/* Thread List Items */}
       <div
-        className="flex-1 overflow-y-auto flex flex-col"
+        className="flex-1 overflow-y-auto flex flex-col gap-0.5 p-1.5"
         onScroll={(event) => {
           if (!canLoadMore || threadsLoadingMore) return
           const el = event.currentTarget

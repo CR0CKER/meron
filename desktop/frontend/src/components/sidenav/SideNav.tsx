@@ -18,7 +18,7 @@ import { settings$, setUnifiedInboxSideNavVisible } from '../../states/settings'
 import { toggleTasksPanel } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
 import { QuickSettingsMenu } from './QuickSettingsMenu'
-import { SortableBoard, SortableAccount } from './SortableRailItems'
+import { SortableBoard, SortableAccount, railIndicator, railTileShape } from './SortableRailItems'
 import { UnreadCountBadge } from './UnreadCountBadge'
 import { RailContextMenu, RailMenuItem } from './RailContextMenu'
 import { AccountContextMenu } from './AccountContextMenu'
@@ -139,7 +139,7 @@ export function SideNav() {
 
   return (
     <aside
-      className="flex w-[60px] shrink-0 flex-col items-center gap-4 border-r border-border bg-sidenav px-0 py-4 max-[768px]:hidden select-none"
+      className="flex w-[60px] shrink-0 flex-col items-center gap-4 bg-sidenav px-0 py-4 max-[768px]:hidden select-none"
       onContextMenu={(event) => {
         if (event.defaultPrevented) return
         event.preventDefault()
@@ -149,7 +149,7 @@ export function SideNav() {
       {hasSendableAccount && (
         <>
           <button
-            className="relative isolate flex h-11 w-11 shrink-0 transform-gpu items-center justify-center overflow-hidden rounded-2xl bg-accent text-white hover:bg-accent-hover cursor-pointer"
+            className="relative isolate flex h-11 w-11 shrink-0 transform-gpu items-center justify-center overflow-hidden rounded-[22px] bg-accent text-accent-label transition-all duration-200 ease-out hover:rounded-2xl hover:bg-accent-hover hover:text-accent-hover-label cursor-pointer"
             onClick={() => openComposeTab()}
             title={`${t('composer.actions.newMessage')} (${formatShortcut('compose.new').join(isMac ? '' : '+')})`}
             aria-label={t('composer.actions.newMessage')}
@@ -163,17 +163,13 @@ export function SideNav() {
         {/* Unified Inbox Home Button */}
         {showUnifiedInbox && (
           <div className="relative w-full flex justify-center group">
-            <div
-              className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r bg-accent transition-all duration-200 ${
-                isUnifiedActive ? 'h-7' : 'h-0 group-hover:h-3'
-              }`}
-            />
+            {railIndicator(isUnifiedActive)}
             <div className="relative">
               <button
-                className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 cursor-pointer ${
+                className={`flex h-11 w-11 items-center justify-center cursor-pointer ${railTileShape(isUnifiedActive)} ${
                   isUnifiedActive
-                    ? 'bg-accent text-white'
-                    : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink hover:scale-105'
+                    ? 'bg-accent text-accent-label'
+                    : 'bg-sidenav-ink/10 text-sidenav-ink/60 group-hover:bg-sidenav-ink/20 group-hover:text-sidenav-ink'
                 }`}
                 onClick={() => selectAccount('unified')}
                 onContextMenu={(event) => {

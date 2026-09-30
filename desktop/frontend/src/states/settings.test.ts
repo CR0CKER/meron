@@ -17,7 +17,7 @@ import {
   upsertCustomTheme,
   WRITE_SESSION,
 } from './settings'
-import { builtinTheme, deriveThemeTokens, defaultCustomInput, type CustomTheme } from '../lib/themes'
+import { DEFAULT_DARK_ID, builtinTheme, deriveThemeTokens, defaultCustomInput, type CustomTheme } from '../lib/themes'
 
 const baseBoard = {
   id: 'kb-1',
@@ -227,7 +227,7 @@ describe('theme following the system', () => {
     settings$.themeFollowSystem.set(false)
     settings$.themeId.set('light')
     settings$.lightThemeId.set('light')
-    settings$.darkThemeId.set('indigo-dark')
+    settings$.darkThemeId.set(DEFAULT_DARK_ID)
     settings$.customThemes.set([])
     systemAppearance$.set('light')
   })
@@ -283,8 +283,8 @@ describe('theme following the system', () => {
     expect(resolveThemeDef().id).toBe('custom-test')
 
     deleteCustomTheme('custom-test')
-    expect(settings$.darkThemeId.get()).toBe('indigo-dark')
-    expect(resolveThemeDef().id).toBe('indigo-dark')
+    expect(settings$.darkThemeId.get()).toBe(DEFAULT_DARK_ID)
+    expect(resolveThemeDef().id).toBe(DEFAULT_DARK_ID)
   })
 
   it('drops a custom pick edited to the other appearance from its old slot', () => {

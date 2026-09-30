@@ -49,7 +49,7 @@ export function ComposerToolbar({
   const { t } = useTranslation()
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-header px-3 py-1.5 select-none">
+    <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border/60 bg-chat px-3 py-1.5 select-none">
       <ToolbarButton
         active={editor.isActive('bold')}
         onClick={() => editor.chain().focus().toggleBold().run()}

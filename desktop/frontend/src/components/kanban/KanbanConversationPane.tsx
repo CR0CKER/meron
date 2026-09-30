@@ -33,7 +33,7 @@ export function KanbanConversationPane({
   return (
     <div
       data-pane-phase={phase}
-      className={`relative flex shrink-0 overflow-hidden border-l border-border bg-chat${animation}`}
+      className={`relative flex shrink-0 overflow-hidden bg-chat${animation}`}
       style={{ width }}
     >
       {phase !== 'exiting' && (

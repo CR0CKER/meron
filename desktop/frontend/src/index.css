@@ -23,14 +23,11 @@
   --color-accent-hover: var(--me-accent-hover);
   --color-accent-label: var(--me-accent-label, #ffffff);
   --color-accent-hover-label: var(--me-accent-hover-label, #ffffff);
+  /* Count badges: white numbers on the accent, darkened where it is too light
+     for them (whiteLabelAccent in lib/themes.ts). */
+  --color-accent-badge: var(--me-accent-badge, var(--me-accent));
   --color-unread-bg: color-mix(in srgb, var(--me-accent) 18%, var(--me-bg-chats));
   --color-unread-text: color-mix(in srgb, var(--me-accent) 55%, var(--me-text-primary));
-  /* The rail badge sits on the sidenav, so it cannot reuse --color-unread-bg:
-     that one is mixed into --me-bg-chats, a column surface whose lightness can
-     differ from the rail's. Mixing toward the rail ink keeps it readable on
-     dark and light rails alike. */
-  --color-unread-rail-bg: color-mix(in srgb, var(--me-accent) 35%, var(--me-sidenav-ink));
-  --color-unread-rail-text: color-mix(in srgb, var(--me-accent) 25%, var(--me-bg-sidenav));
   /* Glyph/divider color on the sidenav; set per theme by accentLabelVars in lib/themes.ts. */
   --color-sidenav-ink: var(--me-sidenav-ink);
   --color-bubble-in: var(--me-bubble-in);
@@ -78,32 +75,32 @@
   --font-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
 }
 
-/* These two blocks are the default "Meron Light" / "Indigo Dark" themes and the no-JS
+/* These two blocks are the default "Meron Light" / "Meron Dark" themes and the no-JS
    fallback paint. Other themes override the vars inline on <html> (see
    applyActiveTheme in states/settings.ts). Keep values in sync with the MERON_LIGHT /
-   INDIGO_DARK registries in lib/themes.ts. */
+   MERON_DARK registries in lib/themes.ts. */
 :root {
   --me-bg-app: #f0f2f1;
-  --me-bg-chat: #f8faf9;
-  --me-bg-chat-overlay: rgba(248, 250, 249, 0.94);
-  --me-bg-sidenav: #f0f2f1;
+  --me-bg-chat: #f2f4f3;
+  --me-bg-chat-overlay: rgba(242, 244, 243, 0.94);
+  --me-bg-sidenav: #e6e9e7;
   --me-sidenav-ink: #1b211e;
   --me-bg-chats: #ffffff;
   --me-bg-header: #ffffff;
-  --me-bg-hover: #eef1f0;
+  --me-bg-hover: rgba(27, 33, 30, 0.07);
   --me-bg-raised: #f7f9f8;
-  --me-bg-active: #e2e7e4;
-  --me-border: #e0e6e2;
+  --me-bg-active: #e1e6e3;
+  --me-border: #dde3df;
   --me-text-primary: #1b211e;
-  --me-text-secondary: #68746e;
+  --me-text-secondary: #65716b;
   --me-accent: #0e7a58;
-  --me-accent-hover: #0b6448;
+  --me-accent-hover: #006b4a;
   --me-bubble-in: #ffffff;
   --me-bubble-in-text: #1b211e;
-  --me-bubble-out: #ddeee6;
+  --me-bubble-out: #dcede5;
   --me-bubble-out-text: #14543e;
   --me-composer-bg: #ffffff;
-  --me-composer-border: #e0e6e2;
+  --me-composer-border: #dde3df;
   --me-bubble-shadow-in: 0 2px 8px -2px rgba(27, 33, 30, 0.08), 0 1px 3px -1px rgba(27, 33, 30, 0.04);
   --me-bubble-shadow-out: 0 2px 8px -2px rgba(14, 122, 88, 0.12), 0 1px 3px -1px rgba(14, 122, 88, 0.06);
   --me-wallpaper-overlay: color-mix(in srgb, var(--me-bg-chat) 50%, transparent);
@@ -114,27 +111,27 @@
 }
 
 .dark {
-  --me-bg-app: #090d16;
-  --me-bg-chat: #090d16;
-  --me-bg-chat-overlay: rgba(9, 13, 22, 0.95);
-  --me-bg-sidenav: #05070c;
+  --me-bg-app: #0c100e;
+  --me-bg-chat: #0d1210;
+  --me-bg-chat-overlay: rgba(13, 18, 16, 0.95);
+  --me-bg-sidenav: #060908;
   --me-sidenav-ink: #ffffff;
-  --me-bg-chats: #0f172a;
-  --me-bg-header: #0f172a;
-  --me-bg-hover: rgba(30, 41, 59, 0.6);
-  --me-bg-raised: rgba(15, 23, 42, 0.4);
-  --me-bg-active: #1e293b;
-  --me-border: #1e293b;
-  --me-text-primary: #f8fafc;
-  --me-text-secondary: #94a3b8;
-  --me-accent: #7165c4;
-  --me-accent-hover: #7c70ce;
-  --me-bubble-in: #1e293b;
-  --me-bubble-in-text: #f8fafc;
-  --me-bubble-out: #312e81;
-  --me-bubble-out-text: #e0e7ff;
-  --me-composer-bg: #0f172a;
-  --me-composer-border: #1e293b;
+  --me-bg-chats: #151b18;
+  --me-bg-header: #151b18;
+  --me-bg-hover: rgba(242, 245, 243, 0.06);
+  --me-bg-raised: rgba(21, 27, 24, 0.4);
+  --me-bg-active: #262f2a;
+  --me-border: #29352f;
+  --me-text-primary: #f2f5f3;
+  --me-text-secondary: #98a39d;
+  --me-accent: #40a984;
+  --me-accent-hover: #4eb690;
+  --me-bubble-in: #1f2823;
+  --me-bubble-in-text: #f2f5f3;
+  --me-bubble-out: #153f33;
+  --me-bubble-out-text: #d6eee2;
+  --me-composer-bg: #151b18;
+  --me-composer-border: #29352f;
   --me-bubble-shadow-in: 0 4px 12px -3px rgba(0, 0, 0, 0.3), 0 1px 4px -2px rgba(0, 0, 0, 0.2);
   --me-bubble-shadow-out: 0 4px 12px -3px rgba(0, 0, 0, 0.4), 0 1px 4px -2px rgba(0, 0, 0, 0.3);
   --me-wallpaper-overlay: color-mix(in srgb, var(--me-bg-chat) 55%, transparent);

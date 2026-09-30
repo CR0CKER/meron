@@ -203,14 +203,14 @@ export function KanbanView({ boardId }: { boardId: string }) {
 
   if (accounts.length === 0) {
     return (
-      <section className="flex flex-1 border-r border-border bg-chats">
+      <section className="flex flex-1 bg-chats">
         <EmptyState title={t('empty.welcomeTitle')} text={t('empty.kanbanSetupText')} />
       </section>
     )
   }
 
   return (
-    <section className="flex flex-1 min-w-0 flex-col border-r border-border bg-chats max-[768px]:w-full">
+    <section className="flex flex-1 min-w-0 flex-col bg-chats max-[768px]:w-full">
       <div className="@container relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 backdrop-blur-md px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {board?.avatarUrl ? (

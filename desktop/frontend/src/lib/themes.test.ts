@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { isValidColor, luminance } from './color'
+import { isValidColor, luminance, toOklch } from './color'
 import {
   BUILTIN_THEMES,
   DEFAULT_DARK_ID,
   DEFAULT_LIGHT_ID,
+  SURFACE_LADDER,
   THEME_TOKEN_KEYS,
   TOKEN_CSS_VAR,
   accentLabelColor,
   accentLabelVars,
+  applySurfaceRules,
+  builtinTheme,
+  contrastRatio,
   cssVarStyle,
   deriveThemeTokens,
   isCustomThemeId,
@@ -18,6 +22,7 @@ import {
   sanitizeCustomThemes,
   serializeThemeSource,
   sideNavInkColor,
+  whiteLabelAccent,
   type CustomThemeInput,
 } from './themes'
 
@@ -54,6 +59,35 @@ describe('BUILTIN_THEMES', () => {
       for (const key of THEME_TOKEN_KEYS) {
         expect(declarations[TOKEN_CSS_VAR[key]]).toBe(tokens[key])
       }
+    }
+  })
+
+  it('steps every builtin down the surface ladder: list, then conversation, then rail', () => {
+    const lightness = (color: string) => toOklch(color)!.l
+    for (const theme of BUILTIN_THEMES) {
+      const { bgChats, bgChat, bgSideNav } = theme.tokens
+      const ladder = SURFACE_LADDER[theme.appearance]
+      // Hex rounding moves lightness by a few thousandths.
+      expect(lightness(bgChat) - lightness(bgChats)).toBeCloseTo(ladder.chat, 2)
+      expect(lightness(bgSideNav) - lightness(bgChats)).toBeCloseTo(ladder.sideNav, 2)
+    }
+  })
+
+  it('writes every builtin as the output of the surface rules', () => {
+    for (const theme of BUILTIN_THEMES) {
+      expect(applySurfaceRules(theme.tokens, theme.appearance)).toEqual(theme.tokens)
+    }
+  })
+
+  it('keeps secondary text, the accent and bubble text readable', () => {
+    for (const theme of BUILTIN_THEMES) {
+      const { bgChats, bgChat, bubbleIn, textSecondary, accent } = theme.tokens
+      expect(contrastRatio(textSecondary, bgChats)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(textSecondary, bgChat)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(accent, bgChats)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(accent, bubbleIn)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(theme.tokens.bubbleInText, bubbleIn)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(theme.tokens.bubbleOutText, theme.tokens.bubbleOut)).toBeGreaterThanOrEqual(4.5)
     }
   })
 
@@ -99,6 +133,20 @@ describe('deriveThemeTokens', () => {
       text: '#f8fafc',
     })
     expect(luminance(dark.textSecondary)).toBeGreaterThan(luminance(dark.bgApp))
+  })
+
+  it('keeps bubble text readable after the bubbles move onto the ladder', () => {
+    // A mid-grey dark surface lifts the outgoing bubble toward its light text.
+    const tokens = deriveThemeTokens({
+      appearance: 'dark',
+      bgApp: '#444444',
+      surface: '#555555',
+      sideNav: '#333333',
+      accent: '#0e7a58',
+      text: '#f8fafc',
+    })
+    expect(contrastRatio(tokens.bubbleOutText, tokens.bubbleOut)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(tokens.bubbleInText, tokens.bubbleIn)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('passes the editor inputs through unchanged', () => {
@@ -147,6 +195,24 @@ describe('accent labels', () => {
     expect(accentLabelColor('#fff')).toBe('#000000')
     expect(accentLabelColor('rgb(0, 0, 0)')).toBe('#ffffff')
     expect(accentLabelColor('hsl(60, 100%, 50%)')).toBe('#000000')
+  })
+
+  it('prefers white wherever it meets 4.5:1, even when black contrasts more', () => {
+    // Mist's teal: white 4.56:1, black a hair higher at 4.61:1.
+    expect(accentLabelColor(builtinTheme('mist')!.tokens.accent)).toBe('#ffffff')
+    expect(accentLabelColor('#767676')).toBe('#ffffff')
+  })
+})
+
+describe('whiteLabelAccent', () => {
+  it('gives white badge numbers 4.5:1 on every built-in accent', () => {
+    for (const theme of BUILTIN_THEMES) {
+      expect(contrastRatio('#ffffff', whiteLabelAccent(theme.tokens.accent))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('leaves an accent that already carries white text unchanged', () => {
+    expect(whiteLabelAccent('#0e7a58')).toBe('#0e7a58')
   })
 })
 
