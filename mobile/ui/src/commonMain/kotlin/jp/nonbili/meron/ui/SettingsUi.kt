@@ -196,7 +196,6 @@ internal fun SettingsScreen(
     onRestoreBackup: () -> Unit,
     backupBusy: Boolean,
 ) {
-    var showThemePicker by remember { mutableStateOf(false) }
     var showLanguagePicker by remember { mutableStateOf(false) }
     var showMessageTextSize by remember { mutableStateOf(false) }
     val settingsNavController = rememberNavController()
@@ -216,6 +215,7 @@ internal fun SettingsScreen(
             SettingsRoutes.KanbanBoardWallpaper -> selectedSettingsBoardId?.let { SettingsPage.KanbanBoardWallpaper(it) } ?: SettingsPage.Root
             SettingsRoutes.SyncLog -> SettingsPage.SyncLog
             SettingsRoutes.RemoteSenders -> SettingsPage.RemoteSenders
+            SettingsRoutes.Theme -> SettingsPage.Theme
             else -> SettingsPage.Root
         }
     LaunchedEffect(initialGeneral) {
@@ -247,14 +247,6 @@ internal fun SettingsScreen(
             }
             onConsumeInitialKanbanBoard()
         }
-    }
-    if (showThemePicker) {
-        ThemePickerDialog(
-            choice = themeChoice,
-            systemDark = systemDark,
-            onChange = onThemeChoiceChange,
-            onDismiss = { showThemePicker = false },
-        )
     }
     if (showLanguagePicker) {
         LanguagePickerDialog(
@@ -295,6 +287,7 @@ internal fun SettingsScreen(
                             is SettingsPage.KanbanBoardWallpaper -> tr("settings.account.chatBackground")
                             SettingsPage.SyncLog -> tr("settings.viewSyncLog")
                             SettingsPage.RemoteSenders -> tr("settings.privacy.remoteSenders")
+                            SettingsPage.Theme -> tr("common.theme")
                         },
                     )
                 },
@@ -327,7 +320,7 @@ internal fun SettingsScreen(
                 SettingsGeneralPage(
                     themeChoice = themeChoice,
                     systemDark = systemDark,
-                    onOpenTheme = { showThemePicker = true },
+                    onOpenTheme = { settingsNavController.navigate(SettingsRoutes.Theme) },
                     appLanguageTag = appLanguageTag,
                     onOpenLanguage = { showLanguagePicker = true },
                     showSenderImages = showSenderImages,
@@ -390,6 +383,15 @@ internal fun SettingsScreen(
                     onToggleSendShortcut = onToggleSendShortcut,
                     appSignatureHtml = appSignatureHtml,
                     onSaveAppSignature = onSaveAppSignature,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            composable(SettingsRoutes.Theme) {
+                ThemePickerPage(
+                    choice = themeChoice,
+                    systemDark = systemDark,
+                    onChange = onThemeChoiceChange,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -688,6 +690,8 @@ private sealed class SettingsPage {
 
     data object RemoteSenders : SettingsPage()
 
+    data object Theme : SettingsPage()
+
     data class AccountDetail(
         val accountId: String,
     ) : SettingsPage()
@@ -718,6 +722,7 @@ private object SettingsRoutes {
     const val KanbanBoardWallpaper = "settings/kanban-board-wallpaper"
     const val SyncLog = "settings/sync-log"
     const val RemoteSenders = "settings/remote-senders"
+    const val Theme = "settings/theme"
 }
 
 // Appearance, Side navigation, Kanban, Network, Sync & notifications and Data

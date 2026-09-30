@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,63 +40,55 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+/**
+ * Theme picker page: the "match system" switch over light and dark sections of
+ * preview swatches, mirroring the desktop ThemeDialog grid. While the theme
+ * follows the system each section holds its own pick.
+ */
 @Composable
-internal fun ThemePickerDialog(
+internal fun ThemePickerPage(
     choice: ThemeChoice,
     systemDark: Boolean,
     onChange: (ThemeChoice) -> Unit,
-    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Light and dark sections of preview swatches, mirroring the desktop
-    // ThemeDialog grid, under the "match system" switch. While the theme
-    // follows the system each section holds its own pick, so picking one
-    // leaves the dialog open for the other.
     val (darkModes, lightModes) = AppAppearanceMode.entries.filter { dynamicColorSupported || !it.isDynamic }.partition { it.isDark }
-    val onSelect: (AppAppearanceMode) -> Unit = { mode ->
-        onChange(choice.select(mode))
-        if (!choice.followSystem) onDismiss()
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(tr("common.theme")) },
-        text = {
-            val lightLabel = tr("theme.light")
-            val darkLabel = tr("theme.dark")
-            val listState = rememberLazyListState()
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 480.dp).appScrollbar(listState),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+    val onSelect: (AppAppearanceMode) -> Unit = { mode -> onChange(choice.select(mode)) }
+    val lightLabel = tr("theme.light")
+    val darkLabel = tr("theme.dark")
+    val listState = rememberLazyListState()
+    LazyColumn(
+        modifier = modifier.appScrollbar(listState),
+        state = listState,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onChange(choice.withFollowSystem(!choice.followSystem, systemDark)) }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onChange(choice.withFollowSystem(!choice.followSystem, systemDark)) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("theme.matchSystem"), style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                tr("theme.matchSystemHint"),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = choice.followSystem,
-                            onCheckedChange = { onChange(choice.withFollowSystem(it, systemDark)) },
-                        )
-                    }
+                Column(Modifier.weight(1f)) {
+                    Text(tr("theme.matchSystem"), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        tr("theme.matchSystemHint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                themeSwatchSection(lightLabel, lightModes, choice.chosen, onSelect)
-                themeSwatchSection(darkLabel, darkModes, choice.chosen, onSelect)
+                Switch(
+                    checked = choice.followSystem,
+                    onCheckedChange = { onChange(choice.withFollowSystem(it, systemDark)) },
+                )
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("buttons.done")) } },
-    )
+        }
+        themeSwatchSection(lightLabel, lightModes, choice.chosen, onSelect)
+        themeSwatchSection(darkLabel, darkModes, choice.chosen, onSelect)
+    }
 }
 
 /** A labelled section of theme swatches, laid out two per row. */

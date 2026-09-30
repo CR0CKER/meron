@@ -15,8 +15,10 @@ enum class AppAppearanceMode(
     val label: String,
 ) {
     Light("light", "Meron Light"),
+    Dynamic("dynamic", "Material You"),
     Indigo("indigo", "Indigo"),
     Dark("dark", "Meron Dark"),
+    DynamicDark("dynamic-dark", "Material You Dark"),
     IndigoDark("indigo-dark", "Indigo Dark"),
     Mist("mist", "Mist"),
     Paper("paper", "Paper"),
@@ -28,8 +30,6 @@ enum class AppAppearanceMode(
     Forest("forest", "Forest"),
     Plum("plum", "Plum"),
     Ember("ember", "Ember"),
-    Dynamic("dynamic", "Material You"),
-    DynamicDark("dynamic-dark", "Material You Dark"),
 }
 
 /** The themes that take their colors from the system wallpaper palette (Material You). */
