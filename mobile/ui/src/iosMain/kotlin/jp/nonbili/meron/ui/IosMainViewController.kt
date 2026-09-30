@@ -7,13 +7,16 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.window.ComposeUIViewController
 import jp.nonbili.meron.shared.MeronCore
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.usePinned
 import platform.AuthenticationServices.ASPresentationAnchor
 import platform.AuthenticationServices.ASWebAuthenticationPresentationContextProvidingProtocol
 import platform.AuthenticationServices.ASWebAuthenticationSession
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSBundle
+import platform.Foundation.NSData
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSError
@@ -21,6 +24,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSString
+import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
@@ -256,14 +260,17 @@ private fun writeIosTextFile(
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun presentDiagnosticLogShareSheet(text: String) {
+private fun presentDiagnosticLogShareSheet(text: String) = presentShareSheet(listOf(text))
+
+@OptIn(ExperimentalForeignApi::class)
+private fun presentShareSheet(items: List<Any>) {
     val rootViewController =
         (UIApplication.sharedApplication.windows.firstOrNull() as? UIWindow)?.rootViewController ?: return
     var presenter = rootViewController
     while (true) {
         presenter = presenter.presentedViewController ?: break
     }
-    val activityController = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
+    val activityController = UIActivityViewController(activityItems = items, applicationActivities = null)
     // Avoids the iPad requirement to set a popover sourceView/sourceRect.
     activityController.modalPresentationStyle = UIModalPresentationFullScreen
     presenter.presentViewController(activityController, animated = true, completion = null)
@@ -328,8 +335,16 @@ private class IosPlatformServices : PlatformServices {
         fileName: String,
         mimeType: String,
     ) {
-        // TODO: present UIActivityViewController from the Swift host. This keeps
-        // the shared UI callable on iOS while the native host owns presentation.
+        val safeName = fileName.replace('/', '_').ifBlank { "attachment" }
+        val dir = NSTemporaryDirectory() + "meron-share/"
+        NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+        val path = dir + safeName
+        val data =
+            bytes.usePinned { pinned ->
+                NSData.create(bytes = if (bytes.isNotEmpty()) pinned.addressOf(0) else null, length = bytes.size.toULong())
+            }
+        if (!data.writeToFile(path, atomically = true)) return
+        presentShareSheet(listOf(NSURL.fileURLWithPath(path)))
     }
 
     override fun saveFile(
