@@ -161,3 +161,39 @@ func TestBeforeClose(t *testing.T) {
 		t.Fatalf("explicit quit: state not saved, got %+v", got)
 	}
 }
+
+func stubAppQuit(t *testing.T) *int {
+	t.Helper()
+	quits := 0
+	orig := appQuit
+	appQuit = func(context.Context) { quits++ }
+	t.Cleanup(func() { appQuit = orig })
+	return &quits
+}
+
+// Ctrl+Q does what the close button does: hide to the tray with close-to-tray
+// on, quit with it off. macOS keeps its native ⌘Q, which always quits.
+func TestRequestQuit(t *testing.T) {
+	defer stubWindowCalls(t)()
+	stubWindowState(t, &fakeWindow{width: 1000, height: 600, normal: true})
+
+	app := newWindowStateApp(t)
+	quits := stubAppQuit(t)
+	app.requestQuit()
+	if hideOnCloseNatively {
+		if *quits != 1 || len(windowCalls) != 0 {
+			t.Fatalf("macOS: quits %d, window calls %v", *quits, windowCalls)
+		}
+	} else if *quits != 0 || len(windowCalls) != 1 || windowCalls[0] != "hide" || !app.windowHidden.Load() {
+		t.Fatalf("close-to-tray: quits %d, window calls %v, hidden %v", *quits, windowCalls, app.windowHidden.Load())
+	}
+
+	windowCalls = nil
+	app = newWindowStateApp(t)
+	app.closeToTray.Store(false)
+	quits = stubAppQuit(t)
+	app.requestQuit()
+	if *quits != 1 || !app.quitting.Load() || len(windowCalls) != 0 {
+		t.Fatalf("close-to-tray off: quits %d, quitting %v, window calls %v", *quits, app.quitting.Load(), windowCalls)
+	}
+}

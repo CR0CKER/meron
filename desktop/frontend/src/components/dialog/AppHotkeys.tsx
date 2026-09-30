@@ -7,6 +7,7 @@ import {
   closeCommandPalette,
   focusGlobalSearch,
   focusQuickReply,
+  modalOpen,
 } from '../../states/ui'
 import { settings$, visibleSideNavAccounts } from '../../states/settings'
 import { accounts$ } from '../../states/accounts'
@@ -34,6 +35,7 @@ import { handleEditUndoKeyDown } from '../../lib/editUndo'
 import {
   isBareKeystroke,
   isMac,
+  isTyping,
   matchShortcut,
   shortcutForChord,
   RAIL_SHORTCUT_IDS,
@@ -46,26 +48,6 @@ import {
 function threadSearchVisible(): boolean {
   if (!ui$.selectedThread.peek()) return false
   return !kanban$.activeBoardId.peek() || !!kanbanPaneThreadId()
-}
-
-// Is the user currently typing into a field? Bare single-key shortcuts must
-// stand down so they don't clobber text entry.
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
-}
-
-function modalOpen(): boolean {
-  return (
-    ui$.paletteOpen.peek() ||
-    ui$.shortcutsOpen.peek() ||
-    ui$.settingsOpen.peek() ||
-    ui$.setupOpen.peek() ||
-    !!ui$.addFeedAccount.peek() ||
-    !!ui$.editFeed.peek() ||
-    !!ui$.confirm.peek()
-  )
 }
 
 // Bare shortcuts are thread-list/conversation actions. They apply in the kanban

@@ -110,6 +110,20 @@ let pendingConfirmResolve: ((confirmed: boolean) => void) | null = null
 
 // Open the command palette, resetting the query and selection so it always
 // starts fresh at the top.
+/** Whether a modal (palette, dialog, confirm) is open. Single-key shortcuts
+ * stand down while one is, so its own keys (Enter, letters) work as usual. */
+export function modalOpen(): boolean {
+  return (
+    ui$.paletteOpen.peek() ||
+    ui$.shortcutsOpen.peek() ||
+    ui$.settingsOpen.peek() ||
+    ui$.setupOpen.peek() ||
+    !!ui$.addFeedAccount.peek() ||
+    !!ui$.editFeed.peek() ||
+    !!ui$.confirm.peek()
+  )
+}
+
 export function openCommandPalette() {
   ui$.paletteQuery.set('')
   ui$.paletteIndex.set(0)
