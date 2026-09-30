@@ -364,26 +364,25 @@ html.titlebar-integrated
 }
 
 .window-control-circle {
-  display: inline-flex;
-  padding: 4px;
-  border-radius: 9999px;
-  background-color: color-mix(in srgb, currentColor 10%, transparent);
-  transition: background-color 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  fill: currentColor;
+  fill-opacity: 0.1;
+  transition: fill-opacity 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .window-control:hover .window-control-circle {
-  background-color: color-mix(in srgb, currentColor 15%, transparent);
+  fill-opacity: 0.15;
 }
 
 .window-control:active .window-control-circle {
-  background-color: color-mix(in srgb, currentColor 30%, transparent);
+  fill-opacity: 0.3;
 }
 
 .window-control:focus-visible {
   outline: none;
 }
 
-.window-control:focus-visible .window-control-circle {
+.window-control:focus-visible svg {
+  border-radius: 9999px;
   outline: 2px solid color-mix(in srgb, var(--me-accent) 50%, transparent);
 }
 

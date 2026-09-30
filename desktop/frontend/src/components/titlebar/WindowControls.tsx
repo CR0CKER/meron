@@ -36,7 +36,9 @@ const COMMAND = { minimize: 'minimise', maximize: 'toggleMaximise', close: 'clos
  * desktop's button layout. Renders nothing unless this row hosts that side.
  * Metrics are libadwaita's (1.8 default.css, windowcontrols): a 24px circle
  * (16px glyph, 4px padding) in a button padded 5px, currentColor at 10% (15%
- * hover, 30% pressed), 3px apart.
+ * hover, 30% pressed), 3px apart. Circle and glyph are one SVG: as a CSS
+ * background the circle landed on fractional pixels while the glyph was
+ * snapped to whole ones, leaving the glyph visibly off-centre.
  */
 export function WindowControls({ side }: { side: 'start' | 'end' }) {
   const { t } = useTranslation()
@@ -67,11 +69,14 @@ export function WindowControls({ side }: { side: 'start' | 'end' }) {
           title={label(button)}
           onClick={() => windowCommand(COMMAND[button])}
         >
-          <span className="window-control-circle">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
-              <path d={GLYPHS[button === 'maximize' && maximised ? 'restore' : button]} fill="currentColor" />
-            </svg>
-          </span>
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+            <circle className="window-control-circle" cx="12" cy="12" r="12" />
+            <path
+              d={GLYPHS[button === 'maximize' && maximised ? 'restore' : button]}
+              transform="translate(4 4)"
+              fill="currentColor"
+            />
+          </svg>
         </button>
       ))}
     </div>
