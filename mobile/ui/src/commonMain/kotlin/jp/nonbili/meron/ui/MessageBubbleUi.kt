@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,20 +33,30 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +70,8 @@ import jp.nonbili.meron.shared.htmlHasRemoteMedia
 import jp.nonbili.meron.shared.mailBodyCsp
 import jp.nonbili.meron.shared.standaloneAttachments
 import jp.nonbili.meron.shared.visibleImageAttachments
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /** Bubble inner padding; capped bodies offset their scrollbar back over it. */
@@ -72,6 +83,82 @@ private val BubbleHorizontalPadding = 14.dp
  *  to hold the body off the rounded corners. The chrome around the body pads
  *  back up to [BubbleHorizontalPadding] so it still lines up bubble to bubble. */
 private val HtmlBubbleHorizontalPadding = 6.dp
+
+/** How long a bubble stays invisible waiting for its web view to report a width
+ *  before it shows at full width anyway (a page whose script never runs). */
+private const val NATURAL_WIDTH_WAIT_MS = 1000L
+
+/** What each HTML body last reported as the width it needs, so a bubble scrolled
+ *  back into the list takes its width on the first frame instead of flashing at
+ *  full width. [Dp.Unspecified] is not stored: it means not measured yet. */
+private val htmlNaturalWidths = HashMap<String, Dp>()
+
+/** Wide screens cap every bubble here so lines stay readable. */
+private val MaxBubbleWidth = 560.dp
+
+/** Leaves something out of its parent's intrinsic width, so a hugging bubble
+ *  sizes to its text rather than to, say, a photo's pixel width. */
+private object NoIntrinsicWidth : LayoutModifier {
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurable: IntrinsicMeasurable,
+        height: Int,
+    ): Int = 0
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurable: IntrinsicMeasurable,
+        height: Int,
+    ): Int = 0
+}
+
+/** Sizes a bubble to [fraction] of the available width, capped at [MaxBubbleWidth].
+ *  Narrower when it can hug its content: [hugIntrinsic] takes the content's own
+ *  widest line (plain text, which Compose can measure), widened to fit
+ *  [imageColumns] grid tiles at the size a full-width bubble gives them; a
+ *  measured HTML [natural] width takes that plus [chrome], widened to whatever
+ *  the header and the rest of the bubble need (the web view counts for nothing
+ *  there). A [natural] of zero or less means the HTML body fills the bubble. */
+private fun Modifier.bubbleWidth(
+    fraction: Float,
+    natural: Dp = 0.dp,
+    chrome: Dp = 0.dp,
+    hugIntrinsic: Boolean = false,
+    imageColumns: Int = 0,
+): Modifier =
+    layout { measurable, constraints ->
+        val cap = minOf((constraints.maxWidth * fraction).roundToInt(), MaxBubbleWidth.roundToPx())
+        val width =
+            when {
+                hugIntrinsic -> {
+                    val grid =
+                        if (imageColumns > 0) {
+                            val gap = AttachmentImageGridGap.roundToPx()
+                            val tile = (cap - chrome.roundToPx() - 2 * gap) / 3
+                            imageColumns * tile + (imageColumns - 1) * gap + chrome.roundToPx()
+                        } else {
+                            0
+                        }
+                    maxOf(measurable.maxIntrinsicWidth(constraints.maxHeight), grid).coerceAtMost(cap)
+                }
+
+                natural > 0.dp -> {
+                    maxOf((natural + chrome).roundToPx(), measurable.maxIntrinsicWidth(constraints.maxHeight)).coerceAtMost(cap)
+                }
+
+                else -> {
+                    cap
+                }
+            }
+        val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
 
 /** True when the bubble shows the sender's HTML rather than plain text: the
  *  search highlighter works on the plain body, so an open search turns it off. */
@@ -137,6 +224,32 @@ internal fun MessageBubble(
             themedBubbleColor
         }
     val bubblePadding = if (htmlBody) HtmlBubbleHorizontalPadding else BubbleHorizontalPadding
+    // Attached pictures lay out against the bubble's width outside the web view,
+    // so a bubble carrying them keeps its full width whatever its text needs.
+    val hasImages = standaloneAttachments(message).any { it.mimeType.startsWith("image/") }
+    val hugsText = htmlBody && !hasImages
+    // A plain-text bubble shrinks to its images as well: one or two take only the
+    // columns they fill. Counted the way the body decides what it shows.
+    val visibleImageCount =
+        if (htmlBody) {
+            0
+        } else {
+            visibleImageAttachments(
+                standaloneAttachments(message).filter { it.mimeType.startsWith("image/") },
+                remoteContent.allowRemote,
+            ).size
+        }
+    val naturalWidthKey = "${message.id}:${message.bodyHtml.hashCode()}:${LocalDensity.current.fontScale}"
+    var naturalWidth by remember(naturalWidthKey) { mutableStateOf(htmlNaturalWidths[naturalWidthKey] ?: Dp.Unspecified) }
+    // An unmeasured body is laid out at full width but not painted: showing it
+    // would flash it wide before it shrinks to its text.
+    val widthPending = hugsText && naturalWidth == Dp.Unspecified
+    LaunchedEffect(widthPending) {
+        if (widthPending) {
+            delay(NATURAL_WIDTH_WAIT_MS)
+            if (naturalWidth == Dp.Unspecified) naturalWidth = 0.dp
+        }
+    }
     // What the chrome around an HTML body adds back to sit where it always does.
     val chromeInset = BubbleHorizontalPadding - bubblePadding
     Row(
@@ -149,8 +262,14 @@ internal fun MessageBubble(
                 // grows on tablets, capped so it stays readable on wide screens.
                 // HTML mail is laid out for a wider page than a phone bubble, so
                 // it gets the extra tenth (desktop widens its HTML bubbles too).
-                .fillMaxWidth(if (htmlBody) 0.95f else 0.85f)
-                .widthIn(max = 560.dp)
+                .bubbleWidth(
+                    fraction = if (htmlBody) 0.95f else 0.85f,
+                    natural = if (hugsText && naturalWidth != Dp.Unspecified) naturalWidth else 0.dp,
+                    // A dp of slack so a line measured at max-content never wraps on rounding.
+                    chrome = bubblePadding * 2 + 1.dp,
+                    hugIntrinsic = !htmlBody,
+                    imageColumns = minOf(visibleImageCount, 3),
+                ).alpha(if (widthPending) 0f else 1f)
                 .shadow(3.dp, bubbleShape, clip = false)
                 .clip(bubbleShape)
                 .then(
@@ -329,6 +448,16 @@ internal fun MessageBubble(
                 onOpenHtmlImage = onOpenHtmlImage,
                 onOpenUrl = onOpenUrl,
                 onRetryLoad = onRetryLoad,
+                imageColumns = if (htmlBody) 3 else visibleImageCount.coerceIn(1, 3),
+                onHtmlNaturalWidth =
+                    if (hugsText) {
+                        { width ->
+                            naturalWidth = width.coerceAtLeast(0.dp)
+                            htmlNaturalWidths[naturalWidthKey] = naturalWidth
+                        }
+                    } else {
+                        null
+                    },
             )
         }
     }
@@ -507,6 +636,12 @@ internal fun ColumnScope.MessageBodyContent(
     onOpenHtmlImage: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
+    // HTML body only: the width a plain-text-like document needs (zero when it
+    // should fill the bubble). Null where the caller doesn't size to the body.
+    onHtmlNaturalWidth: ((Dp) -> Unit)? = null,
+    // How many columns the image grid lays out; the bubble passes fewer for one
+    // or two images, and sizes itself to them (see bubbleWidth).
+    imageColumns: Int = 3,
 ) {
     if (showSubject && message.subject.isNotBlank()) {
         Text(
@@ -524,17 +659,22 @@ internal fun ColumnScope.MessageBodyContent(
         standaloneAttachmentsForMessage.partition { it.mimeType.startsWith("image/") }
     val visibleImages = visibleImageAttachments(imageAttachments, remoteContent.allowRemote)
     if (htmlBody) {
-        HtmlMessageBody(
-            html = message.bodyHtml,
-            quoteKey = message.id,
-            allowRemote = remoteContent.allowRemote,
-            maxHeight = bodyMaxHeight,
-            onOpenUrl = onOpenUrl,
-            onOpenImage = onOpenHtmlImage,
-            // Opt-in (the auto-fit setting): a bubble fitting a 640px mail
-            // renders it at about half size.
-            fitWideContent = LocalAutoFitMessages.current,
-        )
+        // The document reports the width it needs instead (see bubbleWidth); the
+        // bubble's intrinsic width is left to the header and what else it holds.
+        Box(Modifier.then(NoIntrinsicWidth)) {
+            HtmlMessageBody(
+                html = message.bodyHtml,
+                quoteKey = message.id,
+                allowRemote = remoteContent.allowRemote,
+                maxHeight = bodyMaxHeight,
+                onOpenUrl = onOpenUrl,
+                onOpenImage = onOpenHtmlImage,
+                // Opt-in (the auto-fit setting): a bubble fitting a 640px mail
+                // renders it at about half size.
+                fitWideContent = LocalAutoFitMessages.current,
+                onNaturalWidth = onHtmlNaturalWidth ?: {},
+            )
+        }
     } else if (message.bodyMissing) {
         // The core has no cached body (the on-demand fetch failed) — a
         // different state from a genuinely empty message, so offer a retry
@@ -630,6 +770,10 @@ internal fun ColumnScope.MessageBodyContent(
                     images = visibleImages,
                     loadImageAttachment = loadImageAttachment,
                     onOpen = onOpenImageAttachment,
+                    columns = imageColumns,
+                    // The tiles take the width they are given, and a picture's
+                    // own size would otherwise count as the bubble's content.
+                    modifier = Modifier.then(NoIntrinsicWidth),
                 )
             }
             otherAttachments.forEach { attachment ->
@@ -787,6 +931,7 @@ internal fun HtmlMessageBody(
     onOpenUrl: (String) -> Unit,
     onOpenImage: (String) -> Unit = {},
     fitWideContent: Boolean = false,
+    onNaturalWidth: (Dp) -> Unit = {},
 ) {
     // The WebView can't tell Compose how tall its content is, so a tiny script
     // reports document height through a platform bridge and we size the view to
@@ -1157,8 +1302,36 @@ internal fun HtmlMessageBody(
                     }
                     return Math.max(h, overflowExtent);
                   }
+                  // What a document of plain flowing text needs: the body laid out
+                  // at max-content, read and put back within the same task so
+                  // nothing paints it. Anything whose layout follows the width it
+                  // is given (tables, pictures, fixed widths) reports -1, and the
+                  // bubble stays at full width for it.
+                  function naturalWidth() {
+                    var body = document.body;
+                    if (!body || body.querySelector('table, img, video, iframe, svg, pre, [width], [style*="width"]')) return -1;
+                    var style = body.style;
+                    var w = [style.getPropertyValue('width'), style.getPropertyPriority('width')];
+                    var mw = [style.getPropertyValue('max-width'), style.getPropertyPriority('max-width')];
+                    style.setProperty('width', 'max-content', 'important');
+                    style.setProperty('max-width', 'none', 'important');
+                    var natural = Math.ceil(body.getBoundingClientRect().width);
+                    if (w[0]) style.setProperty('width', w[0], w[1]); else style.removeProperty('width');
+                    if (mw[0]) style.setProperty('max-width', mw[0], mw[1]); else style.removeProperty('max-width');
+                    return natural > 0 ? Math.ceil(natural * fitScale) : -1;
+                  }
                   function report() {
                     applyWidthFit();
+                    var nw = naturalWidth();
+                    if (window.MeronWidth && window.MeronWidth.report) {
+                      window.MeronWidth.report(nw);
+                    } else if (
+                      window.webkit &&
+                      window.webkit.messageHandlers &&
+                      window.webkit.messageHandlers.meronWidth
+                    ) {
+                      window.webkit.messageHandlers.meronWidth.postMessage(nw);
+                    }
                     // The measurement is in the (possibly widened) layout
                     // viewport's CSS pixels; the view renders it at fitScale, so
                     // scale it back to dp or the view gets sized to a phantom tail.
@@ -1404,6 +1577,7 @@ internal fun HtmlMessageBody(
             onOpenUrl = onOpenUrl,
             onOpenImage = onOpenImage,
             onQuoteToggle = { open -> QuoteFoldMemory.setOpen(quoteKey, open) },
+            onNaturalWidth = onNaturalWidth,
             modifier = webViewModifier,
             fitWideContent = fitWideContent,
             transparentBackground = darkBody,
@@ -1420,6 +1594,7 @@ private fun MailWebViewWithLinkMenu(
     onOpenUrl: (String) -> Unit,
     onOpenImage: (String) -> Unit,
     onQuoteToggle: (Boolean) -> Unit,
+    onNaturalWidth: (Dp) -> Unit,
     modifier: Modifier,
     fitWideContent: Boolean,
     transparentBackground: Boolean,
@@ -1435,6 +1610,7 @@ private fun MailWebViewWithLinkMenu(
             fitWideContent = fitWideContent,
             transparentBackground = transparentBackground,
             onQuoteToggle = onQuoteToggle,
+            onNaturalWidth = onNaturalWidth,
             modifier = Modifier.fillMaxSize(),
         )
         MessageLinkContextMenu(

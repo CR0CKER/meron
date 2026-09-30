@@ -469,18 +469,24 @@ internal fun ImagePreviewDialog(
     )
 }
 
+internal val AttachmentImageGridGap = 6.dp
+
 @Composable
 internal fun AttachmentImageGrid(
     images: List<MessageAttachment>,
     loadImageAttachment: suspend (MessageAttachment) -> ImageBitmap? = { null },
     onOpen: (MessageAttachment) -> Unit,
+    // Fewer than three leaves a short grid without the empty tiles beside it, for
+    // a chat bubble that shrinks to its images.
+    columns: Int = 3,
+    modifier: Modifier = Modifier,
 ) {
-    val rows = remember(images) { images.chunked(3) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val rows = remember(images, columns) { images.chunked(columns) }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(AttachmentImageGridGap)) {
         rows.forEach { row ->
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(AttachmentImageGridGap),
             ) {
                 row.forEach { attachment ->
                     Surface(
@@ -499,7 +505,7 @@ internal fun AttachmentImageGrid(
                         )
                     }
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

@@ -35,7 +35,9 @@ actual fun MailWebView(
     // Unused: the view is always non-opaque (see the factory below).
     @Suppress("UNUSED_PARAMETER") transparentBackground: Boolean,
     onQuoteToggle: (Boolean) -> Unit,
+    onNaturalWidth: (Dp) -> Unit,
 ) {
+    val latestOnNaturalWidth = rememberUpdatedState(onNaturalWidth)
     val latestOnHeight = rememberUpdatedState(onContentHeight)
     val latestOnOpenUrl = rememberUpdatedState(onOpenUrl)
     val latestOnOpenImage = rememberUpdatedState(onOpenImage)
@@ -54,6 +56,10 @@ actual fun MailWebView(
             config.userContentController.addScriptMessageHandler(
                 scriptMessageHandler = HeightMessageHandler { cssPx -> latestOnHeight.value(cssPx.dp) },
                 name = "meronHeight",
+            )
+            config.userContentController.addScriptMessageHandler(
+                scriptMessageHandler = HeightMessageHandler { cssPx -> latestOnNaturalWidth.value(cssPx.dp) },
+                name = "meronWidth",
             )
             config.userContentController.addScriptMessageHandler(
                 scriptMessageHandler = LinkMessageHandler { url -> latestOnOpenUrl.value(url) },

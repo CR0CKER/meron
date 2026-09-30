@@ -39,6 +39,10 @@ expect fun MailWebView(
     transparentBackground: Boolean = false,
     /** The document's quote toggle was tapped: true when the quote is now open. */
     onQuoteToggle: (Boolean) -> Unit = {},
+    /** The width a document of plain flowing text needs, in dp, so the caller can
+     *  shrink its bubble to it; zero or less for a document that lays out against
+     *  the width it is given (tables, pictures) and should fill it. */
+    onNaturalWidth: (Dp) -> Unit = {},
 )
 
 /**
