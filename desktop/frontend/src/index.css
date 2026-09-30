@@ -309,17 +309,18 @@ textarea,
   cursor: text;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
+/* Custom scrollbars, except on Linux, where WebKitGTK's own overlay
+   scrollbars match the desktop (html.native-scrollbars, set in main.tsx). */
+html:not(.native-scrollbars) ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-::-webkit-scrollbar-track {
+html:not(.native-scrollbars) ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+html:not(.native-scrollbars) ::-webkit-scrollbar-thumb {
   background-color: rgba(100, 116, 139, 0.2);
   border: 3px solid transparent;
   background-clip: padding-box;
@@ -327,30 +328,30 @@ textarea,
   transition: background-color 0.15s ease;
 }
 
-::-webkit-scrollbar-thumb:hover {
+html:not(.native-scrollbars) ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(100, 116, 139, 0.45);
   border: 2px solid transparent;
 }
 
-.dark ::-webkit-scrollbar-thumb {
+html.dark:not(.native-scrollbars) ::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.15);
 }
 
-.dark ::-webkit-scrollbar-thumb:hover {
+html.dark:not(.native-scrollbars) ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.35);
 }
 
 /* Thread lists keep symmetric padding, so the gutter is kept as narrow as the
    thumb to limit how much extra space the scrollbar adds on the right. */
-[data-thread-list]::-webkit-scrollbar {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar {
   width: 6px;
 }
 
-[data-thread-list]::-webkit-scrollbar-thumb {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb {
   border-width: 1px;
 }
 
-[data-thread-list]::-webkit-scrollbar-thumb:hover {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   border-width: 0;
 }
 
