@@ -322,5 +322,10 @@ export function applyBubbleTheme(doc: Document, theme: BubbleTheme) {
     if (value === null) style.removeProperty(name)
     else style.setProperty(name, value)
   }
+  // The frame's root is transparent, but only while its color scheme matches
+  // the app's: under a dark app a frame left on the default light scheme gets
+  // an opaque white backdrop from the engine, and the dark palette above ends
+  // up as light text on white. Important, so a sender's `:root` can't undo it.
+  style.setProperty('color-scheme', theme.appearance, 'important')
   setDarkened(doc, darkensCanvas(theme.appearance, theme.darkenStyled, canvas))
 }

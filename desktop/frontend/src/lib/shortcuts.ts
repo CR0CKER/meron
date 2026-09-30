@@ -39,11 +39,12 @@ export type ShortcutId =
   | 'reply.focus'
   | RailShortcutId
 
-/** True for single-key shortcuts (no ⌘/Ctrl/Alt). These only fire when the user
- * isn't typing and no modal is open — so they don't hijack text entry. */
-export function isBareShortcut(id: ShortcutId): boolean {
-  const chord = shortcutChord(id)
-  return !chord.mod && !chord.alt
+/** True for a single-key keystroke (no ⌘/Ctrl/Alt). The shortcuts these fire
+ * only run when the user isn't typing and no modal is open — so they don't
+ * hijack text entry. Judged from the keystroke rather than the shortcut's bound
+ * chord, which an alias (see SHORTCUT_ALIASES) doesn't share. */
+export function isBareKeystroke(event: KeyboardEvent): boolean {
+  return !(isMac ? event.metaKey : event.ctrlKey) && !event.altKey
 }
 
 export type Chord = {
@@ -251,8 +252,16 @@ export function shortcutForChord(chord: Chord): ShortcutId | null {
   for (const id of SHORTCUT_IDS) {
     if (chordEquals(shortcutChord(id), chord)) return id
   }
+  for (const [id, alias] of SHORTCUT_ALIASES) {
+    if (chordEquals(alias, chord)) return id
+  }
   return null
 }
+
+// Fixed secondary chords, matched only when no bound shortcut claims the
+// keystroke — so a user rebinding onto one still wins. ⌘/Ctrl+Shift+K opens
+// the palette too, for muscle memory from apps that use it.
+const SHORTCUT_ALIASES: [ShortcutId, Chord][] = [['palette.open', { mod: true, shift: true, key: 'k' }]]
 
 /** Render a shortcut as display parts, e.g. ["⌘", "K"] or ["Ctrl", "Shift", "R"]. */
 export function formatShortcut(id: ShortcutId): string[] {

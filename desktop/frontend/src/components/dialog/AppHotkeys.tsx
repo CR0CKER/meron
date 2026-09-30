@@ -32,7 +32,7 @@ import { openComposeTab, openReplyInFullEditor, closeMessageTab } from '../../st
 import { compose$ } from '../../states/composeState'
 import { handleEditUndoKeyDown } from '../../lib/editUndo'
 import {
-  isBareShortcut,
+  isBareKeystroke,
   isMac,
   matchShortcut,
   shortcutForChord,
@@ -255,7 +255,7 @@ export function AppHotkeys() {
 
       // Gate single-key shortcuts: never steal a keystroke from a text field,
       // and only act in the chat view with no modal open.
-      if (isBareShortcut(action)) {
+      if (isBareKeystroke(event)) {
         if (isTyping(event.target) || !bareShortcutsActive()) return
       }
 

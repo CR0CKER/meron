@@ -272,6 +272,18 @@ describe('dark message bodies in a bubble', () => {
     expect(picture('picture')).toBe(false)
   })
 
+  // A frame on the default light scheme under a dark app gets an opaque white
+  // backdrop from the engine, which put unstyled mail's light text on white.
+  it("follows the theme's color scheme so the frame stays transparent", () => {
+    const scheme = (theme: BubbleTheme) => {
+      const doc = new DOMParser().parseFromString(prepareBubbleHtml('<p>hi</p>'), 'text/html')
+      applyBubbleTheme(doc, theme)
+      return doc.documentElement.style.getPropertyValue('color-scheme')
+    }
+    expect(scheme(DARKENING)).toBe('dark')
+    expect(scheme(DEFAULT_BUBBLE_THEME)).toBe('light')
+  })
+
   it('carries the darkening rules in the frame stylesheet', () => {
     expect(frameStyle(prepareBubbleHtml(styled))).toContain(`html[${DARKENED_ATTR}] body`)
   })
