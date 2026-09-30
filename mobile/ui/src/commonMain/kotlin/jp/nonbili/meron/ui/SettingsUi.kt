@@ -1307,13 +1307,15 @@ private fun settingsSwitchColors() =
         val isDark = background.luminance() < 0.5f
         val uncheckedTrack = if (isDark) Color(0xFF475569) else Color(0xFFCBD5E1)
         val uncheckedThumb = if (isDark) Color(0xFFE2E8F0) else Color.White
+        // White is unreadable on a light primary, as in a dynamic dark scheme.
+        val checkedThumb = if (primary.luminance() > 0.4f) onPrimary else Color.White
         SwitchDefaults.colors(
-            checkedThumbColor = Color.White,
+            checkedThumbColor = checkedThumb,
             checkedTrackColor = primary,
             uncheckedThumbColor = uncheckedThumb,
             uncheckedTrackColor = uncheckedTrack,
             uncheckedBorderColor = outline,
-            disabledCheckedThumbColor = Color.White.copy(alpha = 0.38f),
+            disabledCheckedThumbColor = checkedThumb.copy(alpha = 0.38f),
             disabledCheckedTrackColor = primary.copy(alpha = 0.38f),
             disabledUncheckedThumbColor = uncheckedThumb.copy(alpha = 0.55f),
             disabledUncheckedTrackColor = uncheckedTrack.copy(alpha = 0.38f),

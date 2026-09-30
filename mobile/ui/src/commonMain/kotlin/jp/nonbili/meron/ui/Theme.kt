@@ -103,6 +103,8 @@ data class ChatColors(
     val unreadText: Color,
     val sidebarUnreadBackground: Color,
     val sidebarUnreadText: Color,
+    /** The fill behind the selected drawer row. */
+    val sidebarSelected: Color,
 )
 
 private data class MobileThemeSpec(
@@ -122,6 +124,17 @@ private data class MobileThemeSpec(
     val bubbleInText: Color,
     val bubbleOut: Color,
     val bubbleOutText: Color,
+    /** Sidebar colors for a theme whose sidebar is not the usual dark one; null derives them. */
+    val sidebarColors: SidebarColors? = null,
+)
+
+private data class SidebarColors(
+    val text: Color,
+    val textMuted: Color,
+    val selected: Color,
+    val selectedContent: Color,
+    val unreadBackground: Color,
+    val unreadText: Color,
 )
 
 // Built-in palettes mirror desktop/frontend/src/lib/themes.ts names and primary roles.
@@ -530,12 +543,21 @@ private fun dynamicThemeSpec(
     accent = scheme.primary,
     accentContainer = scheme.primaryContainer,
     onAccentContainer = scheme.onPrimaryContainer,
-    // The sidebar is dark in every theme.
-    sidebar = if (dark) scheme.surfaceContainerLowest else scheme.inverseSurface,
+    // Follow the Material navigation drawer: a tinted surface, not Meron's dark sidebar.
+    sidebar = scheme.surfaceContainerLow,
     bubbleIn = scheme.surfaceContainerHigh,
     bubbleInText = scheme.onSurface,
     bubbleOut = scheme.primaryContainer,
     bubbleOutText = scheme.onPrimaryContainer,
+    sidebarColors =
+        SidebarColors(
+            text = scheme.onSurface,
+            textMuted = scheme.onSurfaceVariant,
+            selected = scheme.secondaryContainer,
+            selectedContent = scheme.onSecondaryContainer,
+            unreadBackground = scheme.primaryContainer,
+            unreadText = scheme.onPrimaryContainer,
+        ),
 )
 
 /** Choose the higher-contrast label for an opaque accent, matching desktop. */
@@ -596,10 +618,10 @@ private fun materialColors(spec: MobileThemeSpec) =
 private fun chatColors(spec: MobileThemeSpec): ChatColors =
     ChatColors(
         sidebar = spec.sidebar,
-        onSidebar = Color(0xFFF8FAFC),
-        onSidebarMuted = if (spec.dark) Color(0xFFA8B0BC) else Color(0xFFCBD5E1),
+        onSidebar = spec.sidebarColors?.text ?: Color(0xFFF8FAFC),
+        onSidebarMuted = spec.sidebarColors?.textMuted ?: if (spec.dark) Color(0xFFA8B0BC) else Color(0xFFCBD5E1),
         // The sidebar stays dark in light themes too; mirror desktop's accent-bright.
-        sidebarAccent = spec.accent.copy(alpha = 0.7f).compositeOver(Color.White),
+        sidebarAccent = spec.sidebarColors?.selectedContent ?: spec.accent.copy(alpha = 0.7f).compositeOver(Color.White),
         bubbleIn = spec.bubbleIn,
         bubbleInText = spec.bubbleInText,
         bubbleOut = spec.bubbleOut,
@@ -608,6 +630,7 @@ private fun chatColors(spec: MobileThemeSpec): ChatColors =
         // Alpha compositing over opaque sRGB colors matches desktop's color-mix(in srgb).
         unreadBackground = spec.accent.copy(alpha = 0.18f).compositeOver(spec.bgChats),
         unreadText = spec.accent.copy(alpha = 0.55f).compositeOver(spec.textPrimary),
-        sidebarUnreadBackground = spec.accent.copy(alpha = 0.35f).compositeOver(Color.White),
-        sidebarUnreadText = spec.accent.copy(alpha = 0.25f).compositeOver(spec.sidebar),
+        sidebarUnreadBackground = spec.sidebarColors?.unreadBackground ?: spec.accent.copy(alpha = 0.35f).compositeOver(Color.White),
+        sidebarUnreadText = spec.sidebarColors?.unreadText ?: spec.accent.copy(alpha = 0.25f).compositeOver(spec.sidebar),
+        sidebarSelected = spec.sidebarColors?.selected ?: spec.accent.copy(alpha = 0.18f),
     )
