@@ -1,5 +1,6 @@
 package jp.nonbili.meron.ui
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -27,7 +28,13 @@ enum class AppAppearanceMode(
     Forest("forest", "Forest"),
     Plum("plum", "Plum"),
     Ember("ember", "Ember"),
+    Dynamic("dynamic", "Material You"),
+    DynamicDark("dynamic-dark", "Material You Dark"),
 }
+
+/** The themes that take their colors from the system wallpaper palette (Material You). */
+internal val AppAppearanceMode.isDynamic: Boolean
+    get() = this == AppAppearanceMode.Dynamic || this == AppAppearanceMode.DynamicDark
 
 /** Whether [this] is one of the dark themes. */
 internal val AppAppearanceMode.isDark: Boolean get() = mobileThemeSpec(this).dark
@@ -412,10 +419,11 @@ internal data class ThemePreviewColors(
 )
 
 /** Swatch colors for [mode], so a theme can be previewed without being applied. */
+@Composable
 internal fun themePreviewColors(
     mode: AppAppearanceMode,
 ): ThemePreviewColors =
-    mobileThemeSpec(mode).let { spec ->
+    resolveThemeSpec(mode).spec.let { spec ->
         ThemePreviewColors(
             dark = spec.dark,
             bgApp = spec.bgApp,
@@ -437,7 +445,8 @@ fun MeronTheme(
     autoFitMessages: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val spec = mobileThemeSpec(appearanceMode)
+    val resolved = resolveThemeSpec(appearanceMode)
+    val spec = resolved.spec
     SyncSystemBarAppearance(spec.dark)
     androidx.compose.runtime.CompositionLocalProvider(
         LocalChatColors provides chatColors(spec),
@@ -445,7 +454,7 @@ fun MeronTheme(
         LocalDarkMailBodies provides (darkMailBodies && spec.dark),
         LocalAutoFitMessages provides autoFitMessages,
     ) {
-        MaterialTheme(colorScheme = materialColors(spec), content = content)
+        MaterialTheme(colorScheme = resolved.scheme ?: materialColors(spec), content = content)
     }
 }
 
@@ -454,20 +463,80 @@ private fun mobileThemeSpec(
 ): MobileThemeSpec =
     when (mode) {
         AppAppearanceMode.Indigo -> IndigoLight
+
         AppAppearanceMode.IndigoDark -> IndigoDark
+
         AppAppearanceMode.Light -> MeronLight
+
         AppAppearanceMode.Dark -> MeronDark
+
         AppAppearanceMode.Mist -> Mist
+
         AppAppearanceMode.Paper -> Paper
+
         AppAppearanceMode.Dawn -> Dawn
+
         AppAppearanceMode.Honey -> Honey
+
         AppAppearanceMode.Lilac -> Lilac
+
         AppAppearanceMode.Graphite -> Graphite
+
         AppAppearanceMode.Midnight -> Midnight
+
         AppAppearanceMode.Forest -> Forest
+
         AppAppearanceMode.Plum -> Plum
+
         AppAppearanceMode.Ember -> Ember
+
+        // Stand-ins for when the system palette is unavailable; see resolveThemeSpec.
+        AppAppearanceMode.Dynamic -> MeronLight
+
+        AppAppearanceMode.DynamicDark -> MeronDark
     }
+
+private class ResolvedTheme(
+    val spec: MobileThemeSpec,
+    /** The system's own Material scheme for a dynamic theme, used as is. */
+    val scheme: ColorScheme? = null,
+)
+
+/**
+ * The spec for [mode]. A dynamic theme reads the system palette and derives the
+ * spec (for chat colors and swatches) from it; without one it falls back to
+ * the Meron theme of the same appearance.
+ */
+@Composable
+private fun resolveThemeSpec(mode: AppAppearanceMode): ResolvedTheme {
+    val fallback = mobileThemeSpec(mode)
+    if (!mode.isDynamic) return ResolvedTheme(fallback)
+    val scheme = platformDynamicColorScheme(fallback.dark) ?: return ResolvedTheme(fallback)
+    return ResolvedTheme(dynamicThemeSpec(scheme, fallback.dark), scheme)
+}
+
+private fun dynamicThemeSpec(
+    scheme: ColorScheme,
+    dark: Boolean,
+) = MobileThemeSpec(
+    dark = dark,
+    bgApp = scheme.background,
+    bgChats = scheme.surface,
+    bgRaised = scheme.surfaceContainer,
+    bgActive = scheme.surfaceContainerHigh,
+    border = scheme.outlineVariant,
+    textPrimary = scheme.onSurface,
+    textSecondary = scheme.onSurfaceVariant,
+    accent = scheme.primary,
+    accentContainer = scheme.primaryContainer,
+    onAccentContainer = scheme.onPrimaryContainer,
+    // The sidebar is dark in every theme.
+    sidebar = if (dark) scheme.surfaceContainerLowest else scheme.inverseSurface,
+    bubbleIn = scheme.surfaceContainerHigh,
+    bubbleInText = scheme.onSurface,
+    bubbleOut = scheme.primaryContainer,
+    bubbleOutText = scheme.onPrimaryContainer,
+)
 
 /** Choose the higher-contrast label for an opaque accent, matching desktop. */
 internal fun accentLabelColor(color: Color): Color {

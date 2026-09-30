@@ -50,7 +50,7 @@ internal fun ThemePickerDialog(
     // ThemeDialog grid, under the "match system" switch. While the theme
     // follows the system each section holds its own pick, so picking one
     // leaves the dialog open for the other.
-    val (darkModes, lightModes) = AppAppearanceMode.entries.partition { it.isDark }
+    val (darkModes, lightModes) = AppAppearanceMode.entries.filter { dynamicColorSupported || !it.isDynamic }.partition { it.isDark }
     val onSelect: (AppAppearanceMode) -> Unit = { mode ->
         onChange(choice.select(mode))
         if (!choice.followSystem) onDismiss()
