@@ -111,6 +111,10 @@ func startMaddy(t *testing.T) *maddyServer {
 	}
 
 	server := &maddyServer{imapPort: freePort(t), smtpPort: freePort(t)}
+	// The OS can hand back the same ephemeral port after it is released.
+	for server.smtpPort == server.imapPort {
+		server.smtpPort = freePort(t)
+	}
 	// ":Z" relabels the bind mount for SELinux hosts (Fedora etc.); harmless elsewhere.
 	server.container = runCmd(t, docker, "run", "-d", "--rm",
 		"-v", confPath+":/data/maddy.conf:ro,Z",

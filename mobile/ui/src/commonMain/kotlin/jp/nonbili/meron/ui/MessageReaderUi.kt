@@ -47,10 +47,12 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -342,6 +344,13 @@ internal fun MessageReaderScreen(
                 }
             },
         ) { innerPadding ->
+            val htmlBody = preferHtml && message.bodyHtml.isNotBlank()
+            // The web view paints mail on white, so a tinted card would frame it
+            // as a square white box; a light card goes white to hold it cleanly.
+            val surface = MaterialTheme.colorScheme.surface
+            val cardColor =
+                if (htmlBody && !LocalDarkMailBodies.current && surface.luminance() > 0.5f) Color.White else surface
+            val cardShape = RoundedCornerShape(16.dp)
             Column(
                 Modifier
                     .fillMaxSize()
@@ -349,82 +358,93 @@ internal fun MessageReaderScreen(
                     .padding(innerPadding)
                     .appScrollbar(scrollState)
                     .verticalScroll(scrollState)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = 12.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Text(
                     message.subject.ifBlank { noSubjectLabel },
+                    modifier = Modifier.padding(horizontal = 4.dp),
                     fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // The From chip already names the sender, so there is no
-                    // separate sender line. Tapping any chip copies the full
-                    // `Name <addr>`.
-                    MessageAddressDetails(
-                        message = message,
-                        onCopy = onCopy,
-                        onComposeTo = onComposeTo,
-                        textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            formatMessageFullTimestamp(message.dateEpochSeconds),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        BlockedRemoteButton(
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .shadow(3.dp, cardShape, clip = false)
+                        .clip(cardShape)
+                        .background(cardColor)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // The From chip already names the sender, so there is no
+                        // separate sender line. Tapping any chip copies the full
+                        // `Name <addr>`.
+                        MessageAddressDetails(
                             message = message,
-                            remoteContent = remoteContent,
-                            preferHtml = preferHtml,
-                            searchQuery = "",
+                            onCopy = onCopy,
+                            onComposeTo = onComposeTo,
+                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            labelWidth = 40.dp,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                formatMessageFullTimestamp(message.dateEpochSeconds),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            BlockedRemoteButton(
+                                message = message,
+                                remoteContent = remoteContent,
+                                preferHtml = preferHtml,
+                                searchQuery = "",
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    val standaloneAttachmentsForMessage = standaloneAttachments(message)
+                    val (imageAttachments, otherAttachments) =
+                        standaloneAttachmentsForMessage.partition { it.mimeType.startsWith("image/") }
+                    val visibleImages = visibleImageAttachments(imageAttachments, remoteContent.allowRemote)
+                    if (htmlBody) {
+                        // Only the reader shrinks over-wide mail to fit: it has the
+                        // full screen to scale into, where a bubble would render the
+                        // same mail as an unreadable thumbnail.
+                        HtmlMessageBody(
+                            html = message.bodyHtml,
+                            quoteKey = message.id,
+                            allowRemote = remoteContent.allowRemote,
+                            onOpenUrl = onOpenUrl,
+                            onOpenImage = onOpenHtmlImage,
+                            fitWideContent = true,
+                        )
+                    } else {
+                        SelectableMessageText(
+                            text =
+                                message.body.ifBlank {
+                                    if (message.bodyMissing) tr("chat.messageLoadFailed") else "(no content)"
+                                },
+                            onOpenUrl = onOpenUrl,
+                            style = messageBodyTextStyle(MaterialTheme.typography.bodyLarge),
                         )
                     }
-                }
-                HorizontalDivider()
-                val htmlBody = preferHtml && message.bodyHtml.isNotBlank()
-                val standaloneAttachmentsForMessage = standaloneAttachments(message)
-                val (imageAttachments, otherAttachments) =
-                    standaloneAttachmentsForMessage.partition { it.mimeType.startsWith("image/") }
-                val visibleImages = visibleImageAttachments(imageAttachments, remoteContent.allowRemote)
-                if (htmlBody) {
-                    // Only the reader shrinks over-wide mail to fit: it has the
-                    // full screen to scale into, where a bubble would render the
-                    // same mail as an unreadable thumbnail.
-                    HtmlMessageBody(
-                        html = message.bodyHtml,
-                        quoteKey = message.id,
-                        allowRemote = remoteContent.allowRemote,
-                        onOpenUrl = onOpenUrl,
-                        onOpenImage = onOpenHtmlImage,
-                        fitWideContent = true,
-                    )
-                } else {
-                    SelectableMessageText(
-                        text =
-                            message.body.ifBlank {
-                                if (message.bodyMissing) tr("chat.messageLoadFailed") else "(no content)"
-                            },
-                        onOpenUrl = onOpenUrl,
-                        style = messageBodyTextStyle(MaterialTheme.typography.bodyLarge),
-                    )
-                }
-                if (visibleImages.isNotEmpty() || otherAttachments.isNotEmpty()) {
-                    HorizontalDivider()
-                    if (visibleImages.isNotEmpty()) {
-                        AttachmentImageGrid(
-                            images = visibleImages,
-                            loadImageAttachment = loadImageAttachment,
-                            onOpen = onOpenImageAttachment,
-                        )
-                    }
-                    otherAttachments.forEach { attachment ->
-                        AttachmentRow(
-                            attachment = attachment,
-                            textColor = MaterialTheme.colorScheme.onSurface,
-                            onOpen = { onOpenAttachment(attachment) },
-                            onSave = { onSaveAttachment(attachment) },
-                        )
+                    if (visibleImages.isNotEmpty() || otherAttachments.isNotEmpty()) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (visibleImages.isNotEmpty()) {
+                            AttachmentImageGrid(
+                                images = visibleImages,
+                                loadImageAttachment = loadImageAttachment,
+                                onOpen = onOpenImageAttachment,
+                            )
+                        }
+                        otherAttachments.forEach { attachment ->
+                            AttachmentRow(
+                                attachment = attachment,
+                                textColor = MaterialTheme.colorScheme.onSurface,
+                                onOpen = { onOpenAttachment(attachment) },
+                                onSave = { onSaveAttachment(attachment) },
+                            )
+                        }
                     }
                 }
             }

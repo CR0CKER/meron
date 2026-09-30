@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -24,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import jp.nonbili.meron.shared.MessageBody
 
@@ -38,6 +41,8 @@ internal fun MessageAddressDetails(
     onComposeTo: (String) -> Unit,
     textColor: Color,
     modifier: Modifier = Modifier,
+    // A fixed label column lines the chips of every row up, for the reader.
+    labelWidth: Dp = Dp.Unspecified,
 ) {
     val fromLabel = tr("composer.fields.from")
     val toLabel = tr("composer.fields.to")
@@ -54,11 +59,11 @@ internal fun MessageAddressDetails(
                     .equals(message.fromAddr.trim(), ignoreCase = true)
         }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        MessageAddressRow(fromLabel, fromRaw, onCopy, onComposeTo, textColor)
-        MessageAddressRow(toLabel, message.to, onCopy, onComposeTo, textColor)
-        MessageAddressRow(ccLabel, message.cc, onCopy, onComposeTo, textColor)
-        MessageAddressRow(bccLabel, message.bcc, onCopy, onComposeTo, textColor)
-        if (replyToDiffers) MessageAddressRow("Reply-To", message.replyTo, onCopy, onComposeTo, textColor)
+        MessageAddressRow(fromLabel, fromRaw, onCopy, onComposeTo, textColor, labelWidth)
+        MessageAddressRow(toLabel, message.to, onCopy, onComposeTo, textColor, labelWidth)
+        MessageAddressRow(ccLabel, message.cc, onCopy, onComposeTo, textColor, labelWidth)
+        MessageAddressRow(bccLabel, message.bcc, onCopy, onComposeTo, textColor, labelWidth)
+        if (replyToDiffers) MessageAddressRow("Reply-To", message.replyTo, onCopy, onComposeTo, textColor, labelWidth)
     }
 }
 
@@ -70,13 +75,14 @@ private fun MessageAddressRow(
     onCopy: (String, String) -> Unit,
     onComposeTo: (String) -> Unit,
     textColor: Color,
+    labelWidth: Dp,
 ) {
     val items = remember(rawList) { addressChipItems(rawList) }
     if (items.isEmpty()) return
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             "${label.uppercase()}:",
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 4.dp).then(if (labelWidth.isSpecified) Modifier.width(labelWidth) else Modifier),
             fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold,
             color = textColor.copy(alpha = 0.6f),

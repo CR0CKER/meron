@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,10 +123,19 @@ internal fun MessageBubble(
         } else {
             RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 16.dp)
         }
-    val bubbleColor = if (outgoing) chat.bubbleOut else chat.bubbleIn
+    val themedBubbleColor = if (outgoing) chat.bubbleOut else chat.bubbleIn
     val textColor = if (outgoing) chat.bubbleOutText else chat.bubbleInText
     val bodyMaxHeight = 360.dp
     val htmlBody = usesHtmlBody(message, preferHtml, searchQuery)
+    // The web view paints the mail on white, so a tinted light bubble (Material
+    // You) would frame it as a square white box inside a rounded card. Let the
+    // whole bubble be white instead, so the header and body read as one card.
+    val bubbleColor =
+        if (htmlBody && !LocalDarkMailBodies.current && themedBubbleColor.luminance() > 0.5f) {
+            Color.White
+        } else {
+            themedBubbleColor
+        }
     val bubblePadding = if (htmlBody) HtmlBubbleHorizontalPadding else BubbleHorizontalPadding
     // What the chrome around an HTML body adds back to sit where it always does.
     val chromeInset = BubbleHorizontalPadding - bubblePadding
