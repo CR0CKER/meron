@@ -814,8 +814,12 @@ internal fun HtmlMessageBody(
             val rootClass = listOfNotNull(quoteClass.ifEmpty { null }, "meron-dark".takeIf { darkBody }).joinToString(" ")
             // Inline for the same reason as the height override below: a
             // sender's `html { background }` would otherwise sit, undarkened,
-            // behind the inverted body.
-            val rootBackground = if (darkBody) " background: transparent !important;" else ""
+            // behind the inverted body. Not literally transparent: a body
+            // background under a transparent root propagates to the canvas,
+            // outside the body's filter, so a mail declaring a white body
+            // stayed white while its text inverted to white on it. One alpha
+            // step is invisible but keeps the background on the body.
+            val rootBackground = if (darkBody) " background: rgba(0, 0, 0, 0.004) !important;" else ""
             """
             <!doctype html>
             <!-- The self-sizing WebView needs its document boxes to follow the
@@ -1079,9 +1083,16 @@ internal fun HtmlMessageBody(
                     // A little slack: sub-pixel table borders routinely round up
                     // and are not worth shrinking the whole page for.
                     if (natural <= viewWidth + 2) return;
-                    fitScale = viewWidth / natural;
-                    // Dropping initial-scale lets WebView pick the fit scale.
-                    meta.setAttribute('content', 'width=' + Math.ceil(natural));
+                    // Widening the viewport alone does not rescale a page that has
+                    // already loaded: the layout grows to the natural width but
+                    // the scale stays 1, leaving the mail sideways-scrollable. So
+                    // the fit scale is stated outright.
+                    var width = Math.ceil(natural);
+                    fitScale = viewWidth / width;
+                    meta.setAttribute(
+                      'content',
+                      'width=' + width + ', initial-scale=' + fitScale + ', minimum-scale=' + fitScale
+                    );
                   }
                   // The root element is the one that scrolls, so its scrollHeight
                   // never drops below the view's own height -- sizing off it pins

@@ -275,4 +275,12 @@ describe('dark message bodies in a bubble', () => {
   it('carries the darkening rules in the frame stylesheet', () => {
     expect(frameStyle(prepareBubbleHtml(styled))).toContain(`html[${DARKENED_ATTR}] body`)
   })
+
+  // Under a fully transparent root the body's background propagates to the
+  // canvas, outside the body's invert filter, so a white body stayed white.
+  it('keeps a darkened root off transparent so the body background stays inside the filter', () => {
+    const css = frameStyle(prepareBubbleHtml(styled))
+    const rule = css.match(new RegExp(`html\\[${DARKENED_ATTR}\\]\\s*\\{([^}]*)\\}`))
+    expect(rule?.[1]).toMatch(/background:\s*rgba\(0,\s*0,\s*0,\s*0\.\d+\)\s*!important/)
+  })
 })

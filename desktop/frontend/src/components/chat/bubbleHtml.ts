@@ -2,6 +2,7 @@ import { BUBBLE_CODE_BASE_PX, BUBBLE_HTML_BASE_PX, type MessageFrameFont } from 
 import { QUOTE_FOLDED_CLASS, QUOTE_TOGGLE_CLASS } from './quoteFold'
 import { allowRemoteContent, blockRemoteContent } from './remoteContentCsp'
 import {
+  DARKENED_ATTR,
   DARKENED_CSS,
   DEFAULT_BUBBLE_THEME,
   LIGHT_ON_DARK_TEXT,
@@ -242,6 +243,13 @@ export function prepareBubbleHtml(
         color: #000000;
       }
       ${DARKENED_CSS}
+      /* The root above is transparent, so a darkened body's background would
+         propagate to the canvas, outside the body's filter, and stay light
+         while the text inverted to light on it. One alpha step of background
+         on the root keeps it on the body. */
+      html[${DARKENED_ATTR}] {
+        background: rgba(0, 0, 0, 0.004) !important;
+      }
     `
     doc.head.appendChild(style)
 
