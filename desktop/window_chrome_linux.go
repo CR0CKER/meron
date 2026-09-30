@@ -73,8 +73,21 @@ static gboolean onWindowState(GtkWidget *widget, GdkEventWindowState *event, gpo
 	return FALSE;
 }
 
+// Whether GTK draws the window frame itself: client-side decorations with an
+// alpha channel (the csd style class, not solid-csd). Where the desktop draws
+// the frame instead (KWin on KDE Plasma, most X11 window managers) or there is
+// no compositor, the window's corners are the desktop's, so the page keeps
+// them square and the integrated title bar isn't offered. Recorded as the
+// window is realized, before any titlebar of ours; read from Go.
+static volatile gint gtkFrame = 0;
+
+static int drawsFrame(void) {
+	return g_atomic_int_get(&gtkFrame);
+}
+
 static void applyTitlebar(void) {
 	if (mainWindow == NULL) return;
+	if (!drawsFrame()) wantIntegrated = FALSE;
 	clearSizeHints();
 	if (wantIntegrated) {
 		GtkWidget *bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -102,6 +115,8 @@ static gboolean onRealize(GSignalInvocationHint *hint, guint n, const GValue *pa
 	mainWindow = GTK_WINDOW(object);
 	g_object_add_weak_pointer(object, (gpointer *)&mainWindow);
 	g_signal_connect(object, "window-state-event", G_CALLBACK(onWindowState), NULL);
+	GtkStyleContext *style = gtk_widget_get_style_context(GTK_WIDGET(object));
+	g_atomic_int_set(&gtkFrame, gtk_style_context_has_class(style, "csd") && !gtk_style_context_has_class(style, "solid-csd"));
 	readChromeSettings();
 	GtkSettings *settings = gtk_settings_get_default();
 	if (settings != NULL) {
@@ -161,6 +176,11 @@ func installWindowChrome(integrated bool) {
 
 func setNativeTitlebarIntegrated(integrated bool) {
 	C.setIntegrated(cBool(integrated))
+}
+
+// nativeDrawsFrame reports whether GTK draws the window frame (see gtkFrame).
+func nativeDrawsFrame() bool {
+	return C.drawsFrame() != 0
 }
 
 // nativeWindowTiled reports whether the window is snapped to a screen edge.

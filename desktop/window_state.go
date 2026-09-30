@@ -129,8 +129,9 @@ func (a *App) windowResized() (any, error) {
 	}
 	a.sampleWindowState(ctx)
 	normal := windowIsNormal(ctx)
-	// A tiled (half-screen) window is square like a maximised one.
-	rounded := roundedWindowCorners && normal && !windowIsTiled()
+	// A tiled (half-screen) window is square like a maximised one, and so is a
+	// window whose frame the desktop draws (see gtkFrame in window_chrome_linux.go).
+	rounded := roundedWindowCorners && normal && !windowIsTiled() && windowDrawsFrame()
 	a.windowMu.Lock()
 	defer a.windowMu.Unlock()
 	if a.window != a.windowSaved {

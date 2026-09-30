@@ -9,11 +9,12 @@ import (
 func stubWindowChrome(t *testing.T) *[]bool {
 	t.Helper()
 	applied := &[]bool{}
-	apply, read, was := applyNativeTitlebar, readChromeSettings, integratedTitlebar.Load()
+	apply, read, drawsFrame, was := applyNativeTitlebar, readChromeSettings, windowDrawsFrame, integratedTitlebar.Load()
 	applyNativeTitlebar = func(integrated bool) { *applied = append(*applied, integrated) }
 	readChromeSettings = func() (string, string) { return "menu:close", "toggle-maximize" }
+	windowDrawsFrame = func() bool { return true }
 	t.Cleanup(func() {
-		applyNativeTitlebar, readChromeSettings = apply, read
+		applyNativeTitlebar, readChromeSettings, windowDrawsFrame = apply, read, drawsFrame
 		integratedTitlebar.Store(was)
 	})
 	integratedTitlebar.Store(false)
@@ -93,5 +94,31 @@ func TestWindowControlsRouteToTheWindow(t *testing.T) {
 	}
 	if len(calls) != 3 || calls[0] != "minimise" || calls[1] != "toggleMaximise" || calls[2] != "close" {
 		t.Fatalf("calls %v", calls)
+	}
+}
+
+// Where the desktop draws the frame (KDE Plasma, X11 window managers), the
+// option isn't offered and can't be switched on.
+func TestIntegratedTitlebarNotOfferedOnADesktopFrame(t *testing.T) {
+	applied := stubWindowChrome(t)
+	windowDrawsFrame = func() bool { return false }
+	integratedTitlebar.Store(true)
+	app := newWindowStateApp(t)
+
+	result, err := app.windowChrome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.(map[string]any); got["supported"] != false || got["integrated"] != false {
+		t.Fatalf("got %v", got)
+	}
+	if _, err := app.windowSetTitlebar(map[string]any{"integrated": true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadWindowState(app.windowStatePath).Titlebar; got != "" {
+		t.Fatalf("saved titlebar %q, want empty", got)
+	}
+	if len(*applied) != 1 || (*applied)[0] != false {
+		t.Fatalf("applied %v, want [false]", *applied)
 	}
 }

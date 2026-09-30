@@ -20,6 +20,7 @@ var (
 	windowToggleMaximise = wailsRuntime.WindowToggleMaximise
 	windowClose          = closeNativeWindow
 	windowIsTiled        = nativeWindowTiled
+	windowDrawsFrame     = nativeDrawsFrame
 	applyNativeTitlebar  = setNativeTitlebarIntegrated
 	readChromeSettings   = nativeChromeSettings
 )
@@ -29,9 +30,12 @@ var (
 // it follows rather than offering its own settings.
 func (a *App) windowChrome() (any, error) {
 	layout, doubleClick := readChromeSettings()
+	// Only where GTK draws the frame: on KDE Plasma or an X11 window manager
+	// the desktop's own frame stays, and the option isn't offered.
+	supported := integratedTitlebarSupported && windowDrawsFrame()
 	return map[string]any{
-		"supported":   integratedTitlebarSupported,
-		"integrated":  integratedTitlebar.Load(),
+		"supported":   supported,
+		"integrated":  supported && integratedTitlebar.Load(),
 		"layout":      layout,
 		"doubleClick": doubleClick,
 	}, nil
@@ -42,7 +46,7 @@ func (a *App) windowChrome() (any, error) {
 // created on the next launch.
 func (a *App) windowSetTitlebar(payload map[string]any) (any, error) {
 	integrated, _ := payload["integrated"].(bool)
-	integrated = integrated && integratedTitlebarSupported
+	integrated = integrated && integratedTitlebarSupported && windowDrawsFrame()
 	a.windowMu.Lock()
 	a.window.Titlebar = ""
 	if integrated {

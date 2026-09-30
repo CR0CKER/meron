@@ -14,3 +14,5 @@ func closeNativeWindow() {}
 func nativeChromeSettings() (layout, doubleClick string) { return "", "" }
 
 func nativeWindowTiled() bool { return false }
+
+func nativeDrawsFrame() bool { return false }
