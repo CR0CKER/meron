@@ -40,18 +40,31 @@ export function RecipientInput({
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const tail = splitTail(value).tail.trim()
+  // The account and token the held suggestions were looked up for.
+  const lookupKey = `${accountId}\n${tail}`
+  const suggestionsKeyRef = useRef('')
 
-  // Fetch suggestions (debounced) while focused. An empty token surfaces the
-  // top correspondents; otherwise we match what's been typed so far.
+  // Fetch suggestions (debounced) while focused and typing. An empty token
+  // shows nothing: a list of top correspondents on every open composer only
+  // covers the fields below it.
   useEffect(() => {
+    if (!tail) {
+      setOpen(false)
+      setSuggestions([])
+      suggestionsKeyRef.current = ''
+      return
+    }
     if (!focusedRef.current || !suggestionsEnabledRef.current) return
     let cancelled = false
     const timer = setTimeout(async () => {
       const results = await suggestContacts(accountId, tail)
-      if (cancelled || !focusedRef.current || !suggestionsEnabledRef.current) return
+      if (cancelled || !suggestionsEnabledRef.current) return
+      // Kept even when focus has left, so coming back finds the lookup for
+      // the token as it stands rather than one from before the last edit.
+      suggestionsKeyRef.current = `${accountId}\n${tail}`
       setSuggestions(results)
       setActive(0)
-      setOpen(results.length > 0)
+      setOpen(focusedRef.current && results.length > 0)
     }, 120)
     return () => {
       cancelled = true
@@ -66,6 +79,7 @@ export function RecipientInput({
     onChange(`${prefix}${formatContact(contact)}, `)
     setOpen(false)
     setSuggestions([])
+    suggestionsKeyRef.current = ''
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -121,20 +135,13 @@ export function RecipientInput({
         onFocus={() => {
           focusedRef.current = true
           if (blurTimer.current) clearTimeout(blurTimer.current)
-          // Existing recipients should only trigger suggestions when edited.
-          suggestionsEnabledRef.current = value.trim().length === 0
-          if (!suggestionsEnabledRef.current) {
-            setOpen(false)
-            return
-          }
-          if (suggestions.length > 0) setOpen(true)
-          else
-            void suggestContacts(accountId, tail).then((r) => {
-              if (!focusedRef.current || !suggestionsEnabledRef.current) return
-              setSuggestions(r)
-              setActive(0)
-              setOpen(r.length > 0)
-            })
+          // Focusing never starts suggesting; typing does (see onChange). Coming
+          // back to a token that was mid-edit reopens what it had, though —
+          // but only a lookup for that very token and account, never one the
+          // edit overtook, or Tab would insert a recipient nobody typed.
+          const resume = tail.length > 0 && suggestions.length > 0 && suggestionsKeyRef.current === lookupKey
+          if (resume) suggestionsEnabledRef.current = true
+          setOpen(resume)
         }}
         onBlur={() => {
           focusedRef.current = false

@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "recipient@example.com",
   "composer.status.addRecipientBeforeSending": "보내기 전에 받는 사람을 추가하세요",
   "composer.status.chooseAvailableAccount": "사용 가능한 메일 계정을 선택하세요",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "이전 계정의 임시보관함 메일을 정리할 수 없습니다",
   "composer.status.couldNotDiscardDraft": "임시 저장을 삭제할 수 없습니다",
   "composer.status.draftAutosaveFailed": "임시 저장 자동 저장 실패",
   "composer.status.savedToServer": "서버에 저장됨",

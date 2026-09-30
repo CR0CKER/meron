@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "recipient@example.com",
   "composer.status.addRecipientBeforeSending": "送信前に宛先を追加してください",
   "composer.status.chooseAvailableAccount": "利用可能なメールアカウントを選択してください",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "以前のアカウントの下書きを削除できませんでした",
   "composer.status.couldNotDiscardDraft": "下書きを破棄できませんでした",
   "composer.status.draftAutosaveFailed": "下書きの自動保存に失敗しました",
   "composer.status.savedToServer": "サーバーに保存しました",

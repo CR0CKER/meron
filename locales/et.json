@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "saaja@example.com",
   "composer.status.addRecipientBeforeSending": "Lisa enne saatmist saaja",
   "composer.status.chooseAvailableAccount": "Vali saadaval olev meilikonto",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "Eelmise konto mustandit ei õnnestunud eemaldada",
   "composer.status.couldNotDiscardDraft": "Mustandit ei saanud kustutada",
   "composer.status.draftAutosaveFailed": "Mustandi automaatne salvestamine ebaõnnestus",
   "composer.status.savedToServer": "Serverisse salvestatud",

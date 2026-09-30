@@ -96,22 +96,24 @@ export function useComposer(tabId: string) {
   }
 
   /**
-   * Throw the draft away: stop saving, let the queue finish so nothing is left
-   * mid-allocation, close the tab, then delete the server copy. Closing on its own is
-   * not enough — a save still running would put the draft back seconds later,
-   * with nothing left on screen to explain where it came from.
+   * Throw the draft away: stop saving and close the tab at once, then let the
+   * queue finish before deleting the server copy — a save still running would
+   * otherwise put the draft back seconds later. The tab must not wait on that
+   * save: a slow Drafts server would leave the close button seemingly dead.
+   * A save that allocates a new id after the tab is gone discards its own copy
+   * (the tab's account no longer matches), so the snapshot's id is enough here.
    */
   const discardAndClose = async () => {
     setError('')
+    const drained = stopSaving()
+    const current = latestDraft()
+    finishClosingMessageTab(tabId)
     try {
-      await stopSaving()
-      const current = latestDraft()
-      finishClosingMessageTab(tabId)
+      await drained
       if (current) await discardRemoteDraft(current)
     } catch (err) {
       const message = contextualErrorMessage(err, t('composer.status.couldNotDiscardDraft'))
       showToast(message, 'error')
-      finishClosingMessageTab(tabId)
     }
   }
   const [saveError, setSaveError] = useState('')
@@ -299,12 +301,18 @@ export function useComposer(tabId: string) {
           draftMessageId,
           attachments,
         })
+        // A tab closed mid-save lands here too (no latest draft): nothing will
+        // adopt the id, so a freshly allocated copy has to go now.
         const latest = compose$.tabs.peek().find((t) => t.id === tabId)?.compose
         if (latest?.accountId !== current.accountId) {
           if (savedDraftId !== draftMessageId) {
             await discardSavedDraftCopy(
               { threadId: '', messageId: '', folderId: '', accountId: current.accountId, draftMessageId: savedDraftId },
-              { failureMessage: "Couldn't clean up the previous account's draft" },
+              {
+                failureMessage: latest
+                  ? t('composer.status.couldNotCleanUpPreviousAccountDraft')
+                  : t('composer.status.couldNotDiscardDraft'),
+              },
             )
           }
           if (isCurrent()) {
@@ -331,6 +339,13 @@ export function useComposer(tabId: string) {
           attemptedId !== current.draftMessageId
         ) {
           updateComposeDraft(tabId, { draftMessageId: attemptedId })
+        } else if (!latest && attemptedId && attemptedId !== current.draftMessageId) {
+          // The tab closed mid-save, so nothing will adopt the id; a copy that
+          // landed anyway has to go now, as on the success path.
+          await discardSavedDraftCopy(
+            { threadId: '', messageId: '', folderId: '', accountId: current.accountId, draftMessageId: attemptedId },
+            { failureMessage: t('composer.status.couldNotDiscardDraft') },
+          )
         }
         if (!isCurrent()) return
         setSaveStatus('error')

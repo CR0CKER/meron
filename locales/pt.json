@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "destinatario@example.com",
   "composer.status.addRecipientBeforeSending": "Adicione um destinatário antes de enviar",
   "composer.status.chooseAvailableAccount": "Escolha uma conta de correio disponível",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "Não foi possível limpar o rascunho da conta anterior",
   "composer.status.couldNotDiscardDraft": "Não foi possível eliminar o rascunho",
   "composer.status.draftAutosaveFailed": "Falha ao guardar rascunho automaticamente",
   "composer.status.savedToServer": "Guardado no servidor",

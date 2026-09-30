@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "recipient@example.com",
   "composer.status.addRecipientBeforeSending": "أضف مستلمًا قبل الإرسال",
   "composer.status.chooseAvailableAccount": "اختر حساب بريد متاحًا",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "تعذر تنظيف مسودة الحساب السابق",
   "composer.status.couldNotDiscardDraft": "تعذر حذف المسودة",
   "composer.status.draftAutosaveFailed": "فشل حفظ المسودة تلقائيًا",
   "composer.status.savedToServer": "تم الحفظ في الخادم",

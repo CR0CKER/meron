@@ -26,6 +26,10 @@ import { BoardContextMenu } from './BoardContextMenu'
 import { BoardDialog, type BoardDialogState } from './BoardDialog'
 import type { Account } from '../../types'
 
+// Every rail divider sits 9px from its neighbours: the gap the compose button
+// leaves above its divider, which lines up with the 64px header borders.
+const railDivider = 'h-px w-8 shrink-0 bg-sidenav-ink/10'
+
 export function SideNav() {
   const { t } = useTranslation()
   const accounts = useValue(accounts$)
@@ -139,7 +143,7 @@ export function SideNav() {
 
   return (
     <aside
-      className="flex w-[60px] shrink-0 flex-col items-center gap-4 bg-sidenav px-0 py-4 max-[768px]:hidden select-none"
+      className="flex w-[60px] shrink-0 flex-col items-center bg-sidenav px-0 pt-2.5 pb-4 max-[768px]:hidden select-none"
       onContextMenu={(event) => {
         if (event.defaultPrevented) return
         event.preventDefault()
@@ -156,10 +160,10 @@ export function SideNav() {
           >
             <SquarePen size={19} />
           </button>
-          <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />
+          <div className={`mt-[9px] ${railDivider}`} />
         </>
       )}
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-4 overflow-y-auto no-scrollbar pt-1.5">
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto no-scrollbar py-[9px]">
         {/* Unified Inbox Home Button */}
         {showUnifiedInbox && (
           <div className="relative w-full flex justify-center group">
@@ -186,11 +190,11 @@ export function SideNav() {
           </div>
         )}
 
-        {showUnifiedInbox && (hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
+        {showUnifiedInbox && (hasBoards || hasAccounts) && <div className={`my-[9px] ${railDivider}`} />}
 
         {/* Kanban Boards */}
         {hasBoards && (
-          <div className="flex flex-col gap-3 w-full items-center py-1">
+          <div className="flex flex-col gap-3 w-full items-center">
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -217,11 +221,11 @@ export function SideNav() {
           </div>
         )}
 
-        {hasBoards && hasAccounts && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
+        {hasBoards && hasAccounts && <div className={`my-[9px] ${railDivider}`} />}
 
         {/* Accounts List */}
         {hasAccounts && (
-          <div className="flex flex-col gap-3 w-full items-center py-1">
+          <div className="flex flex-col gap-3 w-full items-center">
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -251,7 +255,7 @@ export function SideNav() {
         )}
       </div>
 
-      {(showUnifiedInbox || hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
+      {(showUnifiedInbox || hasBoards || hasAccounts) && <div className={`mb-[9px] ${railDivider}`} />}
 
       {/* Utilities */}
       <div className="flex flex-col gap-3 items-center">

@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "destinataire@example.com",
   "composer.status.addRecipientBeforeSending": "Ajoutez un destinataire avant l'envoi",
   "composer.status.chooseAvailableAccount": "Choisissez un compte de messagerie disponible",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "Impossible de supprimer le brouillon du compte précédent",
   "composer.status.couldNotDiscardDraft": "Impossible de supprimer le brouillon",
   "composer.status.draftAutosaveFailed": "Échec de l'enregistrement automatique du brouillon",
   "composer.status.savedToServer": "Enregistré sur le serveur",

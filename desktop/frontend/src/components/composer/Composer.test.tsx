@@ -33,6 +33,7 @@ describe('Composer', () => {
   // the first is still in flight.
   let holdAllocation: (() => void) | null = null
   let discardFailure = false
+  let saveFailure = false
   let pendingDiscard: Promise<void> | null = null
 
   beforeEach(() => {
@@ -40,6 +41,7 @@ describe('Composer', () => {
     allocations = 0
     holdAllocation = null
     discardFailure = false
+    saveFailure = false
     pendingDiscard = null
     compose$.tabs.set([])
     compose$.activeTab.set('')
@@ -61,6 +63,7 @@ describe('Composer', () => {
               }
               return { message_id: id }
             }
+            if (command === 'mail.saveDraft' && saveFailure) throw new Error('server refused save')
             if (command === 'mail.discardDraft') {
               await pendingDiscard
               if (discardFailure) throw new Error('server refused discard')
@@ -265,7 +268,7 @@ describe('Composer', () => {
     })
     await act(async () => {
       view.getByTitle('Close tab').click()
-      expect(draftOf(tabId)).toBeDefined()
+      expect(draftOf(tabId)).toBeUndefined()
       holdAllocation?.()
       holdAllocation = null
       await new Promise((resolve) => setTimeout(resolve, 50))
@@ -274,6 +277,32 @@ describe('Composer', () => {
     const order = calls.map((call) => call.command)
     expect(order.lastIndexOf('mail.discardDraft')).toBeGreaterThan(order.lastIndexOf('mail.saveDraft'))
     expect(draftOf(tabId)).toBeUndefined()
+  })
+
+  it('discards the copy a failed save may have written after the tab closed', async () => {
+    const tabId = openComposeTab({ to: 'x@example.com', subject: 'Hello', text: 'hi' })!
+    const view = render(
+      <>
+        <ConversationTabs />
+        <Composer tabId={tabId} />
+      </>,
+    )
+
+    holdAllocation = () => {}
+    saveFailure = true
+    await act(async () => {
+      updateComposeDraft(tabId, { fromEmail: 'a@example.com' })
+    })
+    await act(async () => {
+      view.getByTitle('Close tab').click()
+      holdAllocation?.()
+      holdAllocation = null
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(draftOf(tabId)).toBeUndefined()
+    const discarded = calls.filter((call) => call.command === 'mail.discardDraft')
+    expect(discarded.map((call) => call.payload.draft_id)).toContain('allocated-1@example.com')
   })
 
   it('deduplicates simultaneous footer and external close requests', async () => {

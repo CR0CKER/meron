@@ -274,6 +274,7 @@
   "composer.placeholders.recipient": "recipient@example.com",
   "composer.status.addRecipientBeforeSending": "Add a recipient before sending",
   "composer.status.chooseAvailableAccount": "Choose an available mail account",
+  "composer.status.couldNotCleanUpPreviousAccountDraft": "Couldn't clean up the previous account's draft",
   "composer.status.couldNotDiscardDraft": "Could not discard draft",
   "composer.status.draftAutosaveFailed": "Draft autosave failed",
   "composer.status.savedToServer": "Saved to Server",
