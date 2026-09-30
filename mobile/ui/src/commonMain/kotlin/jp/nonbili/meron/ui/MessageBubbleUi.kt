@@ -1304,12 +1304,14 @@ internal fun HtmlMessageBody(
                     }
                   }
                   // The sanitiser drops <body>, so the core hoists its colors
-                  // into metas. A dark page shown as designed needs them back
-                  // as the pair they are -- its background alone, or the page
-                  // left transparent with the default black text on it, is
-                  // dark on dark. Put back as the inline declarations they
-                  // were, with the priority they were written at; a surviving
-                  // declaration of the mail's own is left alone.
+                  // into metas. They go back on every mail, dark rendering or
+                  // not, and as the pair they are: white text written for a
+                  // black <body> is white on the canvas without it, and a
+                  // background alone, or the page left transparent with the
+                  // default black text on it, is dark on dark. Put back as
+                  // the inline declarations they were, with the priority they
+                  // were written at; a surviving declaration of the mail's
+                  // own is left alone.
                   function restoreDeclaredCanvas() {
                     var important = bodyMeta('meron-body-important').split(/\s+/);
                     [['background-color', 'meron-body-bg'], ['color', 'meron-body-fg']].forEach(function (pair) {
@@ -1323,7 +1325,6 @@ internal fun HtmlMessageBody(
                     if (!root.classList.contains('meron-dark')) return;
                     var canvas = canvasTone();
                     if (canvas === 'dark') {
-                      restoreDeclaredCanvas();
                       root.classList.remove('meron-dark');
                       return;
                     }
@@ -1335,6 +1336,7 @@ internal fun HtmlMessageBody(
                   }
                   dropForeignViewports();
                   groupConsecutiveImages();
+                  restoreDeclaredCanvas();
                   applyDarkBody();
                   window.addEventListener('load', report);
                   document.addEventListener('DOMContentLoaded', report);

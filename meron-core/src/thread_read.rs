@@ -45,10 +45,6 @@ pub struct ThreadReadArgs<'a> {
     pub before_cursor: Option<&'a str>,
     /// Attachment/media directory (env-derived on desktop, `data_dir` on mobile).
     pub media_root: PathBuf,
-    /// Bake the account's remote-image CSP into `body_html` (the desktop
-    /// reader renders it in an iframe as-is). Mobile passes false: its WebView
-    /// applies the remote-image policy at render time and wants raw HTML.
-    pub bake_html_policy: bool,
 }
 
 /// A header's resolved body state: the cached message (if any) and whether the
@@ -78,7 +74,6 @@ pub async fn read_thread_page(
         for_print,
         before_cursor,
         media_root,
-        bake_html_policy,
     } = args;
 
     // Thread view spans folders within the account so the user's own Sent
@@ -287,7 +282,7 @@ pub async fn read_thread_page(
     let mut messages = Vec::with_capacity(headers.len());
     for (header, slot) in headers.iter().zip(slots) {
         let mut cached = slot.cached;
-        if bake_html_policy && let Some(message) = cached.as_mut() {
+        if let Some(message) = cached.as_mut() {
             attach_html(message, &remote_policy);
         }
         // Newly synced envelope rows do not have json.message_id yet, so the

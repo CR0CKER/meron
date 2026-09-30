@@ -1902,7 +1902,13 @@ fn mobile_protocol_reads_cached_thread_messages_from_store() {
     assert_eq!(first["references"], "root");
     assert_eq!(first["subject"], "Cached subject");
     assert_eq!(first["body"], "Hello from cache");
-    assert_eq!(first["body_html"], "<p>Hello from cache</p>");
+    // Prepared by the core, like the desktop's: sanitized, quote-marked, CSP baked in.
+    let body_html = first["body_html"].as_str().unwrap();
+    assert!(
+        body_html.contains("<body><p>Hello from cache</p></body>"),
+        "{body_html}"
+    );
+    assert!(body_html.contains("Content-Security-Policy"), "{body_html}");
     assert_eq!(first["unread"], true);
     assert_eq!(first["starred"], true);
 

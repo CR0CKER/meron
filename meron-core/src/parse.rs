@@ -2082,6 +2082,24 @@ AQID\r\n\
     }
 
     #[test]
+    fn prepare_html_marks_a_gmail_reply_with_signatures_above_and_below_the_quote() {
+        // Gmail's reply with the signature under the quote, which itself holds
+        // the quoted message's own signature.
+        let out = prepare_html(
+            r#"<div dir="ltr">x1</div><br><div class="gmail_quote gmail_quote_container"><div dir="ltr" class="gmail_attr">On Thu, Sep 10, 2026 at 5:11 PM rnons &lt;<a href="mailto:a@b.c">a@b.c</a>&gt; wrote:<br></div><blockquote class="gmail_quote"><div dir="ltr"><div>t2</div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature">2t</div></div></blockquote></div><div><br clear="all"></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature"><div dir="ltr">s2</div></div>"#,
+            false,
+        );
+        assert!(
+            out.contains(r#"<div class="gmail_quote gmail_quote_container" data-meron-quote="">"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"<div class="gmail_signature" data-meron-quote="">"#),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn prepare_html_strips_sender_claimed_meron_hooks() {
         // The frames read their own `meron-*` ids and classes back out of the
         // document; a sender must not be able to plant one.

@@ -1033,9 +1033,6 @@ pub(crate) fn read_mobile_thread(data_dir: &str, params: &Value) -> Result<Value
                 .unwrap_or(false),
             before_cursor: before_cursor.as_deref(),
             media_root: std::path::PathBuf::from(data_dir).join("attachments"),
-            // The mobile WebView applies the remote-image policy at render
-            // time and wants the raw stored HTML.
-            bake_html_policy: false,
         },
         Some(on_bodies_fetched),
     ))
