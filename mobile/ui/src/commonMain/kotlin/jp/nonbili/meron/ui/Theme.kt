@@ -88,7 +88,7 @@ data class ThemeChoice(
     }
 }
 
-/** Colors that have no Material slot: the chat bubbles and dark sidebar. */
+/** Colors that have no Material slot: the chat bubbles and the sidebar. */
 data class ChatColors(
     val sidebar: Color,
     val onSidebar: Color,
@@ -151,7 +151,7 @@ private val IndigoLight =
         Color(0xFF6558CC),
         Color(0xFFE0E7FF),
         Color(0xFF312E81),
-        Color(0xFF0F172A),
+        Color(0xFFF1F5F9),
         Color.White,
         Color(0xFF0F172A),
         Color(0xFFE0E7FF),
@@ -189,7 +189,7 @@ private val MeronLight =
         Color(0xFF0E7A58),
         Color(0xFFDDEEE6),
         Color(0xFF14543E),
-        Color(0xFF121A16),
+        Color(0xFFF0F2F1),
         Color.White,
         Color(0xFF1B211E),
         Color(0xFFDDEEE6),
@@ -227,7 +227,7 @@ private val Mist =
         Color(0xFF2996A6),
         Color(0xFFD5F0F4),
         Color(0xFF0E5663),
-        Color(0xFF123947),
+        Color(0xFFEDF4F7),
         Color.White,
         Color(0xFF14323C),
         Color(0xFFD5F0F4),
@@ -246,7 +246,7 @@ private val Paper =
         Color(0xFF64748B),
         Color(0xFFE5EDF2),
         Color(0xFF334155),
-        Color(0xFF263238),
+        Color(0xFFF4F1EA),
         Color(0xFFFFFDF8),
         Color(0xFF2F3A3D),
         Color(0xFFE5EDF2),
@@ -265,7 +265,7 @@ private val Dawn =
         Color(0xFFC06C84),
         Color(0xFFF5DADA),
         Color(0xFF753849),
-        Color(0xFF35263B),
+        Color(0xFFF7EDE8),
         Color(0xFFFFFAF7),
         Color(0xFF4A3F4D),
         Color(0xFFF5DADA),
@@ -284,7 +284,7 @@ private val Honey =
         Color(0xFFB07C10),
         Color(0xFFF5E6C4),
         Color(0xFF6E4D09),
-        Color(0xFF33270F),
+        Color(0xFFF7F1E6),
         Color(0xFFFFFDF7),
         Color(0xFF3A3122),
         Color(0xFFF5E6C4),
@@ -303,7 +303,7 @@ private val Lilac =
         Color(0xFF7A5BC4),
         Color(0xFFE8DEF8),
         Color(0xFF4B3389),
-        Color(0xFF2B2440),
+        Color(0xFFF2F0F8),
         Color(0xFFFDFCFF),
         Color(0xFF34304A),
         Color(0xFFE8DEF8),
@@ -621,13 +621,27 @@ private fun materialColors(spec: MobileThemeSpec) =
         )
     }
 
-private fun chatColors(spec: MobileThemeSpec): ChatColors =
-    ChatColors(
+/** Drawer colors for a light sidebar: the theme's own text and accent roles. */
+private fun lightSidebarColors(spec: MobileThemeSpec) =
+    SidebarColors(
+        text = spec.textPrimary,
+        textMuted = spec.textSecondary,
+        selected = spec.accent.copy(alpha = 0.18f),
+        selectedContent = spec.accent,
+        unreadBackground = spec.accentContainer,
+        unreadText = spec.onAccentContainer,
+    )
+
+private fun chatColors(spec: MobileThemeSpec): ChatColors {
+    // Light themes carry a light sidebar, matching desktop's rail; dark ones a dark one.
+    val sidebarColors =
+        spec.sidebarColors ?: lightSidebarColors(spec).takeIf { accentLabelColor(spec.sidebar) == Color.Black }
+    return ChatColors(
         sidebar = spec.sidebar,
-        onSidebar = spec.sidebarColors?.text ?: Color(0xFFF8FAFC),
-        onSidebarMuted = spec.sidebarColors?.textMuted ?: if (spec.dark) Color(0xFFA8B0BC) else Color(0xFFCBD5E1),
-        // The sidebar stays dark in light themes too; mirror desktop's accent-bright.
-        sidebarAccent = spec.sidebarColors?.selectedContent ?: spec.accent.copy(alpha = 0.7f).compositeOver(Color.White),
+        onSidebar = sidebarColors?.text ?: Color(0xFFF8FAFC),
+        onSidebarMuted = sidebarColors?.textMuted ?: if (spec.dark) Color(0xFFA8B0BC) else Color(0xFFCBD5E1),
+        // An accent tinted toward white is what reads on a dark sidebar, like desktop's rail.
+        sidebarAccent = sidebarColors?.selectedContent ?: spec.accent.copy(alpha = 0.7f).compositeOver(Color.White),
         bubbleIn = spec.bubbleIn,
         bubbleInText = spec.bubbleInText,
         bubbleOut = spec.bubbleOut,
@@ -636,7 +650,8 @@ private fun chatColors(spec: MobileThemeSpec): ChatColors =
         // Alpha compositing over opaque sRGB colors matches desktop's color-mix(in srgb).
         unreadBackground = spec.accent.copy(alpha = 0.18f).compositeOver(spec.bgChats),
         unreadText = spec.accent.copy(alpha = 0.55f).compositeOver(spec.textPrimary),
-        sidebarUnreadBackground = spec.sidebarColors?.unreadBackground ?: spec.accent.copy(alpha = 0.35f).compositeOver(Color.White),
-        sidebarUnreadText = spec.sidebarColors?.unreadText ?: spec.accent.copy(alpha = 0.25f).compositeOver(spec.sidebar),
-        sidebarSelected = spec.sidebarColors?.selected ?: spec.accent.copy(alpha = 0.18f),
+        sidebarUnreadBackground = sidebarColors?.unreadBackground ?: spec.accent.copy(alpha = 0.35f).compositeOver(Color.White),
+        sidebarUnreadText = sidebarColors?.unreadText ?: spec.accent.copy(alpha = 0.25f).compositeOver(spec.sidebar),
+        sidebarSelected = sidebarColors?.selected ?: spec.accent.copy(alpha = 0.18f),
     )
+}

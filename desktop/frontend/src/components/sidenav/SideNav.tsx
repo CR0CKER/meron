@@ -156,7 +156,7 @@ export function SideNav() {
           >
             <SquarePen size={19} />
           </button>
-          <div className="h-px w-8 shrink-0 bg-white/10" />
+          <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />
         </>
       )}
       <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-4 overflow-y-auto no-scrollbar pt-1.5">
@@ -173,7 +173,7 @@ export function SideNav() {
                 className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-200 cursor-pointer ${
                   isUnifiedActive
                     ? 'bg-accent text-white'
-                    : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white hover:scale-105'
+                    : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink hover:scale-105'
                 }`}
                 onClick={() => selectAccount('unified')}
                 onContextMenu={(event) => {
@@ -190,7 +190,7 @@ export function SideNav() {
           </div>
         )}
 
-        {showUnifiedInbox && (hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-white/10" />}
+        {showUnifiedInbox && (hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
 
         {/* Kanban Boards */}
         {hasBoards && (
@@ -221,7 +221,7 @@ export function SideNav() {
           </div>
         )}
 
-        {hasBoards && hasAccounts && <div className="h-px w-8 shrink-0 bg-white/10" />}
+        {hasBoards && hasAccounts && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
 
         {/* Accounts List */}
         {hasAccounts && (
@@ -255,14 +255,14 @@ export function SideNav() {
         )}
       </div>
 
-      {(showUnifiedInbox || hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-white/10" />}
+      {(showUnifiedInbox || hasBoards || hasAccounts) && <div className="h-px w-8 shrink-0 bg-sidenav-ink/10" />}
 
       {/* Utilities */}
       <div className="flex flex-col gap-3 items-center">
         {tasksEnabled && (
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white/60 transition-colors hover:bg-white/20 hover:text-white cursor-pointer max-[900px]:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidenav-ink/10 text-sidenav-ink/60 transition-colors hover:bg-sidenav-ink/20 hover:text-sidenav-ink cursor-pointer max-[900px]:hidden"
             onClick={toggleTasksPanel}
             title={t('tasks.title')}
             aria-label={t('tasks.title')}
@@ -273,7 +273,9 @@ export function SideNav() {
         )}
         <button
           className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 cursor-pointer ${
-            moreMenu ? 'bg-white/20 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
+            moreMenu
+              ? 'bg-sidenav-ink/20 text-sidenav-ink'
+              : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink'
           }`}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()

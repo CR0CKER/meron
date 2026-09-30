@@ -22,3 +22,7 @@ func setNativeWindowDark(dark bool) {
 	}
 	C.setAppAppearanceDark(value)
 }
+
+// macOS hides the native title bar; the frontend's MacTitleBar strip already
+// paints the side nav color.
+func setNativeTitlebarColors(bg, fg string) {}

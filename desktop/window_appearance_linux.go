@@ -5,6 +5,7 @@ package main
 /*
 #cgo pkg-config: gtk+-3.0
 
+#include <stdlib.h>
 #include <gtk/gtk.h>
 
 static gboolean applyPreferDarkTheme(gpointer data) {
@@ -18,8 +19,35 @@ static gboolean applyPreferDarkTheme(gpointer data) {
 static void setPreferDarkTheme(int dark) {
 	g_idle_add(applyPreferDarkTheme, dark ? GINT_TO_POINTER(1) : NULL);
 }
+
+static GtkCssProvider *titlebarProvider = NULL;
+
+// Takes ownership of css (a g_strdup'd string).
+static gboolean applyTitlebarCss(gpointer data) {
+	gchar *css = data;
+	GdkScreen *screen = gdk_screen_get_default();
+	if (screen != NULL) {
+		if (titlebarProvider == NULL) {
+			titlebarProvider = gtk_css_provider_new();
+			gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(titlebarProvider),
+				GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		}
+		gtk_css_provider_load_from_data(titlebarProvider, css, -1, NULL);
+	}
+	g_free(css);
+	return G_SOURCE_REMOVE;
+}
+
+static void setTitlebarCss(const char *css) {
+	g_idle_add(applyTitlebarCss, g_strdup(css));
+}
 */
 import "C"
+
+import (
+	"fmt"
+	"unsafe"
+)
 
 // setNativeWindowDark switches GTK to the dark variant of the current theme.
 //
@@ -35,4 +63,28 @@ func setNativeWindowDark(dark bool) {
 		value = 1
 	}
 	C.setPreferDarkTheme(value)
+}
+
+// setNativeTitlebarColors paints the title bar GTK draws itself (client-side
+// decorations, e.g. GNOME on Wayland) in the side nav's colors, so the window
+// top reads as one piece with the rail. Server-side frames drawn by the window
+// manager ignore it and keep following setNativeWindowDark. Anything but an
+// opaque #rrggbb pair clears the override: the values are spliced into CSS.
+func setNativeTitlebarColors(bg, fg string) {
+	css := ""
+	if opaqueHexColor.MatchString(bg) && opaqueHexColor.MatchString(fg) {
+		css = fmt.Sprintf(`.titlebar.default-decoration, .titlebar.default-decoration:backdrop {
+	background: %[1]s;
+	color: %[2]s;
+	border-color: %[1]s;
+	box-shadow: none;
+}
+.titlebar.default-decoration button.titlebutton,
+.titlebar.default-decoration:backdrop button.titlebutton {
+	color: %[2]s;
+}`, bg, fg)
+	}
+	cs := C.CString(css)
+	defer C.free(unsafe.Pointer(cs))
+	C.setTitlebarCss(cs)
 }

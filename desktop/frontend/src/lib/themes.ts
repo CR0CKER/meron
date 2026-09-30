@@ -135,7 +135,7 @@ const MERON_LIGHT: ThemeTokens = {
   bgApp: '#f0f2f1',
   bgChat: '#f8faf9',
   bgChatOverlay: 'rgba(248, 250, 249, 0.94)',
-  bgSideNav: '#121a16',
+  bgSideNav: '#f0f2f1',
   bgChats: '#ffffff',
   bgHeader: '#ffffff',
   bgHover: '#eef1f0',
@@ -185,7 +185,7 @@ const INDIGO_LIGHT: ThemeTokens = {
   bgApp: '#f1f5f9',
   bgChat: '#f8fafc',
   bgChatOverlay: 'rgba(248, 250, 252, 0.94)',
-  bgSideNav: '#0f172a',
+  bgSideNav: '#f1f5f9',
   bgChats: '#ffffff',
   bgHeader: '#ffffff',
   bgHover: '#f1f5f9',
@@ -239,7 +239,7 @@ const MIST: ThemeTokens = {
     appearance: 'light',
     bgApp: '#edf4f7',
     surface: '#ffffff',
-    sideNav: '#123947',
+    sideNav: '#edf4f7',
     accent: '#2996a6',
     text: '#14323c',
   }),
@@ -264,7 +264,7 @@ const PAPER: ThemeTokens = {
     appearance: 'light',
     bgApp: '#f4f1ea',
     surface: '#fffdf8',
-    sideNav: '#263238',
+    sideNav: '#f4f1ea',
     accent: '#64748b',
     text: '#2f3a3d',
   }),
@@ -289,7 +289,7 @@ const DAWN: ThemeTokens = {
     appearance: 'light',
     bgApp: '#f7ede8',
     surface: '#fffaf7',
-    sideNav: '#35263b',
+    sideNav: '#f7ede8',
     accent: '#c06c84',
     text: '#4a3f4d',
   }),
@@ -383,7 +383,7 @@ const HONEY: ThemeTokens = {
     appearance: 'light',
     bgApp: '#f7f1e6',
     surface: '#fffdf7',
-    sideNav: '#33270f',
+    sideNav: '#f7f1e6',
     accent: '#b07c10',
     text: '#3a3122',
   }),
@@ -408,7 +408,7 @@ const LILAC: ThemeTokens = {
     appearance: 'light',
     bgApp: '#f2f0f8',
     surface: '#fdfcff',
-    sideNav: '#2b2440',
+    sideNav: '#f2f0f8',
     accent: '#7a5bc4',
     text: '#34304a',
   }),
@@ -505,7 +505,7 @@ export function defaultThemeId(appearance: Appearance): string {
 /** Editor seed for a new custom theme: the default theme's source palette. */
 export function defaultCustomInput(appearance: Appearance): CustomThemeInput {
   return appearance === 'light'
-    ? { appearance, bgApp: '#f0f2f1', surface: '#ffffff', sideNav: '#121a16', accent: '#0e7a58', text: '#1b211e' }
+    ? { appearance, bgApp: '#f0f2f1', surface: '#ffffff', sideNav: '#f0f2f1', accent: '#0e7a58', text: '#1b211e' }
     : { appearance, bgApp: '#090d16', surface: '#0f172a', sideNav: '#05070c', accent: '#7165c4', text: '#f8fafc' }
 }
 
@@ -530,16 +530,45 @@ export function cssVarStyle(tokens: ThemeTokens): CSSProperties {
   return style as CSSProperties
 }
 
-/** WCAG relative luminance; choose the higher-contrast label for an opaque fill. */
-export function accentLabelColor(color: string): string {
+/** WCAG relative luminance of an opaque color; null if unparseable. */
+function relativeLuminance(color: string): number | null {
   const rgb = parseColor(color)
-  if (!rgb) return '#ffffff'
+  if (!rgb) return null
   const linear = [rgb.r, rgb.g, rgb.b].map((channel) => {
     const value = channel / 255
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
   })
-  const luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+}
+
+/** WCAG contrast ratio between two opaque colors, 1..21; 1 if either is unparseable. */
+function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a)
+  const lb = relativeLuminance(b)
+  if (la === null || lb === null) return 1
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/** Choose the higher-contrast label for an opaque fill. */
+export function accentLabelColor(color: string): string {
+  const luminance = relativeLuminance(color)
+  if (luminance === null) return '#ffffff'
   return 1.05 / (luminance + 0.05) >= (luminance + 0.05) / 0.05 ? '#ffffff' : '#000000'
+}
+
+/** WCAG AA for normal text. */
+const SIDE_NAV_INK_MIN_CONTRAST = 4.5
+
+/**
+ * Foreground for glyphs, dividers and hover tints on the side nav: white on a
+ * dark rail; on a light one, the theme's text color when it reads against the
+ * rail itself, else black.
+ */
+export function sideNavInkColor(tokens: ThemeTokens): string {
+  if (accentLabelColor(tokens.bgSideNav) === '#ffffff') return '#ffffff'
+  return contrastRatio(tokens.textPrimary, tokens.bgSideNav) >= SIDE_NAV_INK_MIN_CONTRAST
+    ? tokens.textPrimary
+    : '#000000'
 }
 
 // Derived rather than persisted so existing custom themes gain readable labels too.
@@ -547,6 +576,7 @@ export function accentLabelVars(tokens: ThemeTokens): Record<string, string> {
   return {
     '--me-accent-label': accentLabelColor(tokens.accent),
     '--me-accent-hover-label': accentLabelColor(tokens.accentHover),
+    '--me-sidenav-ink': sideNavInkColor(tokens),
   }
 }
 

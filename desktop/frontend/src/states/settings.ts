@@ -10,10 +10,12 @@ import {
   builtinTheme,
   defaultThemeId,
   sanitizeCustomThemes,
+  sideNavInkColor,
   type Appearance,
   type CustomTheme,
   type ThemeDef,
 } from '../lib/themes'
+import { toHex } from '../lib/color'
 import { sanitizeChatWallpaper } from '../lib/wallpapers'
 import {
   BASE_ROOT_FONT_SIZE,
@@ -563,8 +565,14 @@ function applyActiveTheme() {
   )
 
   // The webview doesn't paint the native title bar, so hand the appearance to
-  // the backend as well and let it tint the window chrome to match.
-  void invoke('window.setAppearance', { dark: def.appearance === 'dark' }).catch(() => {})
+  // the backend as well and let it tint the window chrome to match. Where the
+  // title bar takes arbitrary colors (GTK client-side decorations) it wears
+  // the side nav's, reading as one piece with the rail below it.
+  void invoke('window.setAppearance', {
+    dark: def.appearance === 'dark',
+    titlebar: toHex(def.tokens.bgSideNav),
+    titlebarText: toHex(sideNavInkColor(def.tokens)),
+  }).catch(() => {})
 }
 applyActiveTheme()
 settings$.themeId.onChange(applyActiveTheme)

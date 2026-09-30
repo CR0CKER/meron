@@ -1,8 +1,13 @@
 package main
 
 import (
+	"regexp"
+
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// opaqueHexColor is the only title bar color form the native layers accept.
+var opaqueHexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // setWindowAppearance tells the native window chrome which appearance the
 // frontend is painting, so the parts of the window the webview does not draw —
@@ -11,7 +16,8 @@ import (
 //
 // The wails runtime's theme calls only do something on Windows (the DWM dark
 // caption); Linux and macOS are handled by setNativeWindowDark, whose
-// implementation is per platform.
+// implementation is per platform. setNativeTitlebarColors then paints the
+// title bar in the side nav's colors where the platform allows it.
 func (a *App) setWindowAppearance(payload map[string]any) (any, error) {
 	dark, _ := payload["dark"].(bool)
 	if a.ctx != nil {
@@ -22,5 +28,8 @@ func (a *App) setWindowAppearance(payload map[string]any) (any, error) {
 		}
 	}
 	setNativeWindowDark(dark)
+	bg, _ := payload["titlebar"].(string)
+	fg, _ := payload["titlebarText"].(string)
+	setNativeTitlebarColors(bg, fg)
 	return map[string]any{"ok": true}, nil
 }

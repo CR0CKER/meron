@@ -25,16 +25,14 @@
   --color-accent-hover-label: var(--me-accent-hover-label, #ffffff);
   --color-unread-bg: color-mix(in srgb, var(--me-accent) 18%, var(--me-bg-chats));
   --color-unread-text: color-mix(in srgb, var(--me-accent) 55%, var(--me-text-primary));
-  /* The rail badge sits on the always-dark sidenav, so it cannot reuse
-     --color-unread-bg: that one is mixed into --me-bg-chats, a column surface
-     that is dark in dark themes and would leave the badge unreadable there. */
-  --color-unread-rail-bg: color-mix(in srgb, var(--me-accent) 35%, white);
+  /* The rail badge sits on the sidenav, so it cannot reuse --color-unread-bg:
+     that one is mixed into --me-bg-chats, a column surface whose lightness can
+     differ from the rail's. Mixing toward the rail ink keeps it readable on
+     dark and light rails alike. */
+  --color-unread-rail-bg: color-mix(in srgb, var(--me-accent) 35%, var(--me-sidenav-ink));
   --color-unread-rail-text: color-mix(in srgb, var(--me-accent) 25%, var(--me-bg-sidenav));
-  /* Side nav glyphs sit on the always-dark sidenav, in light themes too, so an
-     accent tinted toward white is what reads there. --me-accent-hover is not a
-     substitute: it darkens in light themes (see accentHover in lib/themes.ts).
-     Derived from --me-accent so custom themes track it with no extra plumbing. */
-  --color-accent-bright: color-mix(in srgb, var(--me-accent) 70%, white);
+  /* Glyph/divider color on the sidenav; set per theme by accentLabelVars in lib/themes.ts. */
+  --color-sidenav-ink: var(--me-sidenav-ink);
   --color-bubble-in: var(--me-bubble-in);
   --color-bubble-in-text: var(--me-bubble-in-text);
   --color-bubble-out: var(--me-bubble-out);
@@ -88,7 +86,8 @@
   --me-bg-app: #f0f2f1;
   --me-bg-chat: #f8faf9;
   --me-bg-chat-overlay: rgba(248, 250, 249, 0.94);
-  --me-bg-sidenav: #121a16;
+  --me-bg-sidenav: #f0f2f1;
+  --me-sidenav-ink: #1b211e;
   --me-bg-chats: #ffffff;
   --me-bg-header: #ffffff;
   --me-bg-hover: #eef1f0;
@@ -119,6 +118,7 @@
   --me-bg-chat: #090d16;
   --me-bg-chat-overlay: rgba(9, 13, 22, 0.95);
   --me-bg-sidenav: #05070c;
+  --me-sidenav-ink: #ffffff;
   --me-bg-chats: #0f172a;
   --me-bg-header: #0f172a;
   --me-bg-hover: rgba(30, 41, 59, 0.6);

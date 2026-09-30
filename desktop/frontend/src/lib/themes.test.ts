@@ -17,6 +17,7 @@ import {
   parseThemeSource,
   sanitizeCustomThemes,
   serializeThemeSource,
+  sideNavInkColor,
   type CustomThemeInput,
 } from './themes'
 
@@ -146,6 +147,23 @@ describe('accent labels', () => {
     expect(accentLabelColor('#fff')).toBe('#000000')
     expect(accentLabelColor('rgb(0, 0, 0)')).toBe('#ffffff')
     expect(accentLabelColor('hsl(60, 100%, 50%)')).toBe('#000000')
+  })
+})
+
+describe('sideNavInkColor', () => {
+  const ink = (bgSideNav: string, textPrimary: string) =>
+    sideNavInkColor({ ...BUILTIN_THEMES[0].tokens, bgSideNav, textPrimary })
+
+  it('uses white on a dark rail', () => {
+    expect(ink('#05070c', '#f8fafc')).toBe('#ffffff')
+  })
+
+  it('reuses the theme text on a light rail when it contrasts with the rail', () => {
+    expect(ink('#f0f2f1', '#1b211e')).toBe('#1b211e')
+  })
+
+  it('falls back to black when the theme text is too close to the rail', () => {
+    expect(ink('#777777', '#666666')).toBe('#000000')
   })
 })
 
