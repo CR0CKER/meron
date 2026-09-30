@@ -37,6 +37,8 @@ type windowState struct {
 	Width     int  `json:"width"`
 	Height    int  `json:"height"`
 	Maximised bool `json:"maximised"`
+	// Titlebar is "integrated" for the integrated title bar (Linux), else empty.
+	Titlebar string `json:"titlebar,omitempty"`
 }
 
 // Window queries go through these vars so rememberWindowState can be tested.
@@ -63,6 +65,9 @@ func loadWindowState(path string) windowState {
 		return state
 	}
 	state.Maximised = saved.Maximised
+	if saved.Titlebar == titlebarIntegrated {
+		state.Titlebar = titlebarIntegrated
+	}
 	if saved.Width >= minWindowWidth && saved.Height >= minWindowHeight {
 		state.Width, state.Height = saved.Width, saved.Height
 	}
@@ -123,7 +128,9 @@ func (a *App) windowResized() (any, error) {
 		return map[string]any{"ok": true}, nil
 	}
 	a.sampleWindowState(ctx)
-	rounded := roundedWindowCorners && windowIsNormal(ctx)
+	normal := windowIsNormal(ctx)
+	// A tiled (half-screen) window is square like a maximised one.
+	rounded := roundedWindowCorners && normal && !windowIsTiled()
 	a.windowMu.Lock()
 	defer a.windowMu.Unlock()
 	if a.window != a.windowSaved {
@@ -133,7 +140,7 @@ func (a *App) windowResized() (any, error) {
 			a.windowSaveTimer.Reset(windowSaveDelay)
 		}
 	}
-	return map[string]any{"ok": true, "rounded": rounded}, nil
+	return map[string]any{"ok": true, "rounded": rounded, "maximised": windowIsMaximised(ctx)}, nil
 }
 
 // rememberWindowState samples the window and saves it straight away, for

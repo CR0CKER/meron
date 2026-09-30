@@ -39,6 +39,9 @@ func main() {
 	app := NewApp()
 	globalApp = app
 	startMaximised := app.window.Maximised
+	integrated := integratedTitlebarSupported && app.window.Titlebar == titlebarIntegrated
+	integratedTitlebar.Store(integrated)
+	installWindowChrome(integrated)
 
 	err := wails.Run(&options.App{
 		Title:                    "Meron",

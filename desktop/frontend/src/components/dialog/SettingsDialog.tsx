@@ -28,6 +28,7 @@ import {
   Keyboard,
   Archive,
   Server,
+  PanelTop,
   PanelTopClose,
   Moon,
   Shrink,
@@ -76,6 +77,7 @@ import { pickImageFile } from '../../lib/nativeFilePicker'
 import { invoke } from '../../lib/bridge'
 import { isMac } from '../../lib/shortcuts'
 import { McpSettingsPanel } from './McpSettingsPanel'
+import { setIntegratedTitlebar, windowChrome$ } from '../../lib/windowChrome'
 
 // General uses the empty selection; Messages, Composer and MCP have ids of
 // their own. Account and board IDs share the selection state with these
@@ -492,6 +494,7 @@ function GeneralSection() {
           }
         />
         <CloseToTrayRow />
+        <IntegratedTitlebarRow />
         <AutoUpdateRow />
       </SettingsGroup>
 
@@ -744,6 +747,26 @@ function CloseToTrayRow() {
       hint={t('settings.window.closeToTrayHint', { quit: t('tray.quitMeron') })}
       checked={closeToTray}
       onChange={() => settings$.closeToTray.set(!closeToTray)}
+    />
+  )
+}
+
+// Linux only: GTK can drop its title bar and keep the window frame. The choice
+// lives in Go (window.json), since it is needed before the window exists.
+function IntegratedTitlebarRow() {
+  const { t } = useTranslation()
+  const supported = useValue(windowChrome$.supported)
+  const integrated = useValue(windowChrome$.integrated)
+
+  if (!supported) return null
+
+  return (
+    <ToggleRow
+      icon={<PanelTop size={15} />}
+      title={t('settings.window.integratedTitlebar')}
+      hint={t('settings.window.integratedTitlebarHint')}
+      checked={integrated}
+      onChange={() => void setIntegratedTitlebar(!integrated).catch(() => {})}
     />
   )
 }

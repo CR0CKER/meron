@@ -48,16 +48,18 @@ type fakeWindow struct {
 	width, height int
 	maximised     bool
 	normal        bool
+	tiled         bool
 }
 
 func stubWindowState(t *testing.T, w *fakeWindow) {
 	t.Helper()
-	size, isMaximised, isNormal := windowGetSize, windowIsMaximised, windowIsNormal
+	size, isMaximised, isNormal, isTiled := windowGetSize, windowIsMaximised, windowIsNormal, windowIsTiled
 	windowGetSize = func(context.Context) (int, int) { return w.width, w.height }
 	windowIsMaximised = func(context.Context) bool { return w.maximised }
 	windowIsNormal = func(context.Context) bool { return w.normal }
+	windowIsTiled = func() bool { return w.tiled }
 	t.Cleanup(func() {
-		windowGetSize, windowIsMaximised, windowIsNormal = size, isMaximised, isNormal
+		windowGetSize, windowIsMaximised, windowIsNormal, windowIsTiled = size, isMaximised, isNormal, isTiled
 	})
 }
 
@@ -162,8 +164,8 @@ func TestBeforeClose(t *testing.T) {
 	}
 }
 
-// The frontend rounds the window's bottom corners only while it floats: square
-// when maximised or fullscreen, and never where the platform doesn't ask for it.
+// The frontend rounds the window's corners only while it floats: square when
+// maximised, fullscreen or tiled, and never where the platform doesn't ask for it.
 func TestWindowResizedReportsRoundedCorners(t *testing.T) {
 	rounded := roundedWindowCorners
 	t.Cleanup(func() { roundedWindowCorners = rounded })
@@ -180,6 +182,7 @@ func TestWindowResizedReportsRoundedCorners(t *testing.T) {
 		{"floating", true, fakeWindow{width: 1000, height: 600, normal: true}, true},
 		{"maximised", true, fakeWindow{width: 1920, height: 1080, maximised: true}, false},
 		{"fullscreen", true, fakeWindow{width: 1920, height: 1080}, false},
+		{"tiled", true, fakeWindow{width: 960, height: 1080, normal: true, tiled: true}, false},
 		{"other platform", false, fakeWindow{width: 1000, height: 600, normal: true}, false},
 	}
 	for _, c := range cases {

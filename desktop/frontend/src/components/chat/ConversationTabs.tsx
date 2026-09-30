@@ -10,6 +10,7 @@ import type { MessageTab } from '../../types'
 import { Avatar } from '../avatar/Avatar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
+import { WindowControls } from '../titlebar/WindowControls'
 
 // A wheel line or page in pixels, for devices that report deltas in those
 // units (deltaMode 1 and 2) rather than pixels.
@@ -101,76 +102,79 @@ export function ConversationTabs() {
   if (!hasTabs) return null
 
   return (
-    <div className="relative shrink-0 border-b border-border/60 bg-chat">
-      {overflow.left && (
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-chat to-transparent" />
-      )}
-      {overflow.right && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-chat to-transparent" />
-      )}
-      <div ref={stripRef} className="flex h-10 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
-        {hasCurrentConversation && (
-          <button
-            data-tab-id=""
-            onClick={() => activateConversationTab()}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              setMenu({ x: event.clientX, y: event.clientY, tabId: '' })
-            }}
-            className={`flex items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
-              activeTab === '' ? 'border-accent text-accent' : 'border-transparent text-secondary hover:text-primary'
-            }`}
-            title={t('chat.currentConversation')}
-          >
-            <MessageSquare size={13} />
-            {t('chat.current')}
-          </button>
+    <div data-titlebar className="flex shrink-0 items-center border-b border-border/60 bg-chat">
+      <div className="relative min-w-0 flex-1">
+        {overflow.left && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-chat to-transparent" />
         )}
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            data-tab-id={tab.id}
-            onClick={() => {
-              // Activate the tab before retargeting selectedThread so the Current
-              // tab's remembered thread (conversationThread) isn't overwritten.
-              compose$.activeTab.set(tab.id)
-              if (tab.kind === 'thread') ui$.selectedThread.set(tab.threadId)
-            }}
-            className={`group flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-accent text-accent'
-                : 'border-transparent text-secondary hover:text-primary'
-            }`}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              setMenu({ x: event.clientX, y: event.clientY, tabId: tab.id })
-            }}
-            title={tab.subject}
-          >
-            {tab.kind === 'compose' ? (
-              <SquarePen size={12} className="shrink-0" />
-            ) : (
-              <Avatar
-                name={tab.from}
-                email={tab.fromAddr}
-                src={tab.feedIcon ? `/media/${tab.feedIcon}` : undefined}
-                size={18}
-              />
-            )}
-            <span className="truncate">{tab.subject}</span>
+        {overflow.right && (
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-chat to-transparent" />
+        )}
+        <div ref={stripRef} className="flex h-10 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
+          {hasCurrentConversation && (
             <button
-              onClick={(event) => {
-                event.stopPropagation()
-                void closeMessageTab(tab.id)
+              data-tab-id=""
+              onClick={() => activateConversationTab()}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setMenu({ x: event.clientX, y: event.clientY, tabId: '' })
               }}
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-active hover:text-primary"
-              title={t('chat.closeTab')}
+              className={`flex items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
+                activeTab === '' ? 'border-accent text-accent' : 'border-transparent text-secondary hover:text-primary'
+              }`}
+              title={t('chat.currentConversation')}
             >
-              <X size={11} />
+              <MessageSquare size={13} />
+              {t('chat.current')}
             </button>
-          </div>
-        ))}
+          )}
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              data-tab-id={tab.id}
+              onClick={() => {
+                // Activate the tab before retargeting selectedThread so the Current
+                // tab's remembered thread (conversationThread) isn't overwritten.
+                compose$.activeTab.set(tab.id)
+                if (tab.kind === 'thread') ui$.selectedThread.set(tab.threadId)
+              }}
+              className={`group flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-secondary hover:text-primary'
+              }`}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setMenu({ x: event.clientX, y: event.clientY, tabId: tab.id })
+              }}
+              title={tab.subject}
+            >
+              {tab.kind === 'compose' ? (
+                <SquarePen size={12} className="shrink-0" />
+              ) : (
+                <Avatar
+                  name={tab.from}
+                  email={tab.fromAddr}
+                  src={tab.feedIcon ? `/media/${tab.feedIcon}` : undefined}
+                  size={18}
+                />
+              )}
+              <span className="truncate">{tab.subject}</span>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void closeMessageTab(tab.id)
+                }}
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-active hover:text-primary"
+                title={t('chat.closeTab')}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
+      <WindowControls side="end" />
       {menu && (
         <TabContextMenu {...menu} tabs={tabs} hasCurrent={hasCurrentConversation} onClose={() => setMenu(null)} />
       )}

@@ -152,6 +152,12 @@ html.window-rounded {
   clip-path: inset(0 round 0 0 8px 8px);
 }
 
+/* The integrated title bar (Linux): the window is libadwaita-shaped, 15px on
+   every corner (see decorationCss in Go). */
+html.titlebar-integrated.window-rounded {
+  clip-path: inset(0 round 15px);
+}
+
 /* The body's background would go to the canvas, which the clip doesn't reach. */
 html.window-rounded body {
   background: transparent;
@@ -322,6 +328,63 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
   cursor: text;
+}
+
+/* Integrated title bar: pane headers marked data-titlebar move the window
+   (Wails reads --wails-draggable off the pressed element, so controls inside
+   opt out) and hold the window controls. */
+html.titlebar-integrated [data-titlebar] {
+  --wails-draggable: drag;
+}
+
+html.titlebar-integrated
+  [data-titlebar]
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role='button'],
+    [contenteditable='true'],
+    [draggable='true'],
+    [data-tab-id]
+  ) {
+  --wails-draggable: no-drag;
+}
+
+/* libadwaita 1.8 default.css, windowcontrols > button and its image. */
+.window-control {
+  display: inline-flex;
+  padding: 5px;
+  border: 0;
+  background: none;
+  color: var(--me-text-primary);
+  cursor: default;
+}
+
+.window-control-circle {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  transition: background-color 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.window-control:hover .window-control-circle {
+  background-color: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.window-control:active .window-control-circle {
+  background-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.window-control:focus-visible {
+  outline: none;
+}
+
+.window-control:focus-visible .window-control-circle {
+  outline: 2px solid color-mix(in srgb, var(--me-accent) 50%, transparent);
 }
 
 /* Custom scrollbars, except on Linux, where WebKitGTK's own overlay

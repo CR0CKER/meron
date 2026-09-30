@@ -6,3 +6,5 @@ package main
 func setNativeWindowDark(dark bool) {}
 
 func setNativeTitlebarColors(bg, fg string) {}
+
+func refreshNativeTitlebarCss() {}

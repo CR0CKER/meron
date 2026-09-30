@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { boot } from './boot'
 import { invoke } from './lib/bridge'
+import { installWindowChrome, windowChrome$ } from './lib/windowChrome'
 import { ui$, showToast } from './states/ui'
 import { mail$, loadThreads, loadThread, findLocalThread } from './states/mail'
 import { loadFolders, refreshAccountFoldersCache, inboxUnread } from './states/mailFolders'
@@ -87,14 +88,19 @@ export function useAppEffects() {
   // while the window floats; see roundedWindowCorners in Go).
   useEffect(() => {
     const onResize = () => {
-      void invoke<{ rounded?: boolean }>('window.resized')
-        .then((result) => document.documentElement.classList.toggle('window-rounded', result?.rounded === true))
+      void invoke<{ rounded?: boolean; maximised?: boolean }>('window.resized')
+        .then((result) => {
+          document.documentElement.classList.toggle('window-rounded', result?.rounded === true)
+          windowChrome$.maximised.set(result?.maximised === true)
+        })
         .catch(() => {})
     }
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  useEffect(() => installWindowChrome(), [])
 
   useEffect(() => {
     void boot().catch((error) => {

@@ -47,6 +47,7 @@ import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { ThreadContextMenu, useThreadContextMenu } from './ThreadContextMenu'
 import { ThreadListItem } from './ThreadListItem'
 import { BulkActionBar } from './BulkActionBar'
+import { WindowControls } from '../titlebar/WindowControls'
 
 type ThreadListProps = {
   width?: number
@@ -278,7 +279,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
       ) : (
         // Less padding on the right than the left: the trailing icon buttons carry
         // their own, so px-4 on both sides left the row lopsided.
-        <div className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60">
+        <div
+          data-titlebar
+          className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60"
+        >
+          <WindowControls side="start" />
           <div className="flex items-center gap-2 w-full">
             {/* Current folder, doubling as a picker: switching here retargets the
               list the same way it retargets a kanban column. Capped so a deep
@@ -413,6 +418,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
               </>
             )}
           </div>
+          <WindowControls side="end" />
         </div>
       )}
 
