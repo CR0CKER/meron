@@ -37,6 +37,7 @@ export type ShortcutId =
   | 'thread.delete'
   | 'thread.details'
   | 'reply.focus'
+  | 'app.quit'
   | RailShortcutId
 
 /** True for a single-key keystroke (no ⌘/Ctrl/Alt). The shortcuts these fire
@@ -80,6 +81,9 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, Chord> = {
   // ⌘/Ctrl+? — "?" already implies Shift on most layouts.
   'shortcuts.help': { mod: true, shift: true, key: '?' },
   'tab.close': { mod: true, key: 'w' },
+  // Linux/Windows only: Ctrl+Q acts like the close button (hides to the tray
+  // with close-to-tray on). macOS keeps its native ⌘Q.
+  'app.quit': { mod: true, key: 'q' },
   // Gmail-style single-key thread shortcuts (only when not typing).
   'thread.next': { key: 'j' },
   'thread.prev': { key: 'k' },
@@ -203,11 +207,18 @@ export const SHORTCUT_LABELS: Record<ShortcutId, string> = {
   'thread.unread': 'Mark unread',
   'thread.delete': 'Delete thread',
   'thread.details': 'Toggle details sidebar',
+  'app.quit': 'Quit Meron',
 }
+
+export const isMac = /mac|iphone|ipad|ipod/i.test(navigator.userAgent + ' ' + (navigator.platform ?? ''))
 
 /** Grouping for the help overlay, in display order. */
 export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
-  { title: 'General', ids: ['palette.open', 'shortcuts.help', 'settings.open'] },
+  {
+    title: 'General',
+    // No quit row on macOS: the native ⌘Q owns that chord, so a rebind would do nothing.
+    ids: ['palette.open', 'shortcuts.help', 'settings.open', ...(isMac ? [] : (['app.quit'] as const))],
+  },
   {
     title: 'Threads',
     ids: [
@@ -228,8 +239,6 @@ export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
   // Every rail slot gets a row, so all nine are visible and rebindable.
   { title: 'Side navigation', ids: [...RAIL_SHORTCUT_IDS] },
 ]
-
-export const isMac = /mac|iphone|ipad|ipod/i.test(navigator.userAgent + ' ' + (navigator.platform ?? ''))
 
 /** Identify which shortcut, if any, a keydown event matches. Returns null when
  * nothing matches so callers can let the event through. */
