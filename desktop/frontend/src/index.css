@@ -1010,3 +1010,19 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   height: 0;
   pointer-events: none;
 }
+
+/* A symbolic icon from the desktop's icon theme (headerIcons.tsx): the SVG
+   is a mask, painted in the full text color like GNOME's header bar icons,
+   at the 16px the theme draws them for. */
+.native-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--me-text-primary);
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 16px 16px;
+  mask-size: 16px 16px;
+}

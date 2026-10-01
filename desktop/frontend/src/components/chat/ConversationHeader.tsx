@@ -3,16 +3,12 @@ import type { MouseEvent as ReactMouseEvent, RefObject } from 'react'
 import {
   Archive,
   ChevronDown,
-  ChevronLeft,
   ChevronUp,
   Code,
   Copy,
   FileText,
   LoaderCircle,
   Mail,
-  MoreHorizontal,
-  PanelRight,
-  PanelRightClose,
   Printer,
   ReplyAll,
   Search,
@@ -40,6 +36,13 @@ import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
 import { TitlebarEnd } from '../titlebar/TitleBar'
 import { WindowControls } from '../titlebar/WindowControls'
+import {
+  HeaderBackIcon,
+  HeaderCloseSidePaneIcon,
+  HeaderMoreIcon,
+  HeaderSearchIcon,
+  HeaderSidePaneIcon,
+} from '../titlebar/headerIcons'
 
 // The conversation header: back/close affordances, sender info, the desktop
 // in-thread search box and the overflow actions menu (view mode, star, archive,
@@ -140,7 +143,7 @@ export function ConversationHeader({
           onClick={() => ui$.mobilePane.set('threads')}
           title={t('chat.backToChats')}
         >
-          <ChevronLeft size={20} />
+          <HeaderBackIcon size={20} />
         </button>
 
         {/* A side pane closes with a panel icon, never an ✕, which only ever
@@ -152,7 +155,7 @@ export function ConversationHeader({
             title={t('chat.closeConversationEsc')}
             aria-label={t('chat.closeConversationEsc')}
           >
-            <PanelRightClose size={18} />
+            <HeaderCloseSidePaneIcon size={18} />
           </button>
         )}
 
@@ -196,7 +199,11 @@ export function ConversationHeader({
 
         <div className="flex shrink-0 items-center gap-1">
           {!threadSearchOpen ? (
-            <IconButton icon={Search} label={t('chat.searchThread')} onClick={() => thread$.searchOpen.set(true)} />
+            <IconButton
+              icon={HeaderSearchIcon}
+              label={t('chat.searchThread')}
+              onClick={() => thread$.searchOpen.set(true)}
+            />
           ) : (
             <div className="hidden min-[900px]:flex w-[286px] items-center gap-1 rounded-xl bg-hover px-2 py-1.5 border border-transparent focus-within:border-accent/40 focus-within:bg-chats">
               <Search size={14} className="text-secondary shrink-0" />
@@ -249,14 +256,14 @@ export function ConversationHeader({
             </div>
           )}
           <IconButton
-            icon={PanelRight}
+            icon={HeaderSidePaneIcon}
             label={isRSS ? t('chat.feedDetails') : t('chat.conversationDetails')}
             active={mediaOpen}
             onClick={() => thread$.mediaOpen.set(!mediaOpen)}
           />
           <div ref={actionsMenuRef} className="relative">
             <IconButton
-              icon={MoreHorizontal}
+              icon={HeaderMoreIcon}
               label={t('chat.moreActions')}
               active={actionsMenuOpen}
               onClick={() => setActionsMenuOpen((open) => !open)}

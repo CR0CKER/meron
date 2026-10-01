@@ -3,18 +3,7 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from 
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useValue } from '@legendapp/state/react'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ListTodo,
-  SquareCheckBig,
-  MoreHorizontal,
-  PanelRightClose,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ListTodo, SquareCheckBig, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useTranslation } from '../../lib/i18n'
 import { IconButton } from '../button/IconButton'
@@ -38,6 +27,7 @@ import {
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
 import { TitlebarEnd } from '../titlebar/TitleBar'
+import { HeaderCloseSidePaneIcon, HeaderMoreIcon } from '../titlebar/headerIcons'
 
 /**
  * Fixed, like the panel it is modelled on. The thread list and conversation
@@ -105,7 +95,7 @@ export function TasksPanel({ listId }: { listId: string }) {
         {/* At the panel's start and as a panel icon, not an ✕: with the
           integrated title bar the window's own close button sits at the end
           of this header (TitlebarEnd). */}
-        <IconButton label={t('buttons.close')} icon={PanelRightClose} size="sm" onClick={closeTasksPanel} />
+        <IconButton label={t('buttons.close')} icon={HeaderCloseSidePaneIcon} size="sm" onClick={closeTasksPanel} />
         {renaming ? (
           <RenameField
             value={listName}
@@ -135,7 +125,7 @@ export function TasksPanel({ listId }: { listId: string }) {
             <IconButton
               ref={actionsButtonRef}
               label={t('chat.moreActions')}
-              icon={MoreHorizontal}
+              icon={HeaderMoreIcon}
               size="sm"
               onClick={() => setActionsMenu(anchorUnder(actionsButtonRef.current))}
             />

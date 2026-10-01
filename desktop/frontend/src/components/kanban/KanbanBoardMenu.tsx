@@ -1,18 +1,5 @@
 import { useRef, useState } from 'react'
-import {
-  Check,
-  Columns3,
-  Inbox,
-  Lock,
-  Mail,
-  MailCheck,
-  Minus,
-  MoreHorizontal,
-  Plus,
-  Settings,
-  Paperclip,
-  Star,
-} from 'lucide-react'
+import { Check, Columns3, Inbox, Lock, Mail, MailCheck, Minus, Plus, Settings, Paperclip, Star } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { type FilterMode, ui$ } from '../../states/ui'
@@ -27,6 +14,7 @@ import { IconButton } from '../button/IconButton'
 import { useDismissOnOutside } from '../menu/useDismissOnOutside'
 import { MenuItem } from '../menu/MenuItem'
 import { menuItemBase } from '../menu/menuStyles'
+import { HeaderMoreIcon } from '../titlebar/headerIcons'
 
 // Deliberately coarser than the settings dialog's 10px: this is a
 // click-at-a-time stepper for eyeballing density against the board. Settings
@@ -132,7 +120,7 @@ export function BoardMenu({
   return (
     <div ref={rootRef} className="relative shrink-0">
       <IconButton
-        icon={MoreHorizontal}
+        icon={HeaderMoreIcon}
         label={t('kanban.actions.boardOptions')}
         variant={filterActive ? 'accentSoft' : 'ghost'}
         active={!filterActive && open}

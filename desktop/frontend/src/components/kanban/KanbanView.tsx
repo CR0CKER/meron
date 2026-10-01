@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { closestCenter, DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
-import { Columns3, Plus, Search, SquarePen, X } from 'lucide-react'
+import { Columns3, Plus, Search, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { invoke } from '../../lib/bridge'
@@ -36,6 +36,7 @@ import { wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
 import { WindowControls } from '../titlebar/WindowControls'
 import { TitlebarEnd } from '../titlebar/TitleBar'
+import { HeaderComposeIcon, HeaderSearchIcon } from '../titlebar/headerIcons'
 
 export function KanbanView({ boardId }: { boardId: string }) {
   const { t } = useTranslation()
@@ -274,12 +275,16 @@ export function KanbanView({ boardId }: { boardId: string }) {
             />
           </div>
         ) : (
-          <IconButton icon={Search} label={t('kanban.searchBoardAction')} onClick={() => setSearchOpen(true)} />
+          <IconButton
+            icon={HeaderSearchIcon}
+            label={t('kanban.searchBoardAction')}
+            onClick={() => setSearchOpen(true)}
+          />
         )}
         <FilterSwitch value={globalFilter} onChange={setGlobalKanbanFilter} />
         {hasSendableAccount && (
           <IconButton
-            icon={SquarePen}
+            icon={HeaderComposeIcon}
             label={t('composer.actions.newMessage')}
             className="min-[769px]:hidden"
             onClick={() => {

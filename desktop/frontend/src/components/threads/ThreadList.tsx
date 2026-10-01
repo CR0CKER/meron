@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent, PointerEventHandler } from 'react'
-import { Search, X, Plus, SquarePen, MoreHorizontal, Loader2 } from 'lucide-react'
+import { Search, X, Loader2 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { openAddFeed, RSS_FEED_DRAG_TYPE } from '../../states/feeds'
@@ -49,6 +49,7 @@ import { ThreadListItem } from './ThreadListItem'
 import { BulkActionBar } from './BulkActionBar'
 import { WindowControls } from '../titlebar/WindowControls'
 import { TitlebarEnd, useTitlebarTools } from '../titlebar/TitleBar'
+import { HeaderAddIcon, HeaderComposeIcon, HeaderMoreIcon } from '../titlebar/headerIcons'
 
 type ThreadListProps = {
   width?: number
@@ -333,7 +334,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
               <>
                 {/* Add account: only reachable here when the side navigation is hidden (narrow). */}
                 <IconButton
-                  icon={Plus}
+                  icon={HeaderAddIcon}
                   iconSize={18}
                   label={t('accounts.actions.addAccount')}
                   size="md"
@@ -344,7 +345,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                 {/* Compose remains in the header when the side navigation is hidden. */}
                 {hasSendableAccount && !isStarredView && !isRSSAccount && (
                   <IconButton
-                    icon={SquarePen}
+                    icon={HeaderComposeIcon}
                     iconSize={16}
                     label={t('composer.actions.newMessage')}
                     className="min-[769px]:hidden"
@@ -396,7 +397,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                 )}
                 {isRSSAccount && (
                   <IconButton
-                    icon={Plus}
+                    icon={HeaderAddIcon}
                     iconSize={16}
                     label={t('feeds.actions.addToAccount')}
                     size="md"
@@ -408,7 +409,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                   (narrow) and the title bar doesn't hold them. */}
                 {!titlebarTools && (
                   <IconButton
-                    icon={MoreHorizontal}
+                    icon={HeaderMoreIcon}
                     iconSize={18}
                     label={t('sidenav.actions.viewAndTheme')}
                     size="md"

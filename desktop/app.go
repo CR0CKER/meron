@@ -217,6 +217,8 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.windowResized()
 	case "window.chrome":
 		return a.windowChrome()
+	case "icon.symbolic":
+		return a.nativeIcon(payload)
 	case "window.setTitlebar":
 		return a.windowSetTitlebar(payload)
 	case "window.minimise", "window.toggleMaximise", "window.close":

@@ -12,39 +12,10 @@ import { IconButton } from '../button/IconButton'
 import { BoardDialog, type BoardDialogState } from '../sidenav/BoardDialog'
 import { QuickSettingsMenu } from '../sidenav/QuickSettingsMenu'
 import { TitlebarSlotsProvider, useTitlebarSlots, WindowControls } from './WindowControls'
+import { usePaneTitlebar, useTitleBar } from './titlebarMode'
+import { HeaderMenuIcon, HeaderTasksIcon } from './headerIcons'
 
-/**
- * Whether Meron draws its own title bar strip: always on macOS (the native one
- * is hidden, see main.go), and on Windows while the integrated title bar is in
- * effect. On Linux the integrated title bar is the pane headers instead
- * (usePaneTitlebar), like GNOME apps' header bars.
- */
-export function useTitleBar(): boolean {
-  const integrated = useValue(windowChrome$.integrated)
-  const windows = useValue(windowChrome$.platform) === 'windows'
-  return isMac || (integrated && windows)
-}
-
-/**
- * Whether the pane headers are the title bar: the integrated title bar on
- * Linux. They then move the window and hold the window controls, and the pane
- * at the right window edge also holds Tasks and quick settings (TitlebarEnd).
- */
-export function usePaneTitlebar(): boolean {
-  const integrated = useValue(windowChrome$.integrated)
-  const windows = useValue(windowChrome$.platform) === 'windows'
-  return !isMac && integrated && !windows
-}
-
-/**
- * Whether Tasks and quick settings live in the title bar, strip or pane
- * headers. Otherwise the side navigation keeps them.
- */
-export function useTitlebarTools(): boolean {
-  const strip = useTitleBar()
-  const panes = usePaneTitlebar()
-  return strip || panes
-}
+export { usePaneTitlebar, useTitleBar, useTitlebarTools } from './titlebarMode'
 
 type MenuPosition = { x: number; y: number } | null
 
@@ -206,7 +177,7 @@ function PaneTools({ menu, setMenu }: MenuProps) {
       {tasksEnabled && (
         // Hidden with the panel itself, which doesn't fit below 900px.
         <IconButton
-          icon={SquareCheckBig}
+          icon={HeaderTasksIcon}
           label={t('tasks.title')}
           active={tasksPanelOpen}
           aria-pressed={tasksPanelOpen}
@@ -214,7 +185,12 @@ function PaneTools({ menu, setMenu }: MenuProps) {
           onClick={toggleTasksPanel}
         />
       )}
-      <IconButton icon={Menu} label={t('common.more')} active={!!menu} onClick={(event) => openUnder(event, setMenu)} />
+      <IconButton
+        icon={HeaderMenuIcon}
+        label={t('common.more')}
+        active={!!menu}
+        onClick={(event) => openUnder(event, setMenu)}
+      />
     </div>
   )
 }

@@ -7,7 +7,6 @@ import {
   Image,
   Loader2,
   MessageSquare,
-  PanelRightClose,
   Play,
   Search,
   SquarePen,
@@ -24,6 +23,7 @@ import { TitlebarEnd } from '../titlebar/TitleBar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { fileIconFor, formatFileSize } from './messageHelpers'
+import { HeaderCloseSidePaneIcon } from '../titlebar/headerIcons'
 
 export type ConversationMediaItem = {
   type: 'image' | 'video'
@@ -115,7 +115,7 @@ export function ConversationDetailsPanel({
           (TitlebarEnd). */}
         {view === 'overview' ? (
           <div data-titlebar="pane" className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-2">
-            <IconButton icon={PanelRightClose} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+            <IconButton icon={HeaderCloseSidePaneIcon} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
             <div className="flex-1" />
             <TitlebarEnd />
           </div>
@@ -124,7 +124,7 @@ export function ConversationDetailsPanel({
             data-titlebar="pane"
             className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border px-2 py-3"
           >
-            <IconButton icon={PanelRightClose} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+            <IconButton icon={HeaderCloseSidePaneIcon} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-bold text-primary">
                 {view === 'media' ? t('chat.media') : t('chat.files')}

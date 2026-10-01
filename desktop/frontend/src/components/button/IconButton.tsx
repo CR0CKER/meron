@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ComponentType, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { clsx } from '../../lib/utils'
 
@@ -37,7 +37,8 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   // Accessible label — drives both the tooltip and aria-label. Required so we
   // never ship an unlabeled icon-only control.
   label: string
-  icon?: LucideIcon
+  // A lucide icon, or anything drawn like one (headerIcons.tsx).
+  icon?: LucideIcon | ComponentType<{ size?: number; className?: string }>
   iconSize?: number
   children?: ReactNode
   variant?: IconButtonVariant
