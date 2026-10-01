@@ -105,8 +105,6 @@ export default function App() {
       <ConnectivityBanner />
       <UpdateBanner />
       <main ref={mainRef} className="relative flex min-h-0 w-full flex-1 overflow-hidden">
-        {/* Over the corner the rightmost header keeps room for (TitlebarEnd). */}
-        <WindowEdgeGroup />
         <ErrorBoundary label="side navigation">
           <SideNav />
         </ErrorBoundary>
@@ -154,6 +152,12 @@ export default function App() {
             </ErrorBoundary>
           ) : null}
         </TasksSlide>
+
+        {/* Over the corner the rightmost header keeps room for (TitlebarEnd).
+          After the panes, so it paints over headers at the same z-index (the
+          conversation header is z-40); before the dialogs and menus, which
+          paint over it. */}
+        <WindowEdgeGroup />
 
         <AppHotkeys />
         <QuitHotkey />
