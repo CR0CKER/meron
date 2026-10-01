@@ -11,6 +11,7 @@ import {
   Search,
   SquarePen,
   Users,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
@@ -115,35 +116,44 @@ export function ConversationDetailsPanel({
           With the integrated title bar (Linux) its top row continues the
           conversation header and holds only the window-edge group when the
           panel is at the window edge. The header bar's details toggle, Esc
-          and (as an overlay) the backdrop close it. */}
-        {panes && (
-          <div
-            data-titlebar="pane"
-            className="flex h-16 shrink-0 items-center justify-end border-b border-border/60 bg-chat px-2"
-          >
-            <TitlebarEnd />
+          and (as an overlay) the backdrop close it. With the system title
+          bar, and on macOS and Windows, it keeps its own header and close
+          button, as before. */}
+        {panes ? (
+          <>
+            <div
+              data-titlebar="pane"
+              className="flex h-16 shrink-0 items-center justify-end border-b border-border/60 bg-chat px-2"
+            >
+              <TitlebarEnd />
+            </div>
+            {view !== 'overview' && (
+              <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-2 py-2">
+                <IconButton
+                  icon={ChevronLeft}
+                  iconSize={18}
+                  label={t('buttons.back')}
+                  onClick={() => setView('overview')}
+                />
+                <ScopeHeading view={view} scopeTitle={scopeTitle} scopeSubtitle={scopeSubtitle} />
+              </div>
+            )}
+          </>
+        ) : view === 'overview' ? (
+          <div className="flex h-12 shrink-0 items-center justify-end border-b border-border px-4">
+            <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
           </div>
-        )}
-        {view !== 'overview' && (
-          <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-2 py-2">
-            <IconButton
-              icon={ChevronLeft}
-              iconSize={18}
-              label={t('buttons.back')}
-              onClick={() => setView('overview')}
-            />
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-bold text-primary">
-                {view === 'media' ? t('chat.media') : t('chat.files')}
-              </h3>
-              <p className="mt-0.5 truncate text-[0.6875rem] font-medium text-secondary" title={scopeTitle}>
-                {scopeTitle}
-              </p>
-              {scopeSubtitle && (
-                <p className="truncate text-[0.625rem] text-secondary/80" title={scopeSubtitle}>
-                  {scopeSubtitle}
-                </p>
-              )}
+        ) : (
+          <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <ScopeHeading view={view} scopeTitle={scopeTitle} scopeSubtitle={scopeSubtitle} />
+            <div className="flex shrink-0 items-center gap-1">
+              <IconButton
+                icon={ChevronLeft}
+                iconSize={18}
+                label={t('buttons.back')}
+                onClick={() => setView('overview')}
+              />
+              <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
             </div>
           </div>
         )}
@@ -418,4 +428,32 @@ function PeopleList({
 
 function EmptyHint({ text }: { text: string }) {
   return <div className="flex h-full items-center justify-center px-6 text-center text-xs text-secondary">{text}</div>
+}
+
+/** The media or files view's title and the conversation it belongs to. */
+function ScopeHeading({
+  view,
+  scopeTitle,
+  scopeSubtitle,
+}: {
+  view: 'media' | 'files'
+  scopeTitle: string
+  scopeSubtitle?: string
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="min-w-0 flex-1">
+      <h3 className="truncate text-sm font-bold text-primary">
+        {view === 'media' ? t('chat.media') : t('chat.files')}
+      </h3>
+      <p className="mt-0.5 truncate text-[0.6875rem] font-medium text-secondary" title={scopeTitle}>
+        {scopeTitle}
+      </p>
+      {scopeSubtitle && (
+        <p className="truncate text-[0.625rem] text-secondary/80" title={scopeSubtitle}>
+          {scopeSubtitle}
+        </p>
+      )}
+    </div>
+  )
 }

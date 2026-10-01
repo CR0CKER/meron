@@ -35,6 +35,7 @@ import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
 import { TitlebarEnd, TitlebarMenu } from '../titlebar/TitleBar'
+import { usePaneTitlebar } from '../titlebar/titlebarMode'
 import { WindowControls } from '../titlebar/WindowControls'
 import {
   HeaderBackIcon,
@@ -68,6 +69,7 @@ export function ConversationHeader({
   desktopSearchInputRef: RefObject<HTMLInputElement | null>
 }) {
   const { t } = useTranslation()
+  const panes = usePaneTitlebar()
   const inKanban = !!useValue(kanban$.activeBoardId)
   // A tab's conversation is closed from the tab strip, not from here: this
   // button closes the conversation the board's card opened.
@@ -146,8 +148,9 @@ export function ConversationHeader({
           <HeaderBackIcon size={20} />
         </button>
 
-        {/* Collapses the pane back into the board. An arrow, not an ✕, which
-          only ever means the window's close button (TitlebarEnd). */}
+        {/* Collapses the pane back into the board. Under the GNOME header bar
+          an arrow, not an ✕, which there only ever means the window's close
+          button; elsewhere the ✕ it always was. */}
         {inKanban && !tabOwnsPane && (
           <button
             className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-hover text-secondary cursor-pointer max-[768px]:hidden"
@@ -155,7 +158,7 @@ export function ConversationHeader({
             title={t('chat.closeConversationEsc')}
             aria-label={t('chat.closeConversationEsc')}
           >
-            <HeaderCollapsePaneIcon size={18} />
+            {panes ? <HeaderCollapsePaneIcon size={18} /> : <X size={18} />}
           </button>
         )}
 

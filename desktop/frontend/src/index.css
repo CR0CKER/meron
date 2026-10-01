@@ -345,14 +345,15 @@ textarea,
 }
 
 /* On Linux the pane headers are the title bar instead (data-titlebar="pane"),
-   but only while the integrated title bar is on: with the system one they are
-   plain headers. They hold more than buttons, so fields, draggable items and
-   conversation tabs opt out of moving the window too. */
-html.titlebar-integrated [data-titlebar='pane'] {
+   but only with the integrated title bar there (html.titlebar-panes): with the
+   system one, and on Windows, where the integrated title bar is TitleBar's
+   strip, they are plain headers. They hold more than buttons, so fields,
+   draggable items and conversation tabs opt out of moving the window too. */
+html.titlebar-panes [data-titlebar='pane'] {
   --wails-draggable: drag;
 }
 
-html.titlebar-integrated
+html.titlebar-panes
   [data-titlebar='pane']
   :is(
     button,
@@ -371,7 +372,7 @@ html.titlebar-integrated
 /* The header at the right window edge keeps room for the window's corner
    group (TitlebarEnd), drawn over it once (WindowEdgeGroup, pr-2). Whichever
    pane that is, the room sits the same 8px from the window edge. */
-html.titlebar-integrated [data-titlebar='pane']:has(> .titlebar-end, > .titlebar-fold) {
+html.titlebar-panes [data-titlebar='pane']:has(> .titlebar-end, > .titlebar-fold) {
   padding-right: 8px;
 }
 

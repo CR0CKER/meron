@@ -3,7 +3,18 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from 
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useValue } from '@legendapp/state/react'
-import { Check, ChevronDown, ChevronRight, ListTodo, SquareCheckBig, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ListTodo,
+  MoreHorizontal,
+  SquareCheckBig,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
 
 import { useTranslation } from '../../lib/i18n'
 import { IconButton } from '../button/IconButton'
@@ -13,6 +24,7 @@ import { ui$ } from '../../states/ui'
 import {
   addTask,
   clearCompletedTasks,
+  closeTasksPanel,
   createTaskList,
   deleteTask,
   deleteTaskList,
@@ -52,10 +64,12 @@ export function TasksPanel({ listId, headerTone = 'chat' }: { listId: string; he
   const [renaming, setRenaming] = useState(false)
   const [listName, setListName] = useState('')
   const [listMenu, setListMenu] = useState<MenuAnchor | null>(null)
+  const [actionsMenu, setActionsMenu] = useState<MenuAnchor | null>(null)
   // Collapsed by default, as in Google Tasks: done work is there to be found,
   // not to crowd the open tasks.
   const [completedOpen, setCompletedOpen] = useState(false)
   const listButtonRef = useRef<HTMLButtonElement | null>(null)
+  const actionsButtonRef = useRef<HTMLButtonElement | null>(null)
   const panes = usePaneTitlebar()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -104,7 +118,13 @@ export function TasksPanel({ listId, headerTone = 'chat' }: { listId: string; he
           <TitlebarEnd />
         </div>
       )}
-      <div className={`flex shrink-0 items-center gap-1 border-b border-border px-1.5 ${panes ? 'h-11' : 'h-16'}`}>
+      {/* With the system title bar, and on macOS and Windows, the header is
+        the panel's own, as before: the list switcher, its actions and a close
+        button. As a utility pane under the GNOME header bar it is a slim
+        title row instead, its actions in the list switcher's menu. */}
+      <header
+        className={`flex shrink-0 items-center gap-1 border-b border-border ${panes ? 'h-11 px-1.5' : 'h-12 pl-3 pr-1.5'}`}
+      >
         {renaming ? (
           <RenameField
             value={listName}
@@ -118,20 +138,34 @@ export function TasksPanel({ listId, headerTone = 'chat' }: { listId: string; he
             commitLabel={t('tasks.renameList')}
           />
         ) : (
-          // The list switcher also holds the list's actions, so the panel
-          // needs no ⋯ menu of its own.
-          <button
-            ref={listButtonRef}
-            type="button"
-            onClick={() => setListMenu(anchorUnder(listButtonRef.current))}
-            className="group flex min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 py-1 text-left hover:bg-hover"
-            title={activeList?.title ?? t('tasks.title')}
-          >
-            <span className="truncate text-sm font-semibold text-primary">{activeList?.title ?? t('tasks.title')}</span>
-            <ChevronDown size={14} className="shrink-0 text-secondary" />
-          </button>
+          <>
+            <button
+              ref={listButtonRef}
+              type="button"
+              onClick={() => setListMenu(anchorUnder(listButtonRef.current))}
+              className="group flex min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 py-1 text-left hover:bg-hover"
+              title={activeList?.title ?? t('tasks.title')}
+            >
+              <span className="truncate text-sm font-semibold text-primary">
+                {activeList?.title ?? t('tasks.title')}
+              </span>
+              <ChevronDown size={14} className="shrink-0 text-secondary" />
+            </button>
+            {!panes && (
+              <>
+                <IconButton
+                  ref={actionsButtonRef}
+                  label={t('chat.moreActions')}
+                  icon={MoreHorizontal}
+                  size="sm"
+                  onClick={() => setActionsMenu(anchorUnder(actionsButtonRef.current))}
+                />
+                <IconButton label={t('buttons.close')} icon={X} size="sm" onClick={closeTasksPanel} />
+              </>
+            )}
+          </>
         )}
-      </div>
+      </header>
 
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Plus size={15} className="shrink-0 text-secondary" />
@@ -251,39 +285,62 @@ export function TasksPanel({ listId, headerTone = 'chat' }: { listId: string; he
               void createTaskList(t('tasks.newList'))
             }}
           />
-          <MenuItem
-            icon={<Pencil size={13} className="text-secondary" />}
-            label={t('tasks.renameList')}
-            onClick={() => {
-              setListMenu(null)
-              setListName(activeList?.title ?? '')
-              setRenaming(true)
-            }}
-          />
-          {completed.length > 0 ? (
-            <MenuItem
-              icon={<Trash2 size={13} className="text-secondary" />}
-              label={t('tasks.clearCompleted')}
-              onClick={() => {
-                setListMenu(null)
-                void clearCompletedTasks()
-              }}
-            />
-          ) : null}
-          <div className="my-1 border-t border-border" />
-          <MenuItem
-            danger
-            icon={<Trash2 size={13} />}
-            label={t('tasks.deleteList')}
-            onClick={() => {
-              setListMenu(null)
-              void deleteTaskList(listId)
-            }}
-          />
+          {panes && listActions(() => setListMenu(null))}
+        </FloatingContextMenu>
+      ) : null}
+
+      {actionsMenu ? (
+        <FloatingContextMenu
+          x={actionsMenu.x}
+          y={actionsMenu.y}
+          onClose={() => setActionsMenu(null)}
+          overlay
+          className="fixed z-50 min-w-[200px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+        >
+          {listActions(() => setActionsMenu(null))}
         </FloatingContextMenu>
       ) : null}
     </div>
   )
+
+  /** The list's actions: in the ⋯ menu, or in the list switcher's menu when
+   * the panel sits under the GNOME header bar. */
+  function listActions(closeMenu: () => void) {
+    return (
+      <>
+        {panes && <div className="my-1 border-t border-border" />}
+        <MenuItem
+          icon={<Pencil size={13} className="text-secondary" />}
+          label={t('tasks.renameList')}
+          onClick={() => {
+            closeMenu()
+            setListName(activeList?.title ?? '')
+            setRenaming(true)
+          }}
+        />
+        {completed.length > 0 ? (
+          <MenuItem
+            icon={<Trash2 size={13} className="text-secondary" />}
+            label={t('tasks.clearCompleted')}
+            onClick={() => {
+              closeMenu()
+              void clearCompletedTasks()
+            }}
+          />
+        ) : null}
+        <div className="my-1 border-t border-border" />
+        <MenuItem
+          danger
+          icon={<Trash2 size={13} />}
+          label={t('tasks.deleteList')}
+          onClick={() => {
+            closeMenu()
+            void deleteTaskList(listId)
+          }}
+        />
+      </>
+    )
+  }
 }
 
 function RenameField({

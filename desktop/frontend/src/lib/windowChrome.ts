@@ -67,6 +67,13 @@ function applyReply(reply: WindowChromeReply) {
     windowChrome$.doubleClick.set(reply.doubleClick)
   }
   document.documentElement.classList.toggle('titlebar-integrated', reply.integrated === true)
+  // The pane headers are the title bar only on Linux (usePaneTitlebar); on
+  // Windows the integrated title bar is TitleBar's strip, and the headers stay
+  // plain, not draggable.
+  document.documentElement.classList.toggle(
+    'titlebar-panes',
+    reply.integrated === true && reply.platform !== 'windows' && reply.platform !== 'darwin',
+  )
 }
 
 export async function loadWindowChrome() {

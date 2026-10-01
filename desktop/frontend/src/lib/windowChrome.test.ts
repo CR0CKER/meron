@@ -12,7 +12,7 @@ const original = (window as any).go
 
 afterEach(() => {
   ;(window as any).go = original
-  document.documentElement.classList.remove('titlebar-integrated')
+  document.documentElement.classList.remove('titlebar-integrated', 'titlebar-panes')
 })
 
 describe('parseDecorationLayout', () => {
@@ -70,6 +70,24 @@ describe('loadWindowChrome', () => {
     expect(windowChrome$.layout.peek()).toEqual({ start: ['close'], end: ['minimize'] })
     expect(windowChrome$.doubleClick.peek()).toBe('minimize')
     expect(document.documentElement.classList.contains('titlebar-integrated')).toBe(true)
+    // On Windows the integrated title bar is TitleBar's strip: the pane
+    // headers stay plain headers, not drag regions.
+    expect(document.documentElement.classList.contains('titlebar-panes')).toBe(false)
+  })
+
+  it('makes the pane headers the title bar only on Linux', async () => {
+    const reply = (platform: string, integrated: boolean) => ({
+      main: { App: { Invoke: async () => ({ supported: integrated, integrated, wanted: integrated, platform }) } },
+    })
+    ;(window as any).go = reply('linux', true)
+    await loadWindowChrome()
+    expect(document.documentElement.classList.contains('titlebar-panes')).toBe(true)
+    ;(window as any).go = reply('linux', false)
+    await loadWindowChrome()
+    expect(document.documentElement.classList.contains('titlebar-panes')).toBe(false)
+    ;(window as any).go = reply('darwin', false)
+    await loadWindowChrome()
+    expect(document.documentElement.classList.contains('titlebar-panes')).toBe(false)
   })
 })
 
