@@ -5,6 +5,7 @@ import { openThreadTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
 import { kanban$ } from '../../states/kanban'
 import { ui$ } from '../../states/ui'
+import { windowChrome$ } from '../../lib/windowChrome'
 import type { Message } from '../../types'
 
 const message = (over: Partial<Message> = {}): Message =>
@@ -36,6 +37,37 @@ describe('ConversationTabs', () => {
     kanban$.paneThreadId.set('')
   })
   afterEach(cleanup)
+
+  it('is a 64px header-bar row under the GNOME header bar, and 40px elsewhere', () => {
+    openThreadTab(message())
+    const strip = (view: ReturnType<typeof render>) => view.container.querySelector('.no-scrollbar') as HTMLElement
+    const chrome = (platform: string, integrated: boolean) =>
+      windowChrome$.set({
+        supported: integrated,
+        integrated,
+        wanted: integrated,
+        platform,
+        layout: { start: [], end: ['close'] },
+        doubleClick: 'toggle-maximize',
+        maximised: false,
+      })
+    chrome('linux', true)
+    const gnome = render(<ConversationTabs />)
+    // Matches the window's corner group, which is drawn 64px tall.
+    expect(strip(gnome).className).toContain('h-16')
+    gnome.unmount()
+    for (const [platform, integrated] of [
+      ['linux', false],
+      ['windows', true],
+      ['darwin', false],
+    ] as const) {
+      chrome(platform, integrated)
+      const view = render(<ConversationTabs />)
+      expect(strip(view).className).toContain('h-10')
+      view.unmount()
+    }
+    chrome('linux', false)
+  })
 
   it('offers the Current tab while a conversation sits behind the tabs', () => {
     ui$.selectedThread.set('t-current')

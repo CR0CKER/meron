@@ -12,6 +12,7 @@ import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { TitlebarEnd } from '../titlebar/TitleBar'
 import { WindowControls } from '../titlebar/WindowControls'
+import { usePaneTitlebar } from '../titlebar/titlebarMode'
 
 // A wheel line or page in pixels, for devices that report deltas in those
 // units (deltaMode 1 and 2) rather than pixels.
@@ -99,6 +100,10 @@ export function ConversationTabs() {
   }, [hasTabs, tabs.length, hasCurrentConversation])
 
   const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+  // Under the GNOME header bar the strip is a header-bar row like the others,
+  // 64px, so the window's corner group lines up with it (WindowEdgeGroup). The
+  // tabs stretch to the full height, keeping their underline on its border.
+  const panes = usePaneTitlebar()
 
   if (!hasTabs) return null
 
@@ -112,7 +117,10 @@ export function ConversationTabs() {
         {overflow.right && (
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-chat to-transparent" />
         )}
-        <div ref={stripRef} className="flex h-10 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
+        <div
+          ref={stripRef}
+          className={`flex ${panes ? 'h-16' : 'h-10'} items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none`}
+        >
           {hasCurrentConversation && (
             <button
               data-tab-id=""
