@@ -37,6 +37,7 @@ export type ShortcutId =
   | 'thread.delete'
   | 'thread.details'
   | 'reply.focus'
+  | 'app.quit'
   | RailShortcutId
 
 /** True for a single-key keystroke (no ⌘/Ctrl/Alt). The shortcuts these fire
@@ -45,6 +46,14 @@ export type ShortcutId =
  * chord, which an alias (see SHORTCUT_ALIASES) doesn't share. */
 export function isBareKeystroke(event: KeyboardEvent): boolean {
   return !(isMac ? event.metaKey : event.ctrlKey) && !event.altKey
+}
+
+/** Is the user currently typing into a field? Bare single-key shortcuts must
+ * stand down so they don't clobber text entry. */
+export function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
 }
 
 export type Chord = {
@@ -80,6 +89,9 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, Chord> = {
   // ⌘/Ctrl+? — "?" already implies Shift on most layouts.
   'shortcuts.help': { mod: true, shift: true, key: '?' },
   'tab.close': { mod: true, key: 'w' },
+  // Linux/Windows only: Ctrl+Q acts like the close button (hides to the tray
+  // with close-to-tray on). macOS keeps its native ⌘Q.
+  'app.quit': { mod: true, key: 'q' },
   // Gmail-style single-key thread shortcuts (only when not typing).
   'thread.next': { key: 'j' },
   'thread.prev': { key: 'k' },
@@ -203,11 +215,18 @@ export const SHORTCUT_LABELS: Record<ShortcutId, string> = {
   'thread.unread': 'Mark unread',
   'thread.delete': 'Delete thread',
   'thread.details': 'Toggle details sidebar',
+  'app.quit': 'Quit Meron',
 }
+
+export const isMac = /mac|iphone|ipad|ipod/i.test(navigator.userAgent + ' ' + (navigator.platform ?? ''))
 
 /** Grouping for the help overlay, in display order. */
 export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
-  { title: 'General', ids: ['palette.open', 'shortcuts.help', 'settings.open'] },
+  {
+    title: 'General',
+    // No quit row on macOS: the native ⌘Q owns that chord, so a rebind would do nothing.
+    ids: ['palette.open', 'shortcuts.help', 'settings.open', ...(isMac ? [] : (['app.quit'] as const))],
+  },
   {
     title: 'Threads',
     ids: [
@@ -229,8 +248,6 @@ export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
   { title: 'Side navigation', ids: [...RAIL_SHORTCUT_IDS] },
 ]
 
-export const isMac = /mac|iphone|ipad|ipod/i.test(navigator.userAgent + ' ' + (navigator.platform ?? ''))
-
 /** Identify which shortcut, if any, a keydown event matches. Returns null when
  * nothing matches so callers can let the event through. */
 export function matchShortcut(event: KeyboardEvent): ShortcutId | null {
@@ -249,8 +266,14 @@ export function matchShortcut(event: KeyboardEvent): ShortcutId | null {
 /** Same lookup for a chord reconstructed by hand — e.g. a keystroke forwarded
  * out of a message iframe, which arrives as data rather than a KeyboardEvent. */
 export function shortcutForChord(chord: Chord): ShortcutId | null {
+  // User rebindings first, so a newly added default can't take over a chord the
+  // user already claimed for another shortcut.
   for (const id of SHORTCUT_IDS) {
-    if (chordEquals(shortcutChord(id), chord)) return id
+    const override = overrides[id]
+    if (override && chordEquals(override, chord)) return id
+  }
+  for (const id of SHORTCUT_IDS) {
+    if (!overrides[id] && chordEquals(DEFAULT_SHORTCUTS[id], chord)) return id
   }
   for (const [id, alias] of SHORTCUT_ALIASES) {
     if (chordEquals(alias, chord)) return id

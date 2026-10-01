@@ -53,6 +53,11 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keydown('q'))).toBeNull()
     expect(matchShortcut(keydown('j', modKey))).toBeNull()
   })
+
+  it('matches ⌘/Ctrl+Q as quit, a chord no other default uses', () => {
+    expect(matchShortcut(keydown('q', modKey))).toBe('app.quit')
+    expect(shortcutConflict('app.quit', DEFAULT_SHORTCUTS['app.quit'])).toBeNull()
+  })
 })
 
 describe('isBareKeystroke', () => {
@@ -130,6 +135,11 @@ describe('shortcutForChord', () => {
     setShortcutOverrides({ 'compose.new': { mod: true, shift: true, key: 'k' } })
     expect(shortcutForChord({ mod: true, shift: true, key: 'k' })).toBe('compose.new')
   })
+
+  it("lets a user's override win over another shortcut's default on the same chord", () => {
+    setShortcutOverrides({ 'thread.delete': { mod: true, key: 'q' } })
+    expect(shortcutForChord({ mod: true, key: 'q' })).toBe('thread.delete')
+  })
 })
 
 describe('chordFromEvent', () => {
@@ -176,6 +186,9 @@ describe('sanitizeShortcutOverrides', () => {
 describe('SHORTCUT_GROUPS', () => {
   it('lists every shortcut exactly once, so all of them are visible and rebindable', () => {
     const listed = SHORTCUT_GROUPS.flatMap((group) => group.ids)
-    expect([...listed].sort()).toEqual([...SHORTCUT_IDS].sort())
+    // Except quit on macOS, where the native ⌘Q owns the chord and a rebind
+    // would do nothing.
+    const expected = SHORTCUT_IDS.filter((id) => !(isMac && id === 'app.quit'))
+    expect([...listed].sort()).toEqual([...expected].sort())
   })
 })

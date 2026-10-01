@@ -20,6 +20,7 @@ import { ChangelogDialog } from './components/dialog/ChangelogDialog'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppHotkeys } from './components/dialog/AppHotkeys'
+import { QuitHotkey } from './components/dialog/QuitHotkey'
 import { ShortcutsDialog } from './components/dialog/ShortcutsDialog'
 import { AppToast } from './components/toast/AppToast'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
@@ -63,6 +64,7 @@ export default function App() {
         <div className="min-h-0 flex-1">
           <SetupScreen />
         </div>
+        <QuitHotkey />
       </div>
     )
   }
@@ -109,6 +111,7 @@ export default function App() {
         ) : null}
 
         <AppHotkeys />
+        <QuitHotkey />
         <CommandPalette />
         <ShortcutsDialog />
         <AboutDialog />

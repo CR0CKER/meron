@@ -185,6 +185,9 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	return false
 }
 
+// appQuit is a var so tests can tell a quit from a hide without a running app.
+var appQuit = wailsRuntime.Quit
+
 // quit exits the app, bypassing close-to-tray.
 func (a *App) quit() {
 	ctx := a.runtimeContext()
@@ -192,7 +195,18 @@ func (a *App) quit() {
 		return
 	}
 	a.quitting.Store(true)
-	wailsRuntime.Quit(ctx)
+	appQuit(ctx)
+}
+
+// requestQuit is the Ctrl+Q shortcut (Linux/Windows; macOS has a native ⌘Q).
+// It exits like the tray's Quit, except that close-to-tray turns it into
+// hiding the window, the same as the close button.
+func (a *App) requestQuit() {
+	if !hideOnCloseNatively && a.closeToTray.Load() {
+		a.hideMainWindow()
+		return
+	}
+	a.quit()
 }
 
 // quitOnSignal makes SIGTERM and SIGINT quit for real. Wails turns them into

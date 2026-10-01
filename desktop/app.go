@@ -223,6 +223,9 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.windowControl(command)
 	case "window.setCloseToTray":
 		return a.windowSetCloseToTray(payload)
+	case "app.quit":
+		a.requestQuit()
+		return map[string]any{"ok": true}, nil
 	case "window.setAppearance":
 		return a.setWindowAppearance(payload)
 	case "i18n.setNativeLabels":
