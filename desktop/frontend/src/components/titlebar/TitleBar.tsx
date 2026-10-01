@@ -60,14 +60,13 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
 }
 
 /**
- * The end of the pane header at the right window edge (Linux): Tasks and
- * quick settings, then the window controls, set apart by a divider so the
- * window's close button never reads as the pane's. For the same reason no pane
- * closes with an ✕ of its own: side panes close with a panel icon at their
- * start (TasksPanel, ConversationHeader).
+ * The end of the header bar at the right window edge (Linux): the Tasks
+ * toggle, then the window controls, set apart by a divider so the window's
+ * close button never reads as a pane's. Tasks and the details panel are
+ * utility panes that open below the header bar (GNOME HIG), so this group
+ * stays in the same place whichever panes are open.
  */
 export function TitlebarEnd() {
-  const [menu, setMenu] = useState<MenuPosition>(null)
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
   const endButtons = useValue(windowChrome$.layout.end)
@@ -76,18 +75,41 @@ export function TitlebarEnd() {
   // inset from the window edge (.titlebar-end).
   return (
     <div className="titlebar-end flex shrink-0 items-center">
-      <PaneTools menu={menu} setMenu={setMenu} />
+      <PaneTasksToggle />
       {endButtons.length > 0 && <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
       <WindowControls side="end" />
-      <TitleBarMenus menu={menu} setMenu={setMenu} />
     </div>
+  )
+}
+
+/**
+ * The primary menu (☰, quick settings) in the header bar on Linux. The GNOME
+ * HIG puts it above the sidebar list in a window that has one, so it ends the
+ * header of the pane at the left window edge: the thread list or the board.
+ */
+export function TitlebarMenu() {
+  const { t } = useTranslation()
+  const [menu, setMenu] = useState<MenuPosition>(null)
+  const slots = useTitlebarSlots()
+  const panes = usePaneTitlebar()
+  if (!panes || !slots.start) return null
+  return (
+    <>
+      <IconButton
+        icon={HeaderMenuIcon}
+        label={t('common.more')}
+        active={!!menu}
+        onClick={(event) => openUnder(event, setMenu)}
+      />
+      <TitleBarMenus menu={menu} setMenu={setMenu} />
+    </>
   )
 }
 
 /**
  * A header-height title bar row for a pane that has no header of its own
  * (the empty conversation, the setup screen): a drag region holding the
- * window controls, and Tasks and quick settings unless `tools` is off.
+ * window controls, and the primary menu and Tasks toggle unless `tools` is off.
  * Nothing unless the pane headers are the title bar.
  */
 export function TitlebarStrip({ tools = true }: { tools?: boolean }) {
@@ -98,6 +120,7 @@ export function TitlebarStrip({ tools = true }: { tools?: boolean }) {
     <div data-titlebar="pane" className="flex h-16 shrink-0 items-center px-2">
       <WindowControls side="start" />
       <div className="flex-1" />
+      {tools && <TitlebarMenu />}
       {tools ? <TitlebarEnd /> : <WindowControls side="end" />}
     </div>
   )
@@ -169,30 +192,21 @@ function TitleBarTools({ menu, setMenu }: MenuProps) {
   )
 }
 
-/** TitleBarTools in a pane header, in the header's own button style. */
-function PaneTools({ menu, setMenu }: MenuProps) {
+/** The Tasks toggle in the header bar, pressed while the panel is open (F9). */
+function PaneTasksToggle() {
   const { t } = useTranslation()
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
+  if (!tasksEnabled) return null
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      {tasksEnabled && (
-        // Hidden with the panel itself, which doesn't fit below 900px.
-        <IconButton
-          icon={HeaderTasksIcon}
-          label={t('tasks.title')}
-          active={tasksPanelOpen}
-          aria-pressed={tasksPanelOpen}
-          className="max-[900px]:hidden"
-          onClick={toggleTasksPanel}
-        />
-      )}
-      <IconButton
-        icon={HeaderMenuIcon}
-        label={t('common.more')}
-        active={!!menu}
-        onClick={(event) => openUnder(event, setMenu)}
-      />
-    </div>
+    // Hidden with the panel itself, which doesn't fit below 900px.
+    <IconButton
+      icon={HeaderTasksIcon}
+      label={t('tasks.title')}
+      active={tasksPanelOpen}
+      aria-pressed={tasksPanelOpen}
+      className="max-[900px]:hidden"
+      onClick={toggleTasksPanel}
+    />
   )
 }

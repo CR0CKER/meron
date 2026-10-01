@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { act, cleanup, render } from '@testing-library/react'
 import { PANE_ANIMATION_MS } from '../kanban/KanbanConversationPane'
+import { usePresence } from '../../lib/usePresence'
 import { TasksSlide } from './TasksSlide'
 
-const slide = (open: boolean) => (
-  <TasksSlide open={open}>
-    <p>tasks</p>
-  </TasksSlide>
-)
+// As App drives it: the phase comes from usePresence.
+function Harness({ open }: { open: boolean }) {
+  return (
+    <TasksSlide phase={usePresence(open, PANE_ANIMATION_MS)}>
+      <p>tasks</p>
+    </TasksSlide>
+  )
+}
+
+const slide = (open: boolean) => <Harness open={open} />
 
 const originalMatchMedia = (globalThis as any).matchMedia
 let reducedMotion = false
@@ -46,6 +52,11 @@ describe('TasksSlide', () => {
     })
     expect(root(view)?.dataset.panePhase).toBe('open')
     expect(root(view)?.className).not.toContain('animate-pane')
+  })
+
+  it('stays pinned to the window edge, so the title bar group on it holds still', () => {
+    const view = render(slide(true))
+    expect(root(view)?.className).toContain('justify-end')
   })
 
   it('keeps the list on screen while it slides out, then unmounts', () => {

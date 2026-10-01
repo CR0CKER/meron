@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { windowChrome$ } from '../../lib/windowChrome'
 import { settings$ } from '../../states/settings'
-import { TitleBar, TitlebarEnd, TitlebarStrip } from './TitleBar'
+import { ui$ } from '../../states/ui'
+import { TitleBar, TitlebarEnd, TitlebarMenu, TitlebarStrip } from './TitleBar'
 import { TitlebarSlotsProvider, WindowControls, type TitlebarSlots } from './WindowControls'
 
 const original = (window as any).go
@@ -149,23 +150,30 @@ describe('TitleBar (the strip, Windows)', () => {
   })
 })
 
-describe('TitlebarEnd (the pane header at the right window edge, Linux)', () => {
-  it('puts Tasks and quick settings before the window controls, set apart by a divider', () => {
+describe('TitlebarEnd (the header bar at the right window edge, Linux)', () => {
+  it('puts the Tasks toggle before the window controls, set apart by a divider', () => {
     const { container } = inRow(<TitlebarEnd />)
-    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More', 'Minimize', 'Maximize', 'Close'])
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'Minimize', 'Maximize', 'Close'])
     expect(container.querySelector('.window-controls')?.previousElementSibling?.className).toContain('w-px')
   })
 
-  it('opens quick settings from its menu button', () => {
+  it('shows the Tasks toggle pressed while the panel is open', () => {
+    act(() => ui$.tasksPanelOpen.set(true))
     inRow(<TitlebarEnd />)
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
-    expect(screen.getByRole('button', { name: /Settings/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-pressed')).toBe('true')
+    act(() => ui$.tasksPanelOpen.set(false))
+  })
+
+  it('leaves the Tasks toggle out when Tasks is turned off', () => {
+    settings$.tasksEnabled.set(false)
+    inRow(<TitlebarEnd />)
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Minimize', 'Maximize', 'Close'])
   })
 
   it('has no divider when the window buttons are on the other side', () => {
     windowChrome$.layout.set({ start: ['close'], end: [] })
     const { container } = inRow(<TitlebarEnd />)
-    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More'])
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks'])
     expect(container.querySelector('.w-px')).toBeNull()
   })
 
@@ -187,11 +195,30 @@ describe('TitlebarEnd (the pane header at the right window edge, Linux)', () => 
   })
 })
 
+describe('TitlebarMenu (the primary menu above the list, Linux)', () => {
+  it('opens quick settings from the pane at the left window edge', () => {
+    inRow(<TitlebarMenu />, { start: true, end: false })
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: /Settings/ })).toBeTruthy()
+  })
+
+  it("draws nothing in a pane that isn't at the left window edge", () => {
+    inRow(<TitlebarMenu />, { start: false, end: true })
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('draws nothing with the system title bar, where the side navigation holds it', () => {
+    windowChrome$.integrated.set(false)
+    inRow(<TitlebarMenu />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+})
+
 describe('TitlebarStrip (a pane without a header, Linux)', () => {
-  it('is a pane drag region holding the app buttons and the window controls', () => {
+  it('is a pane drag region holding the primary menu, the Tasks toggle and the window controls', () => {
     const { container } = inRow(<TitlebarStrip />)
     expect(container.querySelector('[data-titlebar="pane"]')).not.toBeNull()
-    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More', 'Minimize', 'Maximize', 'Close'])
+    expect(labels(screen.getAllByRole('button'))).toEqual(['More', 'Tasks', 'Minimize', 'Maximize', 'Close'])
   })
 
   it('leaves the app buttons out on the setup screen', () => {

@@ -37,6 +37,7 @@ export type ShortcutId =
   | 'thread.delete'
   | 'thread.details'
   | 'reply.focus'
+  | 'tasks.toggle'
   | 'app.quit'
   | RailShortcutId
 
@@ -100,6 +101,8 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, Chord> = {
   'thread.unread': { key: 'u' },
   'thread.delete': { shift: true, key: '#' },
   'thread.details': { key: 'i' },
+  // GNOME's key for showing and hiding a side pane (HIG, Standard Keyboard Shortcuts).
+  'tasks.toggle': { key: 'F9' },
   'reply.focus': { key: 'r' },
 }
 
@@ -215,6 +218,7 @@ export const SHORTCUT_LABELS: Record<ShortcutId, string> = {
   'thread.unread': 'Mark unread',
   'thread.delete': 'Delete thread',
   'thread.details': 'Toggle details sidebar',
+  'tasks.toggle': 'Toggle Tasks panel',
   'app.quit': 'Quit Meron',
 }
 
@@ -243,7 +247,7 @@ export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
     title: 'Mail',
     ids: ['compose.new', 'reply.focus', 'compose.replyFull', 'mail.sync', 'search.thread', 'search.global'],
   },
-  { title: 'View', ids: ['view.toggle', 'tab.close'] },
+  { title: 'View', ids: ['view.toggle', 'tasks.toggle', 'tab.close'] },
   // Every rail slot gets a row, so all nine are visible and rebindable.
   { title: 'Side navigation', ids: [...RAIL_SHORTCUT_IDS] },
 ]

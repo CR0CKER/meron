@@ -13,7 +13,6 @@ import { ui$ } from '../../states/ui'
 import {
   addTask,
   clearCompletedTasks,
-  closeTasksPanel,
   createTaskList,
   deleteTask,
   deleteTaskList,
@@ -27,7 +26,7 @@ import {
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
 import { TitlebarEnd } from '../titlebar/TitleBar'
-import { HeaderCloseSidePaneIcon, HeaderMoreIcon } from '../titlebar/headerIcons'
+import { usePaneTitlebar } from '../titlebar/titlebarMode'
 
 /**
  * Fixed, like the panel it is modelled on. The thread list and conversation
@@ -44,7 +43,7 @@ type MenuAnchor = { x: number; y: number }
  * the thread list it came from, and a task naming a message opens that message
  * in the conversation pane already on screen.
  */
-export function TasksPanel({ listId }: { listId: string }) {
+export function TasksPanel({ listId, headerTone = 'chat' }: { listId: string; headerTone?: 'chat' | 'board' }) {
   const { t } = useTranslation()
   const lists = useValue(tasks$.lists)
   const items = useValue(tasks$.items)
@@ -53,12 +52,11 @@ export function TasksPanel({ listId }: { listId: string }) {
   const [renaming, setRenaming] = useState(false)
   const [listName, setListName] = useState('')
   const [listMenu, setListMenu] = useState<MenuAnchor | null>(null)
-  const [actionsMenu, setActionsMenu] = useState<MenuAnchor | null>(null)
   // Collapsed by default, as in Google Tasks: done work is there to be found,
   // not to crowd the open tasks.
   const [completedOpen, setCompletedOpen] = useState(false)
   const listButtonRef = useRef<HTMLButtonElement | null>(null)
-  const actionsButtonRef = useRef<HTMLButtonElement | null>(null)
+  const panes = usePaneTitlebar()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const activeList = lists.find((list) => list.id === listId)
@@ -91,11 +89,22 @@ export function TasksPanel({ listId }: { listId: string }) {
       className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-chats max-[900px]:hidden"
       style={{ width: TASKS_PANEL_WIDTH }}
     >
-      <header data-titlebar="pane" className="flex h-16 shrink-0 items-center gap-1 border-b border-border px-1.5">
-        {/* At the panel's start and as a panel icon, not an ✕: with the
-          integrated title bar the window's own close button sits at the end
-          of this header (TitlebarEnd). */}
-        <IconButton label={t('buttons.close')} icon={HeaderCloseSidePaneIcon} size="sm" onClick={closeTasksPanel} />
+      {/* A utility pane (GNOME HIG): it doesn't cut into the header bar.
+        With the integrated title bar (Linux) its top row continues the
+        neighbouring header, without a border between them, and only holds
+        the window-edge group (TitlebarEnd). The header bar's Tasks toggle
+        closes it, so it has no close button of its own. */}
+      {panes && (
+        <div
+          data-titlebar="pane"
+          className={`-ml-px flex h-16 shrink-0 items-center justify-end border-b border-border/60 px-2 ${
+            headerTone === 'board' ? 'bg-header/70' : 'bg-chat'
+          }`}
+        >
+          <TitlebarEnd />
+        </div>
+      )}
+      <div className={`flex shrink-0 items-center gap-1 border-b border-border px-1.5 ${panes ? 'h-11' : 'h-16'}`}>
         {renaming ? (
           <RenameField
             value={listName}
@@ -109,30 +118,20 @@ export function TasksPanel({ listId }: { listId: string }) {
             commitLabel={t('tasks.renameList')}
           />
         ) : (
-          <>
-            <button
-              ref={listButtonRef}
-              type="button"
-              onClick={() => setListMenu(anchorUnder(listButtonRef.current))}
-              className="group flex min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 py-1 text-left hover:bg-hover"
-              title={activeList?.title ?? t('tasks.title')}
-            >
-              <span className="truncate text-sm font-semibold text-primary">
-                {activeList?.title ?? t('tasks.title')}
-              </span>
-              <ChevronDown size={14} className="shrink-0 text-secondary" />
-            </button>
-            <IconButton
-              ref={actionsButtonRef}
-              label={t('chat.moreActions')}
-              icon={HeaderMoreIcon}
-              size="sm"
-              onClick={() => setActionsMenu(anchorUnder(actionsButtonRef.current))}
-            />
-          </>
+          // The list switcher also holds the list's actions, so the panel
+          // needs no ⋯ menu of its own.
+          <button
+            ref={listButtonRef}
+            type="button"
+            onClick={() => setListMenu(anchorUnder(listButtonRef.current))}
+            className="group flex min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 py-1 text-left hover:bg-hover"
+            title={activeList?.title ?? t('tasks.title')}
+          >
+            <span className="truncate text-sm font-semibold text-primary">{activeList?.title ?? t('tasks.title')}</span>
+            <ChevronDown size={14} className="shrink-0 text-secondary" />
+          </button>
         )}
-        <TitlebarEnd />
-      </header>
+      </div>
 
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Plus size={15} className="shrink-0 text-secondary" />
@@ -252,22 +251,11 @@ export function TasksPanel({ listId }: { listId: string }) {
               void createTaskList(t('tasks.newList'))
             }}
           />
-        </FloatingContextMenu>
-      ) : null}
-
-      {actionsMenu ? (
-        <FloatingContextMenu
-          x={actionsMenu.x}
-          y={actionsMenu.y}
-          onClose={() => setActionsMenu(null)}
-          overlay
-          className="fixed z-50 min-w-[200px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
-        >
           <MenuItem
             icon={<Pencil size={13} className="text-secondary" />}
             label={t('tasks.renameList')}
             onClick={() => {
-              setActionsMenu(null)
+              setListMenu(null)
               setListName(activeList?.title ?? '')
               setRenaming(true)
             }}
@@ -277,7 +265,7 @@ export function TasksPanel({ listId }: { listId: string }) {
               icon={<Trash2 size={13} className="text-secondary" />}
               label={t('tasks.clearCompleted')}
               onClick={() => {
-                setActionsMenu(null)
+                setListMenu(null)
                 void clearCompletedTasks()
               }}
             />
@@ -288,7 +276,7 @@ export function TasksPanel({ listId }: { listId: string }) {
             icon={<Trash2 size={13} />}
             label={t('tasks.deleteList')}
             onClick={() => {
-              setActionsMenu(null)
+              setListMenu(null)
               void deleteTaskList(listId)
             }}
           />

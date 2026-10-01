@@ -192,3 +192,10 @@ describe('SHORTCUT_GROUPS', () => {
     expect([...listed].sort()).toEqual([...expected].sort())
   })
 })
+
+describe('the Tasks panel shortcut', () => {
+  it("is F9, GNOME's key for showing and hiding a side pane", () => {
+    expect(matchShortcut(keydown('F9'))).toBe('tasks.toggle')
+    expect(SHORTCUT_GROUPS.find((group) => group.title === 'View')?.ids).toContain('tasks.toggle')
+  })
+})

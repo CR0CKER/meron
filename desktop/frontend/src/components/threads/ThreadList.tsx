@@ -48,7 +48,7 @@ import { ThreadContextMenu, useThreadContextMenu } from './ThreadContextMenu'
 import { ThreadListItem } from './ThreadListItem'
 import { BulkActionBar } from './BulkActionBar'
 import { WindowControls } from '../titlebar/WindowControls'
-import { TitlebarEnd, useTitlebarTools } from '../titlebar/TitleBar'
+import { TitlebarEnd, TitlebarMenu, useTitlebarTools } from '../titlebar/TitleBar'
 import { HeaderAddIcon, HeaderComposeIcon, HeaderMoreIcon } from '../titlebar/headerIcons'
 
 type ThreadListProps = {
@@ -424,6 +424,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
               </>
             )}
           </div>
+          <TitlebarMenu />
           <TitlebarEnd />
         </div>
       )}

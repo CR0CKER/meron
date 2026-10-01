@@ -12,7 +12,8 @@ import { useAppEffects } from './useAppEffects'
 import { SideNav } from './components/sidenav/SideNav'
 import { ThreadList } from './components/threads/ThreadList'
 import { KanbanView } from './components/kanban/KanbanView'
-import { KanbanConversationPane } from './components/kanban/KanbanConversationPane'
+import { KanbanConversationPane, PANE_ANIMATION_MS } from './components/kanban/KanbanConversationPane'
+import { usePresence } from './lib/usePresence'
 import { TasksPanel } from './components/tasks/TasksPanel'
 import { TasksSlide } from './components/tasks/TasksSlide'
 import { MessagePane } from './components/chat/MessagePane'
@@ -63,6 +64,8 @@ export default function App() {
 
   const showKanbanMessagePane = !!kanbanPaneThreadId || composeTabs.some((tab) => tab.id === activeComposeTab)
   const showTasksPanel = tasksPanelOpen && !!activeTaskList
+  // The panel keeps the window controls until it has slid out (TasksSlide).
+  const tasksPhase = usePresence(showTasksPanel, PANE_ANIMATION_MS)
   // With the integrated title bar on Linux, the pane headers are the title bar
   // (GNOME's header bars) and host the window controls at the window edges; on
   // Windows and macOS TitleBar draws a strip instead and no pane hosts anything.
@@ -74,7 +77,7 @@ export default function App() {
     ? paneTitlebarSlots({
         kanban: !!activeBoardId,
         kanbanPaneOpen: showKanbanMessagePane,
-        tasksOpen: showTasksPanel,
+        tasksOpen: tasksPhase !== 'closed',
         tasksFit,
         split,
         mobilePane,
@@ -137,11 +140,14 @@ export default function App() {
 
         {/* Tasks is a panel, not a view: it sits to the right of whatever is
           open so a list can be worked against the thread list beside it. */}
-        <TasksSlide open={showTasksPanel}>
+        <TasksSlide phase={tasksPhase}>
           {activeTaskList ? (
             <ErrorBoundary label="tasks">
               <TitlebarSlotsProvider value={slots.tasks}>
-                <TasksPanel listId={activeTaskList} />
+                <TasksPanel
+                  listId={activeTaskList}
+                  headerTone={activeBoardId && !showKanbanMessagePane ? 'board' : 'chat'}
+                />
               </TitlebarSlotsProvider>
             </ErrorBoundary>
           ) : null}

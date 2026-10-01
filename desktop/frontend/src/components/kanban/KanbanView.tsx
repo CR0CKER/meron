@@ -35,7 +35,7 @@ import { isRSSAccount, loadKanbanColumn, resolveKanbanMove, useFoldersByAccount 
 import { wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
 import { WindowControls } from '../titlebar/WindowControls'
-import { TitlebarEnd } from '../titlebar/TitleBar'
+import { TitlebarEnd, TitlebarMenu } from '../titlebar/TitleBar'
 import { HeaderComposeIcon, HeaderSearchIcon } from '../titlebar/headerIcons'
 
 export function KanbanView({ boardId }: { boardId: string }) {
@@ -302,6 +302,7 @@ export function KanbanView({ boardId }: { boardId: string }) {
           onAttachmentsOnlyChange={setGlobalKanbanAttachmentsOnly}
           onAddColumn={openDialog}
         />
+        <TitlebarMenu />
         <TitlebarEnd />
       </div>
       {dialogOpen && (

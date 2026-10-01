@@ -34,11 +34,11 @@ import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
-import { TitlebarEnd } from '../titlebar/TitleBar'
+import { TitlebarEnd, TitlebarMenu } from '../titlebar/TitleBar'
 import { WindowControls } from '../titlebar/WindowControls'
 import {
   HeaderBackIcon,
-  HeaderCloseSidePaneIcon,
+  HeaderCollapsePaneIcon,
   HeaderMoreIcon,
   HeaderSearchIcon,
   HeaderSidePaneIcon,
@@ -146,8 +146,8 @@ export function ConversationHeader({
           <HeaderBackIcon size={20} />
         </button>
 
-        {/* A side pane closes with a panel icon, never an ✕, which only ever
-          means the window's close button (TitlebarEnd). */}
+        {/* Collapses the pane back into the board. An arrow, not an ✕, which
+          only ever means the window's close button (TitlebarEnd). */}
         {inKanban && !tabOwnsPane && (
           <button
             className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-hover text-secondary cursor-pointer max-[768px]:hidden"
@@ -155,7 +155,7 @@ export function ConversationHeader({
             title={t('chat.closeConversationEsc')}
             aria-label={t('chat.closeConversationEsc')}
           >
-            <HeaderCloseSidePaneIcon size={18} />
+            <HeaderCollapsePaneIcon size={18} />
           </button>
         )}
 
@@ -356,6 +356,8 @@ export function ConversationHeader({
             )}
           </div>
         </div>
+        {/* Only on a narrow window, where this is the one pane. */}
+        <TitlebarMenu />
         <TitlebarEnd />
       </header>
       {senderMenu && !isRSS && (

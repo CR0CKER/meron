@@ -32,6 +32,7 @@ import { archiveThread, deleteThread, bulkArchiveSelected, bulkDeleteSelected } 
 import { openComposeTab, openReplyInFullEditor, closeMessageTab } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
 import { handleEditUndoKeyDown } from '../../lib/editUndo'
+import { toggleTasksPanel } from '../../states/tasks'
 import {
   isBareKeystroke,
   isMac,
@@ -237,7 +238,8 @@ export function AppHotkeys() {
 
       // Gate single-key shortcuts: never steal a keystroke from a text field,
       // and only act in the chat view with no modal open.
-      if (isBareKeystroke(event)) {
+      // Function keys type nothing, so they work while typing too.
+      if (isBareKeystroke(event) && !/^F\d{1,2}$/.test(event.key)) {
         if (isTyping(event.target) || !bareShortcutsActive()) return
       }
 
@@ -352,6 +354,11 @@ export function AppHotkeys() {
           if (!selected()) return
           event.preventDefault()
           void deleteThread(selected())
+          break
+        case 'tasks.toggle':
+          if (!settings$.tasksEnabled.peek() || modalOpen()) return
+          event.preventDefault()
+          toggleTasksPanel()
           break
         case 'thread.details':
           if (!threadSearchVisible()) return

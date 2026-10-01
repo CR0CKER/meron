@@ -23,7 +23,7 @@ import { TitlebarEnd } from '../titlebar/TitleBar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { fileIconFor, formatFileSize } from './messageHelpers'
-import { HeaderCloseSidePaneIcon } from '../titlebar/headerIcons'
+import { usePaneTitlebar } from '../titlebar/titlebarMode'
 
 export type ConversationMediaItem = {
   type: 'image' | 'video'
@@ -88,6 +88,7 @@ export function ConversationDetailsPanel({
 }: ConversationDetailsPanelProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<View>('overview')
+  const panes = usePaneTitlebar()
   const [personMenu, setPersonMenu] = useState<{ x: number; y: number; person: Participant } | null>(null)
 
   useEffect(() => {
@@ -110,21 +111,27 @@ export function ConversationDetailsPanel({
           animate-slide-in-right
         "
       >
-        {/* Header. The close is a panel icon at the start, not an ✕ at the end:
-          with the integrated title bar the window controls end this row
-          (TitlebarEnd). */}
-        {view === 'overview' ? (
-          <div data-titlebar="pane" className="flex h-16 shrink-0 items-center gap-1 border-b border-border px-2">
-            <IconButton icon={HeaderCloseSidePaneIcon} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
-            <div className="flex-1" />
-            <TitlebarEnd />
-          </div>
-        ) : (
+        {/* A utility pane (GNOME HIG): it doesn't cut into the header bar.
+          With the integrated title bar (Linux) its top row continues the
+          conversation header and holds only the window-edge group when the
+          panel is at the window edge. The header bar's details toggle, Esc
+          and (as an overlay) the backdrop close it. */}
+        {panes && (
           <div
             data-titlebar="pane"
-            className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border px-2 py-3"
+            className="flex h-16 shrink-0 items-center justify-end border-b border-border/60 bg-chat px-2"
           >
-            <IconButton icon={HeaderCloseSidePaneIcon} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+            <TitlebarEnd />
+          </div>
+        )}
+        {view !== 'overview' && (
+          <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-2 py-2">
+            <IconButton
+              icon={ChevronLeft}
+              iconSize={18}
+              label={t('buttons.back')}
+              onClick={() => setView('overview')}
+            />
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-bold text-primary">
                 {view === 'media' ? t('chat.media') : t('chat.files')}
@@ -137,15 +144,6 @@ export function ConversationDetailsPanel({
                   {scopeSubtitle}
                 </p>
               )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <IconButton
-                icon={ChevronLeft}
-                iconSize={18}
-                label={t('buttons.back')}
-                onClick={() => setView('overview')}
-              />
-              <TitlebarEnd />
             </div>
           </div>
         )}

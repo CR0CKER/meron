@@ -1,10 +1,10 @@
 import type { CSSProperties, ReactElement } from 'react'
 import {
   ChevronLeft,
+  ChevronRight,
   Menu,
   MoreHorizontal,
   PanelRight,
-  PanelRightClose,
   Plus,
   Search,
   SquareCheckBig,
@@ -46,4 +46,5 @@ export const HeaderBackIcon = headerIcon('go-previous-symbolic', ChevronLeft)
 export const HeaderComposeIcon = headerIcon('mail-message-new-symbolic', SquarePen)
 // GNOME uses one sidebar icon to show and to hide a side pane.
 export const HeaderSidePaneIcon = headerIcon('sidebar-show-right-symbolic', PanelRight)
-export const HeaderCloseSidePaneIcon = headerIcon('sidebar-show-right-symbolic', PanelRightClose)
+// Collapses the board's conversation pane back into the board.
+export const HeaderCollapsePaneIcon = headerIcon('pan-end-symbolic', ChevronRight)
