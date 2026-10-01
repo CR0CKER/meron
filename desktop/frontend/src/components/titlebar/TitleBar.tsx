@@ -87,12 +87,21 @@ function EdgeGroupButtons() {
 export function TitlebarEnd() {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
-  if (!panes || (!slots.end && !slots.reserve)) return null
+  const room = slots.end || !!slots.reserve
+  if (!panes || (!room && !slots.fold)) return null
   // .titlebar-end: index.css gives every header that holds it the same inset
   // from the window edge, which WindowEdgeGroup matches.
-  return (
+  const copy = (
     <div className="titlebar-end flex shrink-0 items-center" aria-hidden style={{ visibility: 'hidden' }}>
       <EdgeGroupButtons />
+    </div>
+  )
+  if (!slots.fold) return copy
+  // Folds open and shut with the pane sliding in to its right (index.css,
+  // .titlebar-fold, timed like the pane), so the buttons before it glide.
+  return (
+    <div className="titlebar-fold" style={{ maxWidth: room ? '240px' : '0px' }}>
+      {copy}
     </div>
   )
 }

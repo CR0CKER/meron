@@ -79,14 +79,14 @@ describe('paneTitlebarSlots', () => {
     expect(open.tasks.end).toBe(true)
     expect(paneTitlebarSlots(wide).conversation).toEqual({ start: false, end: true, reserve: false })
     const board = paneTitlebarSlots({ ...wide, kanban: true, tasksOpen: true })
-    expect(board.list).toEqual({ start: true, end: false, reserve: true })
+    expect(board.list).toEqual({ start: true, end: false, reserve: true, fold: true })
   })
 
-  it("keeps the room in the board's header while a card's conversation is open", () => {
+  it("folds the room in the board's header with the conversation pane instead of keeping a gap", () => {
     const reading = paneTitlebarSlots({ ...wide, kanban: true, kanbanPaneOpen: true })
-    expect(reading.list).toEqual({ start: true, end: false, reserve: true })
+    expect(reading.list).toEqual({ start: true, end: false, reserve: false, fold: true })
     expect(reading.conversation.end).toBe(true)
-    // The thread list never holds the end beside a conversation, so it needs none.
-    expect(paneTitlebarSlots(wide).list).toEqual({ start: true, end: false, reserve: false })
+    // The thread list never holds the end beside a conversation, so it needs neither.
+    expect(paneTitlebarSlots(wide).list).toEqual({ start: true, end: false, reserve: false, fold: false })
   })
 })

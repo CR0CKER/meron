@@ -206,6 +206,19 @@ describe('TitlebarEnd (room for the corner group in a header, Linux)', () => {
     expect(container.querySelector('.titlebar-end')).not.toBeNull()
   })
 
+  it('folds the room shut, rather than dropping it, where it folds with a pane', () => {
+    const { container, rerender } = inRow(<TitlebarEnd />, { start: true, end: false, fold: true })
+    const fold = () => container.querySelector<HTMLElement>('.titlebar-fold')!
+    expect(fold().style.maxWidth).toBe('0px')
+    expect(fold().querySelector('.titlebar-end')).not.toBeNull()
+    rerender(
+      <TitlebarSlotsProvider value={{ start: true, end: true, fold: true }}>
+        <TitlebarEnd />
+      </TitlebarSlotsProvider>,
+    )
+    expect(fold().style.maxWidth).toBe('240px')
+  })
+
   it("takes no room in a pane that isn't at the right window edge", () => {
     const { container } = inRow(<TitlebarEnd />, { start: true, end: false })
     expect(container.querySelector('.titlebar-end')).toBeNull()

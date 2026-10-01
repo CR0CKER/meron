@@ -371,7 +371,7 @@ html.titlebar-integrated
 /* The header at the right window edge keeps room for the window's corner
    group (TitlebarEnd), drawn over it once (WindowEdgeGroup, pr-2). Whichever
    pane that is, the room sits the same 8px from the window edge. */
-html.titlebar-integrated [data-titlebar='pane']:has(> .titlebar-end) {
+html.titlebar-integrated [data-titlebar='pane']:has(> .titlebar-end, > .titlebar-fold) {
   padding-right: 8px;
 }
 
@@ -938,6 +938,18 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* The room a header keeps for the window's corner group, folding in and out
+   with the board's conversation pane (TitlebarEnd): same duration and easing,
+   so the board's buttons move with the pane. Wider than the group when open,
+   so the group's own width shows. */
+.titlebar-fold {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+  transition: max-width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* The kanban conversation pane and the Tasks panel grow from / collapse to
    zero width; their content keeps the final width meanwhile
    (KanbanConversationPane, TasksSlide). Each keyframe names one end only, so
@@ -968,6 +980,10 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   .animate-pane-open,
   .animate-pane-close {
     animation: none;
+  }
+
+  .titlebar-fold {
+    transition: none;
   }
 }
 

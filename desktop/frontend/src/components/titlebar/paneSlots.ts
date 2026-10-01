@@ -26,11 +26,12 @@ const NONE: TitlebarSlots = { start: false, end: false }
  * one. Panes that CSS hides at the current width never get a slot, so the
  * controls can't vanish with them.
  *
- * `reserve` keeps the room for the window's corner group (TitlebarEnd) in a
- * header that holds the end once a pane to its right closes: the header
- * left of the Tasks panel, and the board's header whenever the board is open,
- * since its conversation pane comes and goes with every card. Its own buttons
- * then don't jump when that pane opens or closes.
+ * `reserve` keeps the room for the window's corner group (TitlebarEnd) in the
+ * header left of the Tasks panel, which holds the end once the panel closes,
+ * so its own buttons don't jump when the panel opens or closes. `fold` makes
+ * the room fold in and out with the board's conversation pane instead, which
+ * comes and goes with every card: no gap while a card is open, and the
+ * board's buttons move with the pane rather than jumping.
  */
 export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
   const { kanban, kanbanPaneOpen, tasksOpen, tasksFit, split, mobilePane } = layout
@@ -56,7 +57,7 @@ export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
 
   const conversationShown = !kanban || kanbanPaneOpen
   return {
-    list: { start: true, end: !conversationShown && !tasks, reserve: kanban && (conversationShown || tasks) },
+    list: { start: true, end: !conversationShown && !tasks, reserve: !conversationShown && tasks, fold: kanban },
     conversation: { start: false, end: conversationShown && !tasks, reserve: conversationShown && tasks },
     tasks: { start: false, end: tasks },
   }
