@@ -100,7 +100,7 @@ pub(crate) async fn idle_watch(engine: Arc<Engine>, out: Writer, account: String
             // skips the backoff: pause exits at the top, resume reconnects now.
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_secs(15)) => {}
-                _ = engine.pause_signal.notified() => {}
+                _ = wait_for_watch_stop(&engine, &account, &key) => {}
             }
         }
     }
@@ -110,6 +110,78 @@ pub(crate) async fn idle_watch(engine: Arc<Engine>, out: Writer, account: String
         json!({ "account": account, "folder": folder }),
     )
     .await;
+}
+
+async fn wait_for_watch_stop(engine: &Engine, account: &str, key: &str) {
+    loop {
+        let notified = engine.pause_signal.notified();
+        tokio::pin!(notified);
+        // Register before checking persistent state so notify_waiters cannot
+        // fall between the check and the wait. Stops before registration are
+        // caught by the state check instead.
+        notified.as_mut().enable();
+        if !engine.watched.lock().unwrap().contains(key) || engine.is_paused(account) {
+            return;
+        }
+        notified.await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use meron_core::secrets;
+    use rusqlite::Connection;
+
+    struct TestHost;
+
+    impl EngineHost for TestHost {
+        fn open_db(&self) -> anyhow::Result<Connection> {
+            store::open_at(":memory:")
+        }
+
+        fn apply_secret(&self, _: &Connection, _: &str, _: &mut imap::Creds) {}
+
+        fn store_secret(
+            &self,
+            _: &Connection,
+            _: &str,
+            _: &secrets::Secrets,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_before_wait_registration_is_not_lost() {
+        let engine = Engine::new(Box::new(TestHost)).unwrap();
+        let key = watch_key("bob", "Archive");
+        engine.watched.lock().unwrap().insert(key.clone());
+        let wait = wait_for_watch_stop(&engine, "bob", &key);
+        // Simulate watch.stop during sync, before the cancellation future polls.
+        engine.watched.lock().unwrap().remove(&key);
+        engine.pause_signal.notify_waiters();
+        tokio::time::timeout(Duration::from_secs(1), wait)
+            .await
+            .expect("a stop before registration must still cancel the watch");
+    }
+
+    #[tokio::test]
+    async fn unrelated_stop_keeps_watching_until_own_stop() {
+        let engine = Engine::new(Box::new(TestHost)).unwrap();
+        let key = watch_key("bob", "Archive");
+        engine.watched.lock().unwrap().insert(key.clone());
+        let wait = wait_for_watch_stop(&engine, "bob", &key);
+        tokio::pin!(wait);
+        assert!(futures::poll!(&mut wait).is_pending());
+        engine.pause_signal.notify_waiters();
+        assert!(futures::poll!(&mut wait).is_pending());
+        engine.watched.lock().unwrap().remove(&key);
+        engine.pause_signal.notify_waiters();
+        tokio::time::timeout(Duration::from_secs(1), wait)
+            .await
+            .expect("a registered watcher must wake when stopped");
+    }
 }
 
 /// Sync `folder` and surface the result to the UI: a "new mail" toast when
@@ -163,59 +235,50 @@ pub(crate) async fn idle_once(
     account: &str,
     folder: &str,
 ) -> anyhow::Result<()> {
-    let creds = engine.ensure_valid_creds(account).await?;
-    let mut session = imap::connect(&creds).await?;
-    session
-        .select(folder)
-        .await
-        .with_context(|| format!("SELECT {folder}"))?;
+    let key = watch_key(account, folder);
+    let mut session = tokio::select! {
+        biased;
+        _ = wait_for_watch_stop(engine, account, &key) => return Ok(()),
+        result = async {
+            let creds = engine.ensure_valid_creds(account).await?;
+            let mut session = imap::connect(&creds).await?;
+            session.select(folder).await.with_context(|| format!("SELECT {folder}"))?;
+            Ok::<_, anyhow::Error>(session)
+        } => result?,
+    };
 
     // Catch up before parking in IDLE: the server only pushes notifications for
     // mail that arrives *after* IDLE begins, so anything delivered while we were
     // disconnected (startup, error reconnect, or resume from suspend) would
     // otherwise stay invisible until the next push. Cheap because idle_once is
     // only (re)entered on a fresh connection, not on each 15-min IDLE timeout.
+    // Finish persistence and notification together even if stopped mid-sync:
+    // dropping the future could lose arrivals after UIDNEXT is saved, or leave
+    // an incomplete JSON line on stdout while emit is writing it.
     sync_and_notify(engine, out, account, folder).await?;
 
     loop {
-        let mut handle = session.idle();
-        handle.init().await.context("IDLE init")?;
-        enum Wake<R> {
-            /// The IDLE wait completed: new data, a timeout, or an error.
-            Data(R),
-            /// The account was paused: return so idle_watch sees is_paused.
-            Pause,
-            /// The system resumed from suspend: the socket is probably dead.
-            Resume,
-        }
-        let wake = {
-            let (idle_fut, _stop) = handle.wait_with_timeout(Duration::from_secs(15 * 60));
-            // Cancel the wait early on a pause (so idle_watch shuts the watcher
-            // down) or an OS resume (so we drop a likely-dead socket and
-            // reconnect) instead of blocking up to the IDLE timeout.
-            tokio::select! {
-                r = idle_fut => Wake::Data(r),
-                _ = engine.pause_signal.notified() => Wake::Pause,
-                _ = engine.resume_signal.notified() => Wake::Resume,
-            }
+        // Only cancel socket work. Checking persistent stop state here also
+        // catches stops received during the preceding sync or event write.
+        // Unrelated pause signals leave this connection in IDLE.
+        let (next_session, response) = tokio::select! {
+            biased;
+            _ = wait_for_watch_stop(engine, account, &key) => return Ok(()),
+            // Drop a socket held across suspend without waiting for DONE.
+            _ = engine.resume_signal.notified() => return Ok(()),
+            result = async {
+                let mut handle = session.idle();
+                handle.init().await.context("IDLE init")?;
+                let response = {
+                    let (idle_fut, _stop) = handle.wait_with_timeout(Duration::from_secs(15 * 60));
+                    idle_fut.await.context("IDLE")?
+                };
+                let session = handle.done().await.context("IDLE done")?;
+                Ok::<_, anyhow::Error>((session, response))
+            } => result?,
         };
-
-        // On resume the connection likely died during suspend, and a graceful
-        // DONE could block on it until TCP keepalive times out. Drop the handle
-        // (closing the socket) without DONE; idle_watch reconnects immediately.
-        if let Wake::Resume = wake {
-            drop(handle);
-            return Ok(());
-        }
-
-        session = handle.done().await.context("IDLE done")?;
-        let response = match wake {
-            Wake::Data(r) => r,
-            Wake::Pause => return Ok(()),
-            Wake::Resume => unreachable!("handled above"),
-        };
-
-        if let async_imap::extensions::idle::IdleResponse::NewData(_) = response.context("IDLE")? {
+        session = next_session;
+        if let async_imap::extensions::idle::IdleResponse::NewData(_) = response {
             sync_and_notify(engine, out, account, folder).await?;
         }
     }

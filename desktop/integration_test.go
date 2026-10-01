@@ -1099,6 +1099,25 @@ func TestIntegrationMailFlow(t *testing.T) {
 			t.Fatalf("IDLE push did not land %q in the store: %v", pushedSubject, cached)
 		}
 
+		// Let the initial IDLE responses settle, then stop another folder's
+		// watcher. The original connection must stay parked, rather than doing
+		// another catch-up sync in response to the shared pause signal.
+		otherFolder := "ITestIdleOther"
+		callMap(t, sidecar, "folders.create", map[string]any{"account": "bob", "name": otherFolder})
+		callMap(t, sidecar, "watch.start", map[string]any{"account": "bob", "folder": otherFolder})
+		time.Sleep(time.Second)
+		baseline = synced()
+		if result := callMap(t, sidecar, "watch.stop", map[string]any{"account": "bob", "folder": otherFolder}); !boolValue(result, "stopped") {
+			t.Fatalf("watch.stop did not stop the other watcher: %v", result)
+		}
+		deadline = time.Now().Add(time.Second)
+		for time.Now().Before(deadline) {
+			if synced() != baseline {
+				t.Fatalf("stopping %s restarted the watcher for %s", otherFolder, folder)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+
 		stopped := func() int {
 			return events.count(func(event sidecarEvent) bool {
 				return event.name == "watch.stopped" && str(event.detail, "account") == "bob" &&
