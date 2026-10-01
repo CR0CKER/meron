@@ -101,7 +101,7 @@ private fun MeronMobileState.restoreCachedMailbox(
 
 internal fun MeronMobileState.selectCoreMailbox(
     accountId: String,
-    folderId: String = INBOX_FOLDER,
+    folderId: String = loadMailFolderForAccount(prefs, accountId),
 ) {
     cacheVisibleMailbox()
     selectedCoreAccountId = accountId.ifBlank { UNIFIED_ACCOUNT_ID }
@@ -325,7 +325,13 @@ internal fun MeronMobileState.syncCoreThreads(
                             pageDepth = listLimit,
                         )
                 )
-            if (activeMailboxLoadToken != requestToken) {
+            if (activeMailboxLoadToken != requestToken || accountId != selectedCoreAccountId) {
+                // A selection change without a replacement load still owns the
+                // loading flags. An older request must leave a newer load alone.
+                if (activeMailboxLoadToken == requestToken) {
+                    finishMailboxLoad()
+                    deferredMailboxReload = null
+                }
                 Log.w("MailLoad", "sync ignored stale result account=$accountId folder=${result.folder} threads=${result.threads.size}")
                 return@onSuccess
             }
@@ -337,6 +343,7 @@ internal fun MeronMobileState.syncCoreThreads(
             }
             val folder = result.folder
             selectedCoreFolder = folder
+            saveLastMailLocation(prefs, accountId, folder)
             val parsedThreads = withLocalDraftFlags(withoutLocallyDiscardedThreads(result.threads))
             coreThreads = parsedThreads
             visibleMailboxKey = resultKey
@@ -351,12 +358,7 @@ internal fun MeronMobileState.syncCoreThreads(
             // — background syncs run continuously — and left the thread screen
             // with no summary and no messages, spinning forever. Selections
             // that really go away are cleared by the move/archive paths.
-            activeMailboxLoadKey = null
-            activeMailboxLoadStartedAtMillis = 0L
-            blockingMailboxLoadWarned = false
-            blockingMailboxLoadSlow = false
-            syncing = false
-            initialThreadsLoaded = true
+            finishMailboxLoad()
             errorBanner = null
             syncError = null
             if (scrollToTopOnSuccess) {
@@ -397,16 +399,15 @@ internal fun MeronMobileState.syncCoreThreads(
                 deepenMailboxSync(accountId, folder, selectedAccounts)
             }
         }.onFailure {
-            if (activeMailboxLoadToken != requestToken) {
+            if (activeMailboxLoadToken != requestToken || accountId != selectedCoreAccountId) {
+                if (activeMailboxLoadToken == requestToken) {
+                    finishMailboxLoad()
+                    deferredMailboxReload = null
+                }
                 Log.w("MailLoad", "sync ignored stale failure account=$accountId", it)
                 return@onFailure
             }
-            activeMailboxLoadKey = null
-            activeMailboxLoadStartedAtMillis = 0L
-            blockingMailboxLoadWarned = false
-            blockingMailboxLoadSlow = false
-            syncing = false
-            initialThreadsLoaded = true
+            finishMailboxLoad()
             runDeferredMailboxReload(requestKey, accountId, requestedFolder)
             val contextual = it as? AccountSyncException
             val failedAccountId =
@@ -419,6 +420,15 @@ internal fun MeronMobileState.syncCoreThreads(
             Log.w("MailLoad", "sync failed account=$accountId folder=$requestedFolder initialThreadsLoaded=$initialThreadsLoaded syncing=$syncing", it)
         }
     }
+}
+
+private fun MeronMobileState.finishMailboxLoad() {
+    activeMailboxLoadKey = null
+    activeMailboxLoadStartedAtMillis = 0L
+    blockingMailboxLoadWarned = false
+    blockingMailboxLoadSlow = false
+    syncing = false
+    initialThreadsLoaded = true
 }
 
 // A reload that stepped aside for the load that just settled was asking about

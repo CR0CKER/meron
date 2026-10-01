@@ -62,8 +62,8 @@ internal fun MeronMobileState.applyAccounts(
     selectedCoreAccountId = preferEmail?.let { wanted -> parsed.firstOrNull { it.email == wanted }?.id }
         ?: selectedCoreAccountId.takeIf { sel -> sel == UNIFIED_ACCOUNT_ID || parsed.any { it.id == sel } }
         ?: UNIFIED_ACCOUNT_ID
-    if (selectedCoreAccountId == UNIFIED_ACCOUNT_ID && previousAccountId != UNIFIED_ACCOUNT_ID) {
-        selectedCoreFolder = INBOX_FOLDER
+    if (selectedCoreAccountId != previousAccountId) {
+        selectedCoreFolder = loadMailFolderForAccount(prefs, selectedCoreAccountId)
     }
     saveLastMailLocation(prefs, selectedCoreAccountId, selectedCoreFolder)
     kanbanBoards = ensureKanbanDefaults(kanbanPrefs, kanbanBoards, parsed)
@@ -971,13 +971,13 @@ internal fun MeronMobileState.removeAccount(account: AccountSummary) {
         }.onSuccess {
             hiddenNavigationAccountIds = hiddenNavigationAccountIds - account.id
             saveAppStringSet(prefs, HIDDEN_NAV_ACCOUNTS_PREF, hiddenNavigationAccountIds)
-            selectedCoreAccountId = UNIFIED_ACCOUNT_ID
-            selectedCoreFolder = INBOX_FOLDER
             selectedCoreThread = null
             messages = emptyList()
             coreThreads = emptyList()
             applyAccounts(it)
+            clearMailFolderForAccount(prefs, account.id)
             status = "Removed account"
+            syncCoreThreads(syncFirst = false, successStatus = "Removed account")
         }.onFailure {
             status = "Remove account failed: ${it.message}"
         }

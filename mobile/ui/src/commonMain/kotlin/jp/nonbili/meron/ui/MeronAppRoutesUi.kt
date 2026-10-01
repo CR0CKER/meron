@@ -129,16 +129,16 @@ internal fun KanbanRouteContent(
                     onSelectUnified = {
                         screen = Screen.Mail
                         if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
-                            selectCoreMailbox(UNIFIED_ACCOUNT_ID, INBOX_FOLDER)
-                            syncCoreThreads(accountOverride = UNIFIED_ACCOUNT_ID, folderOverride = INBOX_FOLDER, syncFirst = false)
+                            selectCoreMailbox(UNIFIED_ACCOUNT_ID)
+                            syncCoreThreads(accountOverride = UNIFIED_ACCOUNT_ID, folderOverride = selectedCoreFolder, syncFirst = false)
                         }
                         scope.launch { drawerState.close() }
                     },
                     onSelectAccount = { account ->
                         screen = Screen.Mail
                         if (selectedCoreAccountId != account.id) {
-                            selectCoreMailbox(account.id, INBOX_FOLDER)
-                            syncCoreThreads(accountOverride = account.id, folderOverride = INBOX_FOLDER, syncFirst = false)
+                            selectCoreMailbox(account.id)
+                            syncCoreThreads(accountOverride = account.id, folderOverride = selectedCoreFolder, syncFirst = false)
                         }
                         scope.launch { drawerState.close() }
                     },
@@ -534,16 +534,16 @@ internal fun MailRouteContent(
                     tasksEnabled = tasksEnabled,
                     onSelectUnified = {
                         if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
-                            selectCoreMailbox(UNIFIED_ACCOUNT_ID, INBOX_FOLDER)
-                            syncCoreThreads(accountOverride = UNIFIED_ACCOUNT_ID, folderOverride = INBOX_FOLDER, syncFirst = false)
+                            selectCoreMailbox(UNIFIED_ACCOUNT_ID)
+                            syncCoreThreads(accountOverride = UNIFIED_ACCOUNT_ID, folderOverride = selectedCoreFolder, syncFirst = false)
                         }
                         screen = Screen.Mail
                         scope.launch { drawerState.close() }
                     },
                     onSelectAccount = { account ->
                         if (selectedCoreAccountId != account.id) {
-                            selectCoreMailbox(account.id, INBOX_FOLDER)
-                            syncCoreThreads(accountOverride = account.id, folderOverride = INBOX_FOLDER, syncFirst = false)
+                            selectCoreMailbox(account.id)
+                            syncCoreThreads(accountOverride = account.id, folderOverride = selectedCoreFolder, syncFirst = false)
                         }
                         screen = Screen.Mail
                         scope.launch { drawerState.close() }

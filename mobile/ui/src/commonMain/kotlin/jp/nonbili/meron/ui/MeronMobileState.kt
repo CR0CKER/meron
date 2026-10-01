@@ -63,6 +63,10 @@ internal class MeronMobileState(
      *  authoritative `settings` table. See MobileSettings.kt. */
     val settingsMirror: SettingsMirror,
 ) {
+    init {
+        migrateLegacyMailFolder(prefs)
+    }
+
     val snackbarHost = SnackbarHostState()
 
     /** Error for actions that need the native core when it failed to load;

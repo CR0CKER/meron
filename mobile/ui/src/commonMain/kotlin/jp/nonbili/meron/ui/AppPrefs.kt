@@ -65,15 +65,48 @@ internal fun saveLastTopScreen(
 
 internal fun loadLastMailAccountId(prefs: AppPreferences): String = prefs.getString(LAST_MAIL_ACCOUNT_PREF, UNIFIED_ACCOUNT_ID).ifBlank { UNIFIED_ACCOUNT_ID }
 
-internal fun loadLastMailFolder(prefs: AppPreferences): String = prefs.getString(LAST_MAIL_FOLDER_PREF, INBOX_FOLDER).ifBlank { INBOX_FOLDER }
+private fun accountMailFolderKey(accountId: String): String = "last_mail_folder_by_account_v1_${accountId.ifBlank { UNIFIED_ACCOUNT_ID }}"
+
+internal fun migrateLegacyMailFolder(prefs: AppPreferences) {
+    val legacyFolder = prefs.getString(LAST_MAIL_FOLDER_PREF, "")
+    if (legacyFolder.isNotBlank()) {
+        val legacyKey = accountMailFolderKey(loadLastMailAccountId(prefs))
+        if (prefs.getString(legacyKey, "").isBlank()) prefs.putString(legacyKey, legacyFolder)
+        prefs.remove(LAST_MAIL_FOLDER_PREF)
+    }
+}
+
+internal fun loadMailFolderForAccount(
+    prefs: AppPreferences,
+    accountId: String,
+): String {
+    val stored = prefs.getString(accountMailFolderKey(accountId), "")
+    if (stored.isNotBlank()) return stored
+    return if (accountId.ifBlank { UNIFIED_ACCOUNT_ID } == loadLastMailAccountId(prefs)) {
+        prefs.getString(LAST_MAIL_FOLDER_PREF, INBOX_FOLDER).ifBlank { INBOX_FOLDER }
+    } else {
+        INBOX_FOLDER
+    }
+}
+
+internal fun loadLastMailFolder(prefs: AppPreferences): String = loadMailFolderForAccount(prefs, loadLastMailAccountId(prefs))
 
 internal fun saveLastMailLocation(
     prefs: AppPreferences,
     accountId: String,
     folder: String,
 ) {
+    migrateLegacyMailFolder(prefs)
+    prefs.putString(accountMailFolderKey(accountId), folder.ifBlank { INBOX_FOLDER })
     prefs.putString(LAST_MAIL_ACCOUNT_PREF, accountId.ifBlank { UNIFIED_ACCOUNT_ID })
-    prefs.putString(LAST_MAIL_FOLDER_PREF, folder.ifBlank { INBOX_FOLDER })
+}
+
+internal fun clearMailFolderForAccount(
+    prefs: AppPreferences,
+    accountId: String,
+) {
+    migrateLegacyMailFolder(prefs)
+    prefs.remove(accountMailFolderKey(accountId))
 }
 
 private fun loadAppTheme(

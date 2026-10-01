@@ -95,10 +95,10 @@ internal fun TasksRouteContent(
                     onSelectUnified = {
                         screen = Screen.Mail
                         if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
-                            selectCoreMailbox(UNIFIED_ACCOUNT_ID, INBOX_FOLDER)
+                            selectCoreMailbox(UNIFIED_ACCOUNT_ID)
                             syncCoreThreads(
                                 accountOverride = UNIFIED_ACCOUNT_ID,
-                                folderOverride = INBOX_FOLDER,
+                                folderOverride = selectedCoreFolder,
                                 syncFirst = false,
                             )
                         }
@@ -107,10 +107,10 @@ internal fun TasksRouteContent(
                     onSelectAccount = { account ->
                         screen = Screen.Mail
                         if (selectedCoreAccountId != account.id) {
-                            selectCoreMailbox(account.id, INBOX_FOLDER)
+                            selectCoreMailbox(account.id)
                             syncCoreThreads(
                                 accountOverride = account.id,
-                                folderOverride = INBOX_FOLDER,
+                                folderOverride = selectedCoreFolder,
                                 syncFirst = false,
                             )
                         }
