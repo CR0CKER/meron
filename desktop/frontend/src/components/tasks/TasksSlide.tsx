@@ -5,10 +5,10 @@ import { TASKS_PANEL_WIDTH } from './TasksPanel'
 // The Tasks panel slides in and out like the board's conversation pane
 // (KanbanConversationPane): the frame grows from or shrinks to zero width
 // while the panel inside keeps its full width, so the list is revealed rather
-// than reflowed every frame. The panel is pinned to the window edge, so the
-// title bar group it hosts there (TitlebarEnd) stays put while it slides.
-// App owns the phase (usePresence), so the window controls stay on the panel
-// until it has gone. The list stays on screen while the panel slides out.
+// than reflowed every frame. The panel is pinned to the window edge, so its
+// header-bar row, under the window's corner group (WindowEdgeGroup), doesn't
+// move. App owns the phase (usePresence), so that row keeps the group's room
+// until the panel has gone. The list stays on screen while it slides out.
 export function TasksSlide({ phase, children }: { phase: PresencePhase; children: ReactNode }) {
   if (phase === 'closed') return null
 

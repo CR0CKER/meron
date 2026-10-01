@@ -28,7 +28,7 @@ import { AppToast } from './components/toast/AppToast'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
-import { TitleBar, TitlebarStrip, usePaneTitlebar } from './components/titlebar/TitleBar'
+import { TitleBar, TitlebarStrip, usePaneTitlebar, WindowEdgeGroup } from './components/titlebar/TitleBar'
 import { TitlebarSlotsProvider } from './components/titlebar/WindowControls'
 import { NO_PANE_SLOTS, paneTitlebarSlots } from './components/titlebar/paneSlots'
 import { useMinWidth } from './lib/useMinWidth'
@@ -104,7 +104,9 @@ export default function App() {
       <TitleBar />
       <ConnectivityBanner />
       <UpdateBanner />
-      <main ref={mainRef} className="flex min-h-0 w-full flex-1 overflow-hidden">
+      <main ref={mainRef} className="relative flex min-h-0 w-full flex-1 overflow-hidden">
+        {/* Over the corner the rightmost header keeps room for (TitlebarEnd). */}
+        <WindowEdgeGroup />
         <ErrorBoundary label="side navigation">
           <SideNav />
         </ErrorBoundary>

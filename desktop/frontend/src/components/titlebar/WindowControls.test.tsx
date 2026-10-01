@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { windowChrome$ } from '../../lib/windowChrome'
 import { settings$ } from '../../states/settings'
 import { ui$ } from '../../states/ui'
-import { TitleBar, TitlebarEnd, TitlebarMenu, TitlebarStrip } from './TitleBar'
+import { TitleBar, TitlebarEnd, TitlebarMenu, TitlebarStrip, WindowEdgeGroup } from './TitleBar'
 import { TitlebarSlotsProvider, WindowControls, type TitlebarSlots } from './WindowControls'
 
 const original = (window as any).go
@@ -150,58 +150,71 @@ describe('TitleBar (the strip, Windows)', () => {
   })
 })
 
-describe('TitlebarEnd (the header bar at the right window edge, Linux)', () => {
+describe('WindowEdgeGroup (the window corner, Linux)', () => {
   it('puts the Tasks toggle before the window controls, set apart by a divider', () => {
-    const { container } = inRow(<TitlebarEnd />)
+    const { container } = render(<WindowEdgeGroup />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'Minimize', 'Maximize', 'Close'])
     expect(container.querySelector('.window-controls')?.previousElementSibling?.className).toContain('w-px')
+    // A drag region of its own, like the header under it.
+    expect(container.querySelector('[data-titlebar="pane"]')).not.toBeNull()
   })
 
   it('shows the Tasks toggle pressed while the panel is open', () => {
     act(() => ui$.tasksPanelOpen.set(true))
-    inRow(<TitlebarEnd />)
+    render(<WindowEdgeGroup />)
     expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-pressed')).toBe('true')
     act(() => ui$.tasksPanelOpen.set(false))
   })
 
   it('leaves the Tasks toggle out when Tasks is turned off', () => {
     settings$.tasksEnabled.set(false)
-    inRow(<TitlebarEnd />)
+    render(<WindowEdgeGroup />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Minimize', 'Maximize', 'Close'])
   })
 
   it('has no divider when the window buttons are on the other side', () => {
     windowChrome$.layout.set({ start: ['close'], end: [] })
-    const { container } = inRow(<TitlebarEnd />)
+    const { container } = render(<WindowEdgeGroup />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks'])
     expect(container.querySelector('.w-px')).toBeNull()
   })
 
-  it('keeps its exact space, invisible and out of reach, where it is only reserved', () => {
-    const { container } = inRow(<TitlebarEnd />, { start: false, end: false, reserve: true })
-    const group = container.querySelector<HTMLElement>('.titlebar-end')!
-    expect(group.style.visibility).toBe('hidden')
-    expect(group.getAttribute('aria-hidden')).toBe('true')
-    // The same buttons as the real group, so the same width.
-    expect(group.querySelectorAll('button')).toHaveLength(4)
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
-  })
-
-  it("draws nothing in a pane that isn't at the right window edge", () => {
-    inRow(<TitlebarEnd />, { start: true, end: false })
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
-  })
-
-  it('draws nothing with the system title bar', () => {
+  it('is not drawn with the system title bar, or on Windows (the strip holds it)', () => {
     windowChrome$.integrated.set(false)
-    inRow(<TitlebarEnd />)
+    const first = render(<WindowEdgeGroup />)
+    expect(first.container.innerHTML).toBe('')
+    first.unmount()
+    windowChrome$.integrated.set(true)
+    windowChrome$.platform.set('windows')
+    expect(render(<WindowEdgeGroup />).container.innerHTML).toBe('')
+  })
+})
+
+describe('TitlebarEnd (room for the corner group in a header, Linux)', () => {
+  it('is an invisible copy of the group, out of reach, in the header at the right window edge', () => {
+    const { container } = inRow(<TitlebarEnd />, { start: false, end: true })
+    const room = container.querySelector<HTMLElement>('.titlebar-end')!
+    expect(room.style.visibility).toBe('hidden')
+    expect(room.getAttribute('aria-hidden')).toBe('true')
+    // The same buttons as the group, so exactly its width.
+    expect(room.querySelectorAll('button')).toHaveLength(4)
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
-  it('draws nothing on Windows, where the strip holds the app buttons', () => {
-    windowChrome$.platform.set('windows')
-    inRow(<TitlebarEnd />)
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  it('keeps the room in the header that gets the corner back when Tasks closes', () => {
+    const { container } = inRow(<TitlebarEnd />, { start: false, end: false, reserve: true })
+    expect(container.querySelector('.titlebar-end')).not.toBeNull()
+  })
+
+  it("takes no room in a pane that isn't at the right window edge", () => {
+    const { container } = inRow(<TitlebarEnd />, { start: true, end: false })
+    expect(container.querySelector('.titlebar-end')).toBeNull()
+  })
+
+  it('takes no room with the system title bar', () => {
+    windowChrome$.integrated.set(false)
+    const { container } = inRow(<TitlebarEnd />)
+    expect(container.querySelector('.titlebar-end')).toBeNull()
   })
 })
 
@@ -225,10 +238,11 @@ describe('TitlebarMenu (the primary menu above the list, Linux)', () => {
 })
 
 describe('TitlebarStrip (a pane without a header, Linux)', () => {
-  it('is a pane drag region holding the primary menu, the Tasks toggle and the window controls', () => {
+  it('is a pane drag region holding the primary menu and room for the corner group', () => {
     const { container } = inRow(<TitlebarStrip />)
     expect(container.querySelector('[data-titlebar="pane"]')).not.toBeNull()
-    expect(labels(screen.getAllByRole('button'))).toEqual(['More', 'Tasks', 'Minimize', 'Maximize', 'Close'])
+    expect(labels(screen.getAllByRole('button'))).toEqual(['More'])
+    expect(container.querySelector('.titlebar-end')).not.toBeNull()
   })
 
   it('leaves the app buttons out on the setup screen', () => {

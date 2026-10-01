@@ -60,35 +60,56 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
   )
 }
 
+/** The window-edge group: the Tasks toggle, then the window controls, set
+ * apart by a divider so the window's close button never reads as a pane's. */
+function EdgeGroupButtons() {
+  const endButtons = useValue(windowChrome$.layout.end)
+  return (
+    <>
+      <PaneTasksToggle />
+      {endButtons.length > 0 && <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
+      {/* The controls check their own slot; both copies of the group draw them. */}
+      <TitlebarSlotsProvider value={END_SLOT}>
+        <WindowControls side="end" />
+      </TitlebarSlotsProvider>
+    </>
+  )
+}
+
 /**
- * The end of the header bar at the right window edge (Linux): the Tasks
- * toggle, then the window controls, set apart by a divider so the window's
- * close button never reads as a pane's. Tasks and the details panel are
- * utility panes that open below the header bar (GNOME HIG), so this group
- * stays in the same place whichever panes are open.
+ * The room for the window-edge group at the end of the header at the right
+ * window edge (Linux), or of the header that gets it back when Tasks or the
+ * details panel closes (`reserve`). It is an invisible copy of the group, so
+ * exactly its width, out of reach and out of the accessibility tree: the
+ * group itself is drawn once over the corner (WindowEdgeGroup), so it never
+ * moves or redraws when panes open, close or slide.
  */
 export function TitlebarEnd() {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
-  const endButtons = useValue(windowChrome$.layout.end)
   if (!panes || (!slots.end && !slots.reserve)) return null
-  // One element, so index.css can give every header that hosts it the same
-  // inset from the window edge (.titlebar-end). Reserved, it is the same group
-  // made invisible: exactly its width, and out of reach and of the a11y tree.
-  const reserved = !slots.end
+  // .titlebar-end: index.css gives every header that holds it the same inset
+  // from the window edge, which WindowEdgeGroup matches.
   return (
-    <div
-      className="titlebar-end flex shrink-0 items-center"
-      aria-hidden={reserved || undefined}
-      style={reserved ? { visibility: 'hidden' } : undefined}
-    >
-      <PaneTasksToggle />
-      {endButtons.length > 0 && <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
-      {/* The controls check their own slot; the reserved copy must draw them
-        too, or it would be narrower than the group it stands in for. */}
-      <TitlebarSlotsProvider value={END_SLOT}>
-        <WindowControls side="end" />
-      </TitlebarSlotsProvider>
+    <div className="titlebar-end flex shrink-0 items-center" aria-hidden style={{ visibility: 'hidden' }}>
+      <EdgeGroupButtons />
+    </div>
+  )
+}
+
+/**
+ * The window-edge group itself (Linux, pane headers as the title bar): drawn
+ * once, over the top-right corner of the panes, where the header at the right
+ * window edge keeps room for it (TitlebarEnd). Tasks and the details panel
+ * are utility panes below the header bar (GNOME HIG), so the group stays put
+ * whichever panes are open, and it is never handed from one pane to another.
+ */
+export function WindowEdgeGroup() {
+  const panes = usePaneTitlebar()
+  if (!panes) return null
+  return (
+    <div data-titlebar="pane" className="titlebar-end absolute right-0 top-0 z-40 flex h-16 items-center pr-2">
+      <EdgeGroupButtons />
     </div>
   )
 }

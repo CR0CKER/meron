@@ -368,9 +368,9 @@ html.titlebar-integrated
   --wails-draggable: no-drag;
 }
 
-/* The header at the right window edge ends with Tasks, quick settings and the
-   window controls (TitlebarEnd). Whichever pane that is, they sit the same
-   distance from the window edge, so they don't shift when a pane opens. */
+/* The header at the right window edge keeps room for the window's corner
+   group (TitlebarEnd), drawn over it once (WindowEdgeGroup, pr-2). Whichever
+   pane that is, the room sits the same 8px from the window edge. */
 html.titlebar-integrated [data-titlebar='pane']:has(> .titlebar-end) {
   padding-right: 8px;
 }
