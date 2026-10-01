@@ -14,7 +14,6 @@ import { ConversationDetailsPanel } from './ConversationDetailsPanel'
 import { EmptyState } from '../empty-state/EmptyState'
 import { QuickReplyComposer } from './QuickReplyComposer'
 import { ConversationTabs } from './ConversationTabs'
-import { TitlebarSlotsProvider, TitlebarStrip, useTitlebarSlots } from '../titlebar/WindowControls'
 import { ReaderTabView } from './ReaderTabView'
 import { ConversationHeader } from './ConversationHeader'
 import { ThreadSearchBarMobile } from './ThreadSearchBarMobile'
@@ -52,10 +51,6 @@ function threadFromTab(tab: MessageTab, fallback: Message | null): Message {
 export function MessagePane() {
   const { t } = useTranslation()
   const messages = useValue(mail$.messages)
-  // The tab strip, when there is one, is this pane's top row; otherwise the
-  // conversation header or the empty state's title bar strip.
-  const titlebarSlots = useTitlebarSlots()
-  const hasTabs = useValue(() => compose$.tabs.get().length > 0)
   const messagesCursor = useValue(mail$.messagesCursor)
   const messagesLoadingMore = useValue(mail$.messagesLoadingMore)
   const threadLoading = useValue(mail$.threadLoading)
@@ -308,15 +303,12 @@ export function MessagePane() {
       {!isRSS && <QuickReplyComposer />}
     </>
   ) : (
-    <>
-      <TitlebarStrip />
-      <div
-        style={conversationWallpaper.style}
-        className={`flex-1 flex items-center justify-center p-6 ${conversationWallpaper.className}`}
-      >
-        <EmptyState title={t('empty.noConversationSelected')} text={t('empty.noConversationSelectedText')} />
-      </div>
-    </>
+    <div
+      style={conversationWallpaper.style}
+      className={`flex-1 flex items-center justify-center p-6 ${conversationWallpaper.className}`}
+    >
+      <EmptyState title={t('empty.noConversationSelected')} text={t('empty.noConversationSelectedText')} />
+    </div>
   )
 
   return (
@@ -325,53 +317,49 @@ export function MessagePane() {
         mobilePane === 'conversation' ? 'max-[768px]:flex' : 'max-[768px]:hidden'
       }`}
     >
-      <TitlebarSlotsProvider value={{ start: false, end: titlebarSlots.end && hasTabs }}>
-        <ConversationTabs />
-      </TitlebarSlotsProvider>
-      <TitlebarSlotsProvider value={{ start: false, end: titlebarSlots.end && !hasTabs }}>
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
-            <div
-              aria-hidden={!!activeDocumentTab}
-              className={`relative flex min-h-0 flex-1 flex-col ${
-                activeDocumentTab ? 'pointer-events-none invisible' : ''
-              }`}
-            >
-              {conversationContent}
+      <ConversationTabs />
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
+          <div
+            aria-hidden={!!activeDocumentTab}
+            className={`relative flex min-h-0 flex-1 flex-col ${
+              activeDocumentTab ? 'pointer-events-none invisible' : ''
+            }`}
+          >
+            {conversationContent}
+          </div>
+          {activeDocumentTab && (
+            <div className="absolute inset-0 z-20 flex flex-col bg-chat">
+              <ReaderTabView tab={activeDocumentTab} />
             </div>
-            {activeDocumentTab && (
-              <div className="absolute inset-0 z-20 flex flex-col bg-chat">
-                <ReaderTabView tab={activeDocumentTab} />
-              </div>
-            )}
-          </section>
-
-          {activeThread && !activeDocumentTab && mediaOpen && (
-            <ConversationDetailsPanel
-              media={mediaItems}
-              files={fileItems}
-              participants={participants}
-              scopeTitle={activeThread.subject || '(no subject)'}
-              // For RSS, from_name duplicates the subject (both the feed title), so
-              // show the feed host instead; otherwise show the sender name.
-              scopeSubtitle={isRSS ? activeThread.from_addr : activeThread.from_name || activeThread.from_addr}
-              loading={showThreadLoading}
-              onOpenImage={(index) => thread$.galleryIndex.set(index)}
-              onShowInConversation={showMessageInConversation}
-              onComposeTo={(person) =>
-                openComposeTab({
-                  accountId: activeThread.account_id,
-                  to: person.name && person.name !== person.email ? `${person.name} <${person.email}>` : person.email,
-                })
-              }
-              onViewMessagesWith={(person) =>
-                openCorrespondentMail(activeThread.account_id, activeThread.folder_id, person.email)
-              }
-              onClose={() => thread$.mediaOpen.set(false)}
-            />
           )}
-        </div>
-      </TitlebarSlotsProvider>
+        </section>
+
+        {activeThread && !activeDocumentTab && mediaOpen && (
+          <ConversationDetailsPanel
+            media={mediaItems}
+            files={fileItems}
+            participants={participants}
+            scopeTitle={activeThread.subject || '(no subject)'}
+            // For RSS, from_name duplicates the subject (both the feed title), so
+            // show the feed host instead; otherwise show the sender name.
+            scopeSubtitle={isRSS ? activeThread.from_addr : activeThread.from_name || activeThread.from_addr}
+            loading={showThreadLoading}
+            onOpenImage={(index) => thread$.galleryIndex.set(index)}
+            onShowInConversation={showMessageInConversation}
+            onComposeTo={(person) =>
+              openComposeTab({
+                accountId: activeThread.account_id,
+                to: person.name && person.name !== person.email ? `${person.name} <${person.email}>` : person.email,
+              })
+            }
+            onViewMessagesWith={(person) =>
+              openCorrespondentMail(activeThread.account_id, activeThread.folder_id, person.email)
+            }
+            onClose={() => thread$.mediaOpen.set(false)}
+          />
+        )}
+      </div>
 
       {galleryIndex !== null && galleryItems[galleryIndex] && (
         <Gallery

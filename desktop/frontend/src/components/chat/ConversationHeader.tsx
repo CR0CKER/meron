@@ -37,7 +37,6 @@ import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
-import { WindowControls } from '../titlebar/WindowControls'
 
 // The conversation header: back/close affordances, sender info, the desktop
 // in-thread search box and the overflow actions menu (view mode, star, archive,
@@ -120,10 +119,7 @@ export function ConversationHeader({
 
   return (
     <>
-      <header
-        data-titlebar
-        className="relative z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none"
-      >
+      <header className="relative z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none">
         {printing && (
           <LoaderCircle
             size={16}
@@ -343,7 +339,6 @@ export function ConversationHeader({
             )}
           </div>
         </div>
-        <WindowControls side="end" />
       </header>
       {senderMenu && !isRSS && (
         <FloatingContextMenu

@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "Fechar para a bandeja",
   "settings.window.closeToTrayHint": "Manter o Meron em execução na bandeja do sistema ao fechar a janela. Use \"{quit}\" no menu da bandeja para sair.",
   "settings.window.integratedTitlebar": "Barra de título integrada",
-  "settings.window.integratedTitlebarHint": "Usar os cabeçalhos do Meron como barra de título, como os apps do GNOME. Os botões da janela seguem o layout da sua área de trabalho.",
+  "settings.window.integratedTitlebarHint": "O Meron desenha a própria barra de título, com Tarefas e as configurações rápidas ao lado dos botões da janela. Desative para usar a barra de título da sua área de trabalho.",
+  "settings.window.restartToApply": "Reinicie o Meron para aplicar a barra de título.",
   "settings.viewSyncLog": "Ver logs",
   "shortcuts.conflict": "Já usado por {name}",
   "shortcuts.customize": "Personalizar",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "Oculte Meron na bandeja do sistema",
   "tray.hideToTray": "Ocultar na bandeja",
   "tray.quitMeron": "Sair do Meron",
-  "window.close": "Fechar",
-  "window.maximize": "Maximizar",
-  "window.minimize": "Minimizar",
-  "window.restore": "Restaurar",
   "tray.showMeron": "Mostrar Meron",
   "updates.available": "O Meron {version} está disponível",
   "updates.check": "Verificar agora",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "Simples (Padrão)",
   "wallpaper.uploadCustom": "Enviar personalizado",
   "wallpaper.uploadFailed": "Falha ao enviar plano de fundo",
-  "wallpaper.uploading": "Enviando..."
+  "wallpaper.uploading": "Enviando...",
+  "window.maximize": "Maximizar",
+  "window.minimize": "Minimizar",
+  "window.restore": "Restaurar"
 }

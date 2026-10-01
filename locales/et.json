@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "Sulge salve",
   "settings.window.closeToTrayHint": "Hoia Meron akna sulgemisel süsteemisalves töös. Väljumiseks kasuta salvemenüüs käsku „{quit}“.",
   "settings.window.integratedTitlebar": "Integreeritud tiitliriba",
-  "settings.window.integratedTitlebarHint": "Kasuta Meroni enda päiseid tiitliribana, nagu GNOME'i rakendused. Aknanupud järgivad sinu töölaua nuppude paigutust.",
+  "settings.window.integratedTitlebarHint": "Meron joonistab oma tiitliriba, kus ülesanded ja kiirseaded on aknanuppude kõrval. Lülita välja, et kasutada töölaua tiitliriba.",
+  "settings.window.restartToApply": "Tiitliriba rakendamiseks taaskäivita Meron.",
   "settings.viewSyncLog": "Kuva logid",
   "shortcuts.conflict": "Juba kasutusel: {name}",
   "shortcuts.customize": "Kohanda",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "Peida Meron süsteemsesse salve",
   "tray.hideToTray": "Peida salve",
   "tray.quitMeron": "Lõpetage Meron",
-  "window.close": "Sulge",
-  "window.maximize": "Maksimeeri",
-  "window.minimize": "Minimeeri",
-  "window.restore": "Taasta",
   "tray.showMeron": "Näita Meron",
   "updates.available": "Meron {version} on saadaval",
   "updates.check": "Kontrolli kohe",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "Tavaline (vaikimisi)",
   "wallpaper.uploadCustom": "Laadi üles kohandatud",
   "wallpaper.uploadFailed": "Tausta üleslaadimine ebaõnnestus",
-  "wallpaper.uploading": "Üleslaadimine..."
+  "wallpaper.uploading": "Üleslaadimine...",
+  "window.maximize": "Maksimeeri",
+  "window.minimize": "Minimeeri",
+  "window.restore": "Taasta"
 }

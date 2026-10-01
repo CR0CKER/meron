@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "關閉時縮小至系統匣",
   "settings.window.closeToTrayHint": "關閉視窗後 Meron 會繼續在系統匣中執行。若要結束，請使用系統匣選單中的「{quit}」。",
   "settings.window.integratedTitlebar": "整合標題列",
-  "settings.window.integratedTitlebarHint": "像 GNOME 應用程式一樣，將 Meron 的標題區域用作標題列。視窗按鈕遵循桌面的按鈕配置。",
+  "settings.window.integratedTitlebarHint": "Meron 繪製自己的標題列，工作與快速設定位於視窗按鈕旁。關閉後使用桌面的標題列。",
+  "settings.window.restartToApply": "重新啟動 Meron 以套用標題列。",
   "settings.viewSyncLog": "檢視日誌",
   "shortcuts.conflict": "已被「{name}」佔用",
   "shortcuts.customize": "自訂",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "將 Meron 隱藏到系統托盤",
   "tray.hideToTray": "隱藏到托盤",
   "tray.quitMeron": "退出 Meron",
-  "window.close": "關閉",
-  "window.maximize": "最大化",
-  "window.minimize": "最小化",
-  "window.restore": "還原",
   "tray.showMeron": "顯示 Meron",
   "updates.available": "Meron {version} 已發布",
   "updates.check": "立即檢查",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "單色 (預設)",
   "wallpaper.uploadCustom": "上傳自訂圖片",
   "wallpaper.uploadFailed": "上傳背景失敗",
-  "wallpaper.uploading": "正在上傳..."
+  "wallpaper.uploading": "正在上傳...",
+  "window.maximize": "最大化",
+  "window.minimize": "最小化",
+  "window.restore": "還原"
 }

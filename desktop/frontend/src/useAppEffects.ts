@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { boot } from './boot'
 import { invoke } from './lib/bridge'
-import { installWindowChrome, windowChrome$ } from './lib/windowChrome'
+import { installWindowChrome, syncWindowFrame } from './lib/windowChrome'
 import { ui$, showToast } from './states/ui'
 import { mail$, loadThreads, loadThread, findLocalThread } from './states/mail'
 import { loadFolders, refreshAccountFoldersCache, inboxUnread } from './states/mailFolders'
@@ -85,19 +85,23 @@ export function useAppEffects() {
   // one per frame) and saves once it settles. Sampling has to keep pace: a
   // debounced sample taken after a maximise would miss the unmaximised size.
   // The reply also says whether to round the window's bottom corners (Linux,
-  // while the window floats; see roundedWindowCorners in Go).
+  // while the window floats; see roundedWindowCorners in Go). GTK's state can
+  // settle after the resize (tiling), so window.stateChanged asks again. A
+  // first sample is taken before the first render (main.tsx).
   useEffect(() => {
     const onResize = () => {
-      void invoke<{ rounded?: boolean; maximised?: boolean }>('window.resized')
-        .then((result) => {
-          document.documentElement.classList.toggle('window-rounded', result?.rounded === true)
-          windowChrome$.maximised.set(result?.maximised === true)
-        })
-        .catch(() => {})
+      void syncWindowFrame().catch(() => {})
     }
-    onResize()
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const eventsOn = (window as any).runtime?.EventsOn
+    const offStateChanged = typeof eventsOn === 'function' ? eventsOn('window.stateChanged', onResize) : null
+    // The window may have changed between the pre-render sample and now (main.go
+    // maximises it on DOM ready), with neither event heard yet.
+    onResize()
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (typeof offStateChanged === 'function') offStateChanged()
+    }
   }, [])
 
   useEffect(() => installWindowChrome(), [])

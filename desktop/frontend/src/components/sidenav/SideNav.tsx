@@ -24,6 +24,7 @@ import { RailContextMenu, RailMenuItem } from './RailContextMenu'
 import { AccountContextMenu } from './AccountContextMenu'
 import { BoardContextMenu } from './BoardContextMenu'
 import { BoardDialog, type BoardDialogState } from './BoardDialog'
+import { useTitleBar } from '../titlebar/TitleBar'
 import type { Account } from '../../types'
 
 // Every rail divider sits 9px from its neighbours: the gap the compose button
@@ -44,6 +45,8 @@ export function SideNav() {
   const activeBoardId = useValue(kanban$.activeBoardId)
   const selectedAccount = useValue(ui$.selectedAccount)
   const hasSendableAccount = accounts.some(isSendableAccount)
+  // Tasks and the more menu live in Meron's own title bar when there is one.
+  const utilities = !useTitleBar()
   // Right-click context menu anchored at the cursor for one account.
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const menuAccount = menu ? accounts.find((acc) => acc.id === menu.id) : null
@@ -255,37 +258,39 @@ export function SideNav() {
         )}
       </div>
 
-      {(showUnifiedInbox || hasBoards || hasAccounts) && <div className={`mb-[9px] ${railDivider}`} />}
+      {utilities && (showUnifiedInbox || hasBoards || hasAccounts) && <div className={`mb-[9px] ${railDivider}`} />}
 
       {/* Utilities */}
-      <div className="flex flex-col gap-3 items-center">
-        {tasksEnabled && (
+      {utilities && (
+        <div className="flex flex-col gap-3 items-center">
+          {tasksEnabled && (
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidenav-ink/10 text-sidenav-ink/60 transition-colors hover:bg-sidenav-ink/20 hover:text-sidenav-ink cursor-pointer max-[900px]:hidden"
+              onClick={toggleTasksPanel}
+              title={t('tasks.title')}
+              aria-label={t('tasks.title')}
+              aria-pressed={tasksPanelOpen}
+            >
+              <ListTodo size={18} />
+            </button>
+          )}
           <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidenav-ink/10 text-sidenav-ink/60 transition-colors hover:bg-sidenav-ink/20 hover:text-sidenav-ink cursor-pointer max-[900px]:hidden"
-            onClick={toggleTasksPanel}
-            title={t('tasks.title')}
-            aria-label={t('tasks.title')}
-            aria-pressed={tasksPanelOpen}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 cursor-pointer ${
+              moreMenu
+                ? 'bg-sidenav-ink/20 text-sidenav-ink'
+                : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink'
+            }`}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setMoreMenu({ x: rect.right + 8, y: rect.top })
+            }}
+            title={t('common.more')}
           >
-            <ListTodo size={18} />
+            <MoreHorizontal size={18} />
           </button>
-        )}
-        <button
-          className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 cursor-pointer ${
-            moreMenu
-              ? 'bg-sidenav-ink/20 text-sidenav-ink'
-              : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink'
-          }`}
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect()
-            setMoreMenu({ x: rect.right + 8, y: rect.top })
-          }}
-          title={t('common.more')}
-        >
-          <MoreHorizontal size={18} />
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* Bottom "more" menu: view switcher + theme settings */}
       {moreMenu && (

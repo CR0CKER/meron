@@ -751,12 +751,13 @@ function CloseToTrayRow() {
   )
 }
 
-// Linux only: GTK can drop its title bar and keep the window frame. The choice
-// lives in Go (window.json), since it is needed before the window exists.
+// Linux (where GTK draws the frame) and Windows. The choice lives in Go
+// (window.json), since it is needed before the window exists; on Windows it
+// takes effect on the next launch, so the switch shows the saved choice.
 function IntegratedTitlebarRow() {
   const { t } = useTranslation()
   const supported = useValue(windowChrome$.supported)
-  const integrated = useValue(windowChrome$.integrated)
+  const wanted = useValue(windowChrome$.wanted)
 
   if (!supported) return null
 
@@ -765,8 +766,16 @@ function IntegratedTitlebarRow() {
       icon={<PanelTop size={15} />}
       title={t('settings.window.integratedTitlebar')}
       hint={t('settings.window.integratedTitlebarHint')}
-      checked={integrated}
-      onChange={() => void setIntegratedTitlebar(!integrated).catch(() => {})}
+      checked={wanted}
+      onChange={() =>
+        void setIntegratedTitlebar(!wanted)
+          .then(() => {
+            if (windowChrome$.wanted.peek() !== windowChrome$.integrated.peek()) {
+              showToast(t('settings.window.restartToApply'), 'success', 4000)
+            }
+          })
+          .catch(() => {})
+      }
     />
   )
 }

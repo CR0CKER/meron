@@ -76,7 +76,7 @@ const floatingDecoration = `window.csd:not(.maximized):not(.fullscreen):not(.til
 // libadwaita's: 15px corners and its shadow (libadwaita 1.8 default.css,
 // window.csd and window.csd:backdrop).
 func decorationCss(fg string) string {
-	if !integratedTitlebar.Load() {
+	if !integratedTitlebarActive() {
 		return floatingDecoration + " {\n\tborder-radius: 8px;\n}\n"
 	}
 	return floatingDecoration + ` {

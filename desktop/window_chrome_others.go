@@ -1,9 +1,15 @@
-//go:build !linux || bindings
+//go:build (!linux && !windows) || bindings
 
 package main
 
-// Only GTK's client-side decorations can drop the title bar and keep the frame.
+// macOS always hides its title bar (main.go); elsewhere there is no frame to
+// keep without one.
 const integratedTitlebarSupported = false
+
+// See window_chrome_linux.go.
+const framelessTitlebar = false
+
+var titlebarSwitchesLive = false
 
 func installWindowChrome(integrated bool) {}
 

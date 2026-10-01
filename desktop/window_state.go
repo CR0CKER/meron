@@ -37,7 +37,8 @@ type windowState struct {
 	Width     int  `json:"width"`
 	Height    int  `json:"height"`
 	Maximised bool `json:"maximised"`
-	// Titlebar is "integrated" for the integrated title bar (Linux), else empty.
+	// Titlebar is "system" once the integrated title bar (Linux) is turned
+	// off, else empty for the default.
 	Titlebar string `json:"titlebar,omitempty"`
 }
 
@@ -65,8 +66,8 @@ func loadWindowState(path string) windowState {
 		return state
 	}
 	state.Maximised = saved.Maximised
-	if saved.Titlebar == titlebarIntegrated {
-		state.Titlebar = titlebarIntegrated
+	if saved.Titlebar == titlebarSystem {
+		state.Titlebar = titlebarSystem
 	}
 	if saved.Width >= minWindowWidth && saved.Height >= minWindowHeight {
 		state.Width, state.Height = saved.Width, saved.Height

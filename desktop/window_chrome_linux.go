@@ -37,7 +37,7 @@ static void onChromeSettingChanged(GObject *object, GParamSpec *pspec, gpointer 
 
 // An empty custom titlebar that is never shown: GTK keeps its client-side
 // decorations (shadow, resize edges outside the window, tiling) but draws no
-// title bar, so the page's own headers take its place.
+// title bar, so the page's own title bar (TitleBar.tsx) takes its place.
 //
 // Switching back sets a title bar built the way GTK builds its default one
 // (gtkwindow.c, create_titlebar): unsetting the custom one instead left the
@@ -67,9 +67,15 @@ static int isTiled(void) {
 	return g_atomic_int_get(&tiled);
 }
 
+// Defined in Go (window_chrome_linux_export.go).
+extern void goWindowStateChanged(void);
+
+// Tiling can land after the page's resize event, so the page is told to ask
+// again (window.stateChanged) once GTK has the new state.
 static gboolean onWindowState(GtkWidget *widget, GdkEventWindowState *event, gpointer data) {
 	g_atomic_int_set(&tiled, (event->new_window_state & TILED_STATES) != 0);
 	if (wantIntegrated) clearSizeHints();
+	goWindowStateChanged();
 	return FALSE;
 }
 
@@ -169,6 +175,13 @@ import "C"
 import "unsafe"
 
 const integratedTitlebarSupported = true
+
+// GTK keeps its frame without a title bar (an empty custom one), so the window
+// isn't frameless.
+const framelessTitlebar = false
+
+// The GTK title bar can be swapped on the live window; a var for tests.
+var titlebarSwitchesLive = true
 
 func installWindowChrome(integrated bool) {
 	C.installWindowChrome(cBool(integrated))

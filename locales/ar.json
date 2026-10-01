@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "الإغلاق إلى علبة النظام",
   "settings.window.closeToTrayHint": "إبقاء Meron قيد التشغيل في علبة النظام عند إغلاق النافذة. استخدم «{quit}» من قائمة العلبة للخروج.",
   "settings.window.integratedTitlebar": "شريط عنوان مدمج",
-  "settings.window.integratedTitlebarHint": "استخدام ترويسات Meron كشريط عنوان، مثل تطبيقات GNOME. تتبع أزرار النافذة ترتيب الأزرار في سطح المكتب لديك.",
+  "settings.window.integratedTitlebarHint": "يرسم Meron شريط عنوانه الخاص، مع المهام والإعدادات السريعة بجانب أزرار النافذة. أوقفه لاستخدام شريط عنوان سطح المكتب.",
+  "settings.window.restartToApply": "أعد تشغيل Meron لتطبيق شريط العنوان.",
   "settings.viewSyncLog": "عرض السجلات",
   "shortcuts.conflict": "مستخدم بالفعل بواسطة {name}",
   "shortcuts.customize": "تخصيص",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "إخفاء Meron في علبة النظام",
   "tray.hideToTray": "إخفاء إلى الدرج",
   "tray.quitMeron": "قم بإنهاء Meron",
-  "window.close": "إغلاق",
-  "window.maximize": "تكبير",
-  "window.minimize": "تصغير",
-  "window.restore": "استعادة",
   "tray.showMeron": "عرض Meron",
   "updates.available": "الإصدار {version} من Meron متوفر",
   "updates.check": "تحقق الآن",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "عادي (افتراضي)",
   "wallpaper.uploadCustom": "رفع خلفية مخصصة",
   "wallpaper.uploadFailed": "فشل رفع الخلفية",
-  "wallpaper.uploading": "جاري الرفع..."
+  "wallpaper.uploading": "جاري الرفع...",
+  "window.maximize": "تكبير",
+  "window.minimize": "تصغير",
+  "window.restore": "استعادة"
 }

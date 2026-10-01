@@ -1,18 +1,27 @@
 package main
 
 import (
+	"runtime"
 	"sync/atomic"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// titlebarIntegrated is windowState.Titlebar for the integrated title bar: no
-// GTK title bar, the page's headers take its place and draw the window
-// controls. Anything else is the system title bar.
-const titlebarIntegrated = "integrated"
+// titlebarSystem is windowState.Titlebar for someone who turned the
+// integrated title bar off. Anything else is the default: integrated (no GTK
+// title bar; the page's own takes its place and draws the window controls)
+// wherever GTK draws the frame.
+const titlebarSystem = "system"
 
 // integratedTitlebar is whether the integrated title bar is in effect now.
 var integratedTitlebar atomic.Bool
+
+// integratedTitlebarActive is whether the integrated title bar is actually
+// drawn: a saved choice is dropped where the desktop draws the frame, which is
+// known once the window is realized.
+func integratedTitlebarActive() bool {
+	return integratedTitlebar.Load() && windowDrawsFrame()
+}
 
 // Window controls go through these vars so the commands can be tested.
 var (
@@ -26,16 +35,23 @@ var (
 )
 
 // windowChrome tells the frontend how to draw the title bar: whether it is
-// integrated, and the desktop's button layout and double-click action, which
-// it follows rather than offering its own settings.
+// integrated now, whether that is the saved choice (the two differ until a
+// restart where the switch can't apply live), the platform whose controls to
+// draw, and the desktop's button layout and double-click action, which it
+// follows rather than offering its own settings.
 func (a *App) windowChrome() (any, error) {
 	layout, doubleClick := readChromeSettings()
-	// Only where GTK draws the frame: on KDE Plasma or an X11 window manager
-	// the desktop's own frame stays, and the option isn't offered.
+	// On Linux only where GTK draws the frame: on KDE Plasma or an X11 window
+	// manager the desktop's own frame stays, and the option isn't offered.
 	supported := integratedTitlebarSupported && windowDrawsFrame()
+	a.windowMu.Lock()
+	wanted := a.window.Titlebar != titlebarSystem
+	a.windowMu.Unlock()
 	return map[string]any{
 		"supported":   supported,
 		"integrated":  supported && integratedTitlebar.Load(),
+		"wanted":      supported && wanted,
+		"platform":    runtime.GOOS,
 		"layout":      layout,
 		"doubleClick": doubleClick,
 	}, nil
@@ -43,22 +59,23 @@ func (a *App) windowChrome() (any, error) {
 
 // windowSetTitlebar switches between the system and the integrated title bar
 // and remembers the choice in window.json, which is read before the window is
-// created on the next launch.
+// created on the next launch. Where the switch can't apply to the live window
+// (Windows), that launch is when it takes effect.
 func (a *App) windowSetTitlebar(payload map[string]any) (any, error) {
-	integrated, _ := payload["integrated"].(bool)
-	integrated = integrated && integratedTitlebarSupported && windowDrawsFrame()
+	wanted, _ := payload["integrated"].(bool)
+	integrated := wanted && integratedTitlebarSupported && windowDrawsFrame()
 	a.windowMu.Lock()
 	a.window.Titlebar = ""
-	if integrated {
-		a.window.Titlebar = titlebarIntegrated
+	if !wanted {
+		a.window.Titlebar = titlebarSystem
 	}
 	a.windowMu.Unlock()
 	a.flushWindowState()
-	if integratedTitlebar.Swap(integrated) != integrated {
+	if titlebarSwitchesLive && integratedTitlebar.Swap(integrated) != integrated {
 		applyNativeTitlebar(integrated)
 		refreshNativeTitlebarCss()
 	}
-	return map[string]any{"ok": true, "integrated": integrated}, nil
+	return map[string]any{"ok": true}, nil
 }
 
 func (a *App) windowControl(command string) (any, error) {

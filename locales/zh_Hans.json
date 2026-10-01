@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "关闭时最小化到托盘",
   "settings.window.closeToTrayHint": "关闭窗口后 Meron 继续在系统托盘中运行。要退出，请使用托盘菜单中的“{quit}”。",
   "settings.window.integratedTitlebar": "集成标题栏",
-  "settings.window.integratedTitlebarHint": "像 GNOME 应用一样，将 Meron 的标题区域用作标题栏。窗口按钮遵循桌面的按钮布局。",
+  "settings.window.integratedTitlebarHint": "Meron 绘制自己的标题栏，任务和快捷设置位于窗口按钮旁。关闭后使用桌面的标题栏。",
+  "settings.window.restartToApply": "重启 Meron 以应用标题栏。",
   "settings.viewSyncLog": "查看日志",
   "shortcuts.conflict": "已被“{name}”占用",
   "shortcuts.customize": "自定义",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "将 Meron 隐藏到系统托盘",
   "tray.hideToTray": "隐藏到托盘",
   "tray.quitMeron": "退出 Meron",
-  "window.close": "关闭",
-  "window.maximize": "最大化",
-  "window.minimize": "最小化",
-  "window.restore": "还原",
   "tray.showMeron": "显示 Meron",
   "updates.available": "Meron {version} 已发布",
   "updates.check": "立即检查",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "纯色 (默认)",
   "wallpaper.uploadCustom": "上传自定义壁纸",
   "wallpaper.uploadFailed": "上传背景失败",
-  "wallpaper.uploading": "正在上传..."
+  "wallpaper.uploading": "正在上传...",
+  "window.maximize": "最大化",
+  "window.minimize": "最小化",
+  "window.restore": "还原"
 }

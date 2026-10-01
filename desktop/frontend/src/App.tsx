@@ -25,8 +25,7 @@ import { AppToast } from './components/toast/AppToast'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
-import { MacTitleBar } from './components/titlebar/MacTitleBar'
-import { TitlebarSlotsProvider, TitlebarStrip } from './components/titlebar/WindowControls'
+import { TitleBar } from './components/titlebar/TitleBar'
 import { ConnectivityBanner } from './components/banner/ConnectivityBanner'
 import { UpdateBanner } from './components/banner/UpdateBanner'
 import { SetupScreen } from './components/setup/SetupScreen'
@@ -56,20 +55,11 @@ export default function App() {
   useAppEffects()
 
   const showKanbanMessagePane = !!kanbanPaneThreadId || composeTabs.some((tab) => tab.id === activeComposeTab)
-  const showTasksPanel = tasksPanelOpen && !!activeTaskList
-  // With the integrated title bar, the window controls go in the top row of
-  // the pane at each window edge: the first content pane on the left (the side
-  // navigation is too narrow), the rightmost pane on the right.
-  const listSlots = { start: true, end: !!activeBoardId && !showKanbanMessagePane && !showTasksPanel }
-  const conversationSlots = { start: false, end: !showTasksPanel }
 
   if (system && accounts.length === 0) {
     return (
       <div className="flex h-full w-full flex-col bg-app text-primary">
-        <MacTitleBar />
-        <TitlebarSlotsProvider value={{ start: true, end: true }}>
-          <TitlebarStrip />
-        </TitlebarSlotsProvider>
+        <TitleBar tools={false} />
         <div className="min-h-0 flex-1">
           <SetupScreen />
         </div>
@@ -79,7 +69,7 @@ export default function App() {
 
   return (
     <div className="flex h-full w-full flex-col bg-app text-primary">
-      <MacTitleBar />
+      <TitleBar />
       <ConnectivityBanner />
       <UpdateBanner />
       <main ref={mainRef} className="flex min-h-0 w-full flex-1 overflow-hidden">
@@ -87,19 +77,15 @@ export default function App() {
           <SideNav />
         </ErrorBoundary>
         <ErrorBoundary label="thread list">
-          <TitlebarSlotsProvider value={listSlots}>
-            {activeBoardId ? (
-              <KanbanView boardId={activeBoardId} />
-            ) : (
-              <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
-            )}
-          </TitlebarSlotsProvider>
+          {activeBoardId ? (
+            <KanbanView boardId={activeBoardId} />
+          ) : (
+            <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
+          )}
         </ErrorBoundary>
         {!activeBoardId ? (
           <ErrorBoundary label="conversation">
-            <TitlebarSlotsProvider value={conversationSlots}>
-              <MessagePane />
-            </TitlebarSlotsProvider>
+            <MessagePane />
           </ErrorBoundary>
         ) : (
           <KanbanConversationPane
@@ -109,20 +95,16 @@ export default function App() {
             onResizeStart={(event) => startKanbanResize(event, mainRef.current)}
           >
             <ErrorBoundary label="conversation">
-              <TitlebarSlotsProvider value={conversationSlots}>
-                <MessagePane />
-              </TitlebarSlotsProvider>
+              <MessagePane />
             </ErrorBoundary>
           </KanbanConversationPane>
         )}
 
         {/* Tasks is a panel, not a view: it sits to the right of whatever is
           open so a list can be worked against the thread list beside it. */}
-        {showTasksPanel && activeTaskList ? (
+        {tasksPanelOpen && activeTaskList ? (
           <ErrorBoundary label="tasks">
-            <TitlebarSlotsProvider value={{ start: false, end: true }}>
-              <TasksPanel listId={activeTaskList} />
-            </TitlebarSlotsProvider>
+            <TasksPanel listId={activeTaskList} />
           </ErrorBoundary>
         ) : null}
 

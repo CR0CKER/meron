@@ -330,27 +330,56 @@ textarea,
   cursor: text;
 }
 
-/* Integrated title bar: pane headers marked data-titlebar move the window
-   (Wails reads --wails-draggable off the pressed element, so controls inside
-   opt out) and hold the window controls. */
-html.titlebar-integrated [data-titlebar] {
+/* Meron's title bar (TitleBar.tsx) moves the window: Wails reads
+   --wails-draggable off the pressed element, so the buttons in it opt out. A
+   double-click runs the desktop's title bar action where it reads drag (see
+   windowChrome.ts), and must not select anything on the way. */
+[data-titlebar] {
   --wails-draggable: drag;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-html.titlebar-integrated
-  [data-titlebar]
-  :is(
-    button,
-    a,
-    input,
-    textarea,
-    select,
-    [role='button'],
-    [contenteditable='true'],
-    [draggable='true'],
-    [data-tab-id]
-  ) {
+[data-titlebar] :is(button, a, [role='button']) {
   --wails-draggable: no-drag;
+}
+
+/* Windows 11's caption buttons: a subtle fill on hover (SubtleFillColor
+   Secondary/Tertiary), and the close button's red. */
+.caption-button {
+  display: inline-flex;
+  width: 46px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 10px;
+  cursor: default;
+}
+
+.caption-button:hover {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.caption-button:active {
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.caption-button-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.caption-button-close:active {
+  background: color-mix(in srgb, #c42b1c 90%, transparent);
+  color: rgb(255 255 255 / 0.7);
+}
+
+.caption-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--me-accent) 50%, transparent);
+  outline-offset: -2px;
 }
 
 /* libadwaita 1.8 default.css, windowcontrols > button and its image. */
@@ -359,7 +388,7 @@ html.titlebar-integrated
   padding: 5px;
   border: 0;
   background: none;
-  color: var(--me-text-primary);
+  color: inherit;
   cursor: default;
 }
 

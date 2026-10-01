@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { doubleClickCommand, loadWindowChrome, parseDecorationLayout, windowChrome$ } from './windowChrome'
+import {
+  doubleClickCommand,
+  installWindowChrome,
+  loadWindowChrome,
+  parseDecorationLayout,
+  windowChrome$,
+  windowChromeReady,
+} from './windowChrome'
 
 const original = (window as any).go
 
@@ -48,6 +55,8 @@ describe('loadWindowChrome', () => {
           Invoke: async () => ({
             supported: true,
             integrated: true,
+            wanted: false,
+            platform: 'windows',
             layout: 'close:minimize',
             doubleClick: 'minimize',
           }),
@@ -56,8 +65,76 @@ describe('loadWindowChrome', () => {
     }
     await loadWindowChrome()
     expect(windowChrome$.integrated.peek()).toBe(true)
+    expect(windowChrome$.wanted.peek()).toBe(false)
+    expect(windowChrome$.platform.peek()).toBe('windows')
     expect(windowChrome$.layout.peek()).toEqual({ start: ['close'], end: ['minimize'] })
     expect(windowChrome$.doubleClick.peek()).toBe('minimize')
     expect(document.documentElement.classList.contains('titlebar-integrated')).toBe(true)
+  })
+})
+
+describe('installWindowChrome', () => {
+  it('runs the double-click action on the drag region only, not on controls or tabs in it', () => {
+    const calls: string[] = []
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string) => {
+            calls.push(command)
+            return command === 'window.chrome' ? { supported: true, integrated: true } : {}
+          },
+        },
+      },
+    }
+    const style = document.createElement('style')
+    style.textContent = `
+      [data-titlebar] { --wails-draggable: drag; }
+      [data-titlebar] :is(button, [data-tab-id]) { --wails-draggable: no-drag; }`
+    document.head.append(style)
+    document.body.innerHTML = `<div data-titlebar><span id="empty">x</span><div data-tab-id="t"><span id="tab">Tab</span></div><button id="button">B</button></div>`
+    windowChrome$.integrated.set(true)
+    windowChrome$.doubleClick.set('toggle-maximize')
+    const uninstall = installWindowChrome()
+    calls.length = 0
+    try {
+      for (const id of ['tab', 'button', 'empty']) {
+        document.getElementById(id)!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, button: 0 }))
+      }
+      expect(calls).toEqual(['window.toggleMaximise'])
+    } finally {
+      uninstall()
+      style.remove()
+      document.body.innerHTML = ''
+    }
+  })
+})
+
+describe('windowChromeReady', () => {
+  it('applies the chrome and the frame before resolving', async () => {
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string) =>
+            command === 'window.chrome' ? { supported: true, integrated: true } : { rounded: true, maximised: true },
+        },
+      },
+    }
+    await windowChromeReady()
+    expect(windowChrome$.integrated.peek()).toBe(true)
+    expect(windowChrome$.maximised.peek()).toBe(true)
+    expect(document.documentElement.classList.contains('window-rounded')).toBe(true)
+    document.documentElement.classList.remove('window-rounded')
+  })
+
+  it('never holds up the first render for long', async () => {
+    ;(window as any).go = { main: { App: { Invoke: () => new Promise(() => {}) } } }
+    const started = Date.now()
+    await windowChromeReady(20)
+    expect(Date.now() - started).toBeLessThan(200)
+  })
+
+  it('renders anyway without a backend', async () => {
+    ;(window as any).go = undefined
+    await windowChromeReady()
   })
 })

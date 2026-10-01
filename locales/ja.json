@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "閉じるとトレイに格納",
   "settings.window.closeToTrayHint": "ウィンドウを閉じても Meron をシステムトレイで実行し続けます。終了するにはトレイメニューの「{quit}」を使います。",
   "settings.window.integratedTitlebar": "統合タイトルバー",
-  "settings.window.integratedTitlebarHint": "GNOME アプリのように、Meron のヘッダーをタイトルバーとして使います。ウィンドウボタンはデスクトップのボタン配置に従います。",
+  "settings.window.integratedTitlebarHint": "Meron 独自のタイトルバーを表示し、ウィンドウボタンの横にタスクとクイック設定を置きます。オフにするとデスクトップのタイトルバーを使います。",
+  "settings.window.restartToApply": "タイトルバーを適用するには Meron を再起動してください。",
   "settings.viewSyncLog": "ログを表示",
   "shortcuts.conflict": "{name} で使用中です",
   "shortcuts.customize": "カスタマイズ",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "Meron をシステム トレイに非表示にする",
   "tray.hideToTray": "トレイに隠す",
   "tray.quitMeron": "Meronを終了",
-  "window.close": "閉じる",
-  "window.maximize": "最大化",
-  "window.minimize": "最小化",
-  "window.restore": "元に戻す",
   "tray.showMeron": "Meronを表示",
   "updates.available": "Meron {version} が利用可能です",
   "updates.check": "今すぐ確認",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "単色 (デフォルト)",
   "wallpaper.uploadCustom": "カスタムアップロード",
   "wallpaper.uploadFailed": "背景のアップロードに失敗しました",
-  "wallpaper.uploading": "アップロード中..."
+  "wallpaper.uploading": "アップロード中...",
+  "window.maximize": "最大化",
+  "window.minimize": "最小化",
+  "window.restore": "元に戻す"
 }

@@ -841,7 +841,8 @@
   "settings.window.closeToTray": "Sistem tepsisine kapat",
   "settings.window.closeToTrayHint": "Pencere kapatıldığında Meron sistem tepsisinde çalışmaya devam eder. Çıkmak için tepsi menüsündeki {quit} seçeneğini kullanın.",
   "settings.window.integratedTitlebar": "Tümleşik başlık çubuğu",
-  "settings.window.integratedTitlebarHint": "GNOME uygulamaları gibi Meron'un kendi başlıklarını başlık çubuğu olarak kullan. Pencere düğmeleri masaüstünüzün düğme düzenini izler.",
+  "settings.window.integratedTitlebarHint": "Meron kendi başlık çubuğunu çizer; görevler ve hızlı ayarlar pencere düğmelerinin yanında yer alır. Masaüstünüzün başlık çubuğunu kullanmak için kapatın.",
+  "settings.window.restartToApply": "Başlık çubuğunu uygulamak için Meron'u yeniden başlatın.",
   "settings.viewSyncLog": "Günlükleri görüntüle",
   "shortcuts.conflict": "Zaten {name} tarafından kullanılıyor",
   "shortcuts.customize": "Özelleştir",
@@ -946,10 +947,6 @@
   "tray.hideMeronTooltip": "Meron'yi sistem tepsisinde gizle",
   "tray.hideToTray": "Tepsiye Gizle",
   "tray.quitMeron": "Meron'den çıkın",
-  "window.close": "Kapat",
-  "window.maximize": "Büyüt",
-  "window.minimize": "Simge durumuna küçült",
-  "window.restore": "Geri yükle",
   "tray.showMeron": "Meron'yi göster",
   "updates.available": "Meron {version} kullanılabilir",
   "updates.check": "Şimdi denetle",
@@ -974,5 +971,8 @@
   "wallpaper.plainDefault": "Düz (Varsayılan)",
   "wallpaper.uploadCustom": "Özel Yükle",
   "wallpaper.uploadFailed": "Arka plan yüklenemedi",
-  "wallpaper.uploading": "Yükleniyor..."
+  "wallpaper.uploading": "Yükleniyor...",
+  "window.maximize": "Büyüt",
+  "window.minimize": "Simge durumuna küçült",
+  "window.restore": "Geri yükle"
 }

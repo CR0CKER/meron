@@ -42,12 +42,12 @@ import { isUnifiedStarred } from '../../lib/unifiedFolders'
 import { EmptyState } from '../empty-state/EmptyState'
 import { IconButton } from '../button/IconButton'
 import { QuickSettingsMenu } from '../sidenav/QuickSettingsMenu'
+import { useTitleBar } from '../titlebar/TitleBar'
 import { FolderSwitcher } from '../menu/FolderSwitcher'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { ThreadContextMenu, useThreadContextMenu } from './ThreadContextMenu'
 import { ThreadListItem } from './ThreadListItem'
 import { BulkActionBar } from './BulkActionBar'
-import { WindowControls } from '../titlebar/WindowControls'
 
 type ThreadListProps = {
   width?: number
@@ -87,6 +87,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   // Quick-settings (view + theme) anchor for the narrow-window header button.
   // The side navigation that normally hosts these controls is hidden at this width.
   const [quickMenu, setQuickMenu] = useState<{ x: number; y: number } | null>(null)
+  const titleBar = useTitleBar()
   // Focus the search box when ⌘/Ctrl+Shift+F (or the palette) bumps the signal.
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
@@ -279,11 +280,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
       ) : (
         // Less padding on the right than the left: the trailing icon buttons carry
         // their own, so px-4 on both sides left the row lopsided.
-        <div
-          data-titlebar
-          className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60"
-        >
-          <WindowControls side="start" />
+        <div className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60">
           <div className="flex items-center gap-2 w-full">
             {/* Current folder, doubling as a picker: switching here retargets the
               list the same way it retargets a kanban column. Capped so a deep
@@ -402,23 +399,25 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                     onClick={() => openAddFeed(selectedAccount)}
                   />
                 )}
-                {/* View + theme: only reachable here when the side navigation is hidden (narrow). */}
-                <IconButton
-                  icon={MoreHorizontal}
-                  iconSize={18}
-                  label={t('sidenav.actions.viewAndTheme')}
-                  size="md"
-                  radius="lg"
-                  className="min-[769px]:hidden"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    setQuickMenu({ x: rect.right - 208, y: rect.bottom })
-                  }}
-                />
+                {/* View + theme: only reachable here when the side navigation is hidden
+                  (narrow) and there is no title bar of ours holding it. */}
+                {!titleBar && (
+                  <IconButton
+                    icon={MoreHorizontal}
+                    iconSize={18}
+                    label={t('sidenav.actions.viewAndTheme')}
+                    size="md"
+                    radius="lg"
+                    className="min-[769px]:hidden"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setQuickMenu({ x: rect.right - 208, y: rect.bottom })
+                    }}
+                  />
+                )}
               </>
             )}
           </div>
-          <WindowControls side="end" />
         </div>
       )}
 

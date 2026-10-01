@@ -1,23 +1,6 @@
-import { createContext, useContext } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { windowChrome$, windowCommand, type WindowButton } from '../../lib/windowChrome'
-
-/**
- * Which window-control sides a pane's top row hosts with the integrated title
- * bar. App gives `end` to the rightmost pane and `start` to the first content
- * pane (the side navigation is too narrow for three buttons); a pane passes it
- * on to whichever of its rows is at the top.
- */
-export type TitlebarSlots = { start: boolean; end: boolean }
-
-const TitlebarSlotsContext = createContext<TitlebarSlots>({ start: false, end: false })
-
-export const TitlebarSlotsProvider = TitlebarSlotsContext.Provider
-
-export function useTitlebarSlots(): TitlebarSlots {
-  return useContext(TitlebarSlotsContext)
-}
 
 // Adwaita's window-*-symbolic glyphs (adwaita-icon-theme, LGPL-3.0 or
 // CC-BY-SA-3.0), the ones GTK draws in its own title bar buttons.
@@ -29,11 +12,23 @@ const GLYPHS: Record<WindowButton | 'restore', string> = {
   restore: 'm4.99 4.99v6.01h6.01v-6.01zm2 2h2.01v2.01h-2.01z',
 }
 
+// The Windows caption glyphs (ChromeMinimize, ChromeMaximize, ChromeRestore,
+// ChromeClose) in Segoe Fluent Icons (Windows 11) and Segoe MDL2 Assets
+// (Windows 10), which share the code points.
+const CAPTION_GLYPHS: Record<WindowButton | 'restore', string> = {
+  minimize: '\uE921',
+  maximize: '\uE922',
+  restore: '\uE923',
+  close: '\uE8BB',
+}
+
 const COMMAND = { minimize: 'minimise', maximize: 'toggleMaximise', close: 'close' } as const
 
 /**
- * GNOME window controls for one side of the integrated title bar, in the
- * desktop's button layout. Renders nothing unless this row hosts that side.
+ * Window controls for one side of the integrated title bar, in the desktop's
+ * button layout. Renders nothing with the system title bar. On Windows they
+ * are the system's caption buttons: 46px wide, the title bar's full height,
+ * flush with the corner. On Linux they are GNOME's.
  * Metrics are libadwaita's (1.8 default.css, windowcontrols): a 24px circle
  * (16px glyph, 4px padding) in a button padded 5px, currentColor at 10% (15%
  * hover, 30% pressed), 3px apart. Circle and glyph are one SVG: as a CSS
@@ -42,21 +37,40 @@ const COMMAND = { minimize: 'minimise', maximize: 'toggleMaximise', close: 'clos
  */
 export function WindowControls({ side }: { side: 'start' | 'end' }) {
   const { t } = useTranslation()
-  const slots = useTitlebarSlots()
   const integrated = useValue(windowChrome$.integrated)
   const buttons = useValue(windowChrome$.layout[side])
   const maximised = useValue(windowChrome$.maximised)
+  const windows = useValue(windowChrome$.platform) === 'windows'
 
-  if (!integrated || !slots[side] || buttons.length === 0) return null
+  if (!integrated || buttons.length === 0) return null
 
   const label = (button: WindowButton) =>
     button === 'close'
-      ? t('window.close')
+      ? t('buttons.close')
       : button === 'minimize'
         ? t('window.minimize')
         : maximised
           ? t('window.restore')
           : t('window.maximize')
+
+  if (windows) {
+    return (
+      <div className="flex shrink-0 self-stretch">
+        {buttons.map((button) => (
+          <button
+            key={button}
+            type="button"
+            className={`caption-button${button === 'close' ? ' caption-button-close' : ''}`}
+            aria-label={label(button)}
+            title={label(button)}
+            onClick={() => windowCommand(COMMAND[button])}
+          >
+            <span aria-hidden>{CAPTION_GLYPHS[button === 'maximize' && maximised ? 'restore' : button]}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="window-controls flex shrink-0 items-center gap-[3px]">
@@ -79,24 +93,6 @@ export function WindowControls({ side }: { side: 'start' | 'end' }) {
           </svg>
         </button>
       ))}
-    </div>
-  )
-}
-
-/**
- * A header-height title bar row for a pane that has no header of its own
- * (the empty conversation, the setup screen): a drag region holding only the
- * window controls. Nothing without the integrated title bar.
- */
-export function TitlebarStrip() {
-  const slots = useTitlebarSlots()
-  const integrated = useValue(windowChrome$.integrated)
-  if (!integrated || (!slots.start && !slots.end)) return null
-  return (
-    <div data-titlebar className="flex h-12 shrink-0 items-center px-2">
-      <WindowControls side="start" />
-      <div className="flex-1" />
-      <WindowControls side="end" />
     </div>
   )
 }

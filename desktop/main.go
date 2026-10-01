@@ -39,7 +39,7 @@ func main() {
 	app := NewApp()
 	globalApp = app
 	startMaximised := app.window.Maximised
-	integrated := integratedTitlebarSupported && app.window.Titlebar == titlebarIntegrated
+	integrated := integratedTitlebarSupported && app.window.Titlebar != titlebarSystem
 	integratedTitlebar.Store(integrated)
 	installWindowChrome(integrated)
 
@@ -49,6 +49,7 @@ func main() {
 		Height:                   app.window.Height,
 		WindowStartState:         startWindowState(startMaximised),
 		HideWindowOnClose:        hideOnCloseNatively,
+		Frameless:                framelessTitlebar && integrated,
 		EnableDefaultContextMenu: true,
 		BackgroundColour:         windowBackgroundColour(),
 		AssetServer: &assetserver.Options{

@@ -26,7 +26,6 @@ import {
 } from '../../states/tasks'
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
-import { WindowControls } from '../titlebar/WindowControls'
 
 /**
  * Fixed, like the panel it is modelled on. The thread list and conversation
@@ -90,7 +89,7 @@ export function TasksPanel({ listId }: { listId: string }) {
       className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-chats max-[900px]:hidden"
       style={{ width: TASKS_PANEL_WIDTH }}
     >
-      <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1.5">
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1.5">
         {renaming ? (
           <RenameField
             value={listName}
@@ -127,7 +126,6 @@ export function TasksPanel({ listId }: { listId: string }) {
             <IconButton label={t('buttons.close')} icon={X} size="sm" onClick={closeTasksPanel} />
           </>
         )}
-        <WindowControls side="end" />
       </header>
 
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
