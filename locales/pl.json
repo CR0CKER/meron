@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Szukaj nowych wersji w tle. Aktualizacje nigdy nie są instalowane bez pytania.",
   "settings.window.closeToTray": "Zamykaj do zasobnika",
   "settings.window.closeToTrayHint": "Po zamknięciu okna Meron nadal działa w zasobniku systemowym. Aby wyjść, użyj opcji „{quit}” w menu zasobnika.",
+  "settings.window.integratedTitlebar": "Zintegrowany pasek tytułu",
+  "settings.window.integratedTitlebarHint": "Meron rysuje własny pasek tytułu, z zadaniami i szybkimi ustawieniami obok przycisków okna. Wyłącz, aby używać paska tytułu pulpitu.",
+  "settings.window.restartToApply": "Uruchom ponownie Meron, aby zastosować pasek tytułu.",
   "settings.viewSyncLog": "Wyświetl dzienniki",
   "shortcuts.conflict": "Już używany przez: {name}",
   "shortcuts.customize": "Dostosuj",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Jednolite (domyślne)",
   "wallpaper.uploadCustom": "Prześlij własne",
   "wallpaper.uploadFailed": "Nie udało się przesłać tła",
-  "wallpaper.uploading": "Przesyłanie..."
+  "wallpaper.uploading": "Przesyłanie...",
+  "window.maximize": "Maksymalizuj",
+  "window.minimize": "Minimalizuj",
+  "window.restore": "Przywróć"
 }

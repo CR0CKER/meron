@@ -215,6 +215,12 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.traySetUnread(payload)
 	case "window.resized":
 		return a.windowResized()
+	case "window.chrome":
+		return a.windowChrome()
+	case "window.setTitlebar":
+		return a.windowSetTitlebar(payload)
+	case "window.minimise", "window.toggleMaximise", "window.close":
+		return a.windowControl(command)
 	case "window.setCloseToTray":
 		return a.windowSetCloseToTray(payload)
 	case "app.quit":

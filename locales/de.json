@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Im Hintergrund nach neuen Versionen suchen. Updates werden nie ungefragt installiert.",
   "settings.window.closeToTray": "In den Infobereich schließen",
   "settings.window.closeToTrayHint": "Meron beim Schließen des Fensters im Infobereich weiterlaufen lassen. Zum Beenden „{quit}“ im Tray-Menü verwenden.",
+  "settings.window.integratedTitlebar": "Integrierte Titelleiste",
+  "settings.window.integratedTitlebarHint": "Meron zeichnet eine eigene Titelleiste mit Aufgaben und Schnelleinstellungen neben den Fensterknöpfen. Schalte sie aus, um die Titelleiste deiner Arbeitsumgebung zu verwenden.",
+  "settings.window.restartToApply": "Starte Meron neu, um die Titelleiste zu übernehmen.",
   "settings.viewSyncLog": "Protokolle anzeigen",
   "shortcuts.conflict": "Bereits von {name} belegt",
   "shortcuts.customize": "Anpassen",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Einfach (Standard)",
   "wallpaper.uploadCustom": "Eigenes hochladen",
   "wallpaper.uploadFailed": "Hintergrund konnte nicht hochgeladen werden",
-  "wallpaper.uploading": "Wird hochgeladen..."
+  "wallpaper.uploading": "Wird hochgeladen...",
+  "window.maximize": "Maximieren",
+  "window.minimize": "Minimieren",
+  "window.restore": "Wiederherstellen"
 }

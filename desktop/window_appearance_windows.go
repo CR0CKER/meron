@@ -97,3 +97,5 @@ var enumMainWindowCallback = windows.NewCallback(func(hwnd uintptr, pid uintptr)
 	}
 	return 1
 })
+
+func refreshNativeTitlebarCss() {}

@@ -39,6 +39,9 @@ func main() {
 	app := NewApp()
 	globalApp = app
 	startMaximised := app.window.Maximised
+	integrated := integratedTitlebarSupported && app.window.Titlebar != titlebarSystem
+	integratedTitlebar.Store(integrated)
+	installWindowChrome(integrated)
 
 	err := wails.Run(&options.App{
 		Title:                    "Meron",
@@ -46,14 +49,17 @@ func main() {
 		Height:                   app.window.Height,
 		WindowStartState:         startWindowState(startMaximised),
 		HideWindowOnClose:        hideOnCloseNatively,
+		Frameless:                framelessTitlebar && integrated,
 		EnableDefaultContextMenu: true,
+		BackgroundColour:         windowBackgroundColour(),
 		AssetServer: &assetserver.Options{
 			Assets:     assets,
 			Handler:    mediaHandler(),
 			Middleware: cspMiddleware,
 		},
 		Linux: &linux.Options{
-			Icon: appIconPNG,
+			Icon:                appIconPNG,
+			WindowIsTranslucent: roundedWindowCorners,
 		},
 		Mac: &mac.Options{
 			// Hide the native title bar and extend content to the top edge,

@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Meklēt jaunas versijas fonā. Atjauninājumi nekad netiek instalēti bez atļaujas.",
   "settings.window.closeToTray": "Aizvērt uz paziņojumu joslu",
   "settings.window.closeToTrayHint": "Aizverot logu, Meron turpina darboties sistēmas paziņojumu joslā. Lai izietu, izmantojiet ikonas izvēlnes vienumu “{quit}”.",
+  "settings.window.integratedTitlebar": "Integrēta virsraksta josla",
+  "settings.window.integratedTitlebarHint": "Meron zīmē savu virsraksta joslu ar uzdevumiem un ātrajiem iestatījumiem blakus loga pogām. Izslēdziet, lai izmantotu darbvirsmas virsraksta joslu.",
+  "settings.window.restartToApply": "Restartējiet Meron, lai lietotu virsraksta joslu.",
   "settings.viewSyncLog": "Skatīt žurnālus",
   "shortcuts.conflict": "Jau izmanto {name}",
   "shortcuts.customize": "Pielāgot",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Vienkāršs (noklusējums)",
   "wallpaper.uploadCustom": "Augšupielādēt pielāgotu",
   "wallpaper.uploadFailed": "Neizdevās augšupielādēt fonu",
-  "wallpaper.uploading": "Augšupielādē..."
+  "wallpaper.uploading": "Augšupielādē...",
+  "window.maximize": "Maksimizēt",
+  "window.minimize": "Minimizēt",
+  "window.restore": "Atjaunot"
 }

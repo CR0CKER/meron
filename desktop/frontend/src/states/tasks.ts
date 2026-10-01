@@ -58,7 +58,7 @@ export const TASKS_SESSION_KEYS = [panelOpenSession.key, activeListSession.key]
 /** Restore and validate the remembered list before displaying its panel. */
 export async function restoreTasksSession(prefs: Record<string, unknown>) {
   activeListSession.restore(prefs)
-  panelOpenSession.restore(prefs.tasks_enabled === true ? prefs : { ...prefs, session_tasks_panel: false })
+  panelOpenSession.restore(prefs.tasks_enabled !== false ? prefs : { ...prefs, session_tasks_panel: false })
   if (ui$.tasksPanelOpen.peek()) await openTasksPanel()
 }
 

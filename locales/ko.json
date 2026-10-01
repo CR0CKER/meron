@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "백그라운드에서 새 버전을 확인합니다. 확인 없이 설치되는 일은 없습니다.",
   "settings.window.closeToTray": "닫을 때 트레이로 최소화",
   "settings.window.closeToTrayHint": "창을 닫아도 Meron이 시스템 트레이에서 계속 실행됩니다. 종료하려면 트레이 메뉴의 '{quit}'을(를) 사용하세요.",
+  "settings.window.integratedTitlebar": "통합 제목 표시줄",
+  "settings.window.integratedTitlebarHint": "Meron이 자체 제목 표시줄을 그리고, 창 버튼 옆에 할 일과 빠른 설정을 둡니다. 끄면 데스크톱의 제목 표시줄을 사용합니다.",
+  "settings.window.restartToApply": "제목 표시줄을 적용하려면 Meron을 다시 시작하세요.",
   "settings.viewSyncLog": "로그 보기",
   "shortcuts.conflict": "{name}에서 이미 사용 중",
   "shortcuts.customize": "사용자 지정",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "단색 (기본값)",
   "wallpaper.uploadCustom": "사용자 지정 업로드",
   "wallpaper.uploadFailed": "배경 업로드 실패",
-  "wallpaper.uploading": "업로드 중..."
+  "wallpaper.uploading": "업로드 중...",
+  "window.maximize": "최대화",
+  "window.minimize": "최소화",
+  "window.restore": "복원"
 }

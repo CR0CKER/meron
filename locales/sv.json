@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Leta efter nya versioner i bakgrunden. Uppdateringar installeras aldrig utan att fråga.",
   "settings.window.closeToTray": "Stäng till systemfältet",
   "settings.window.closeToTrayHint": "Låt Meron fortsätta köras i systemfältet när fönstret stängs. Använd {quit} i menyn i systemfältet för att avsluta.",
+  "settings.window.integratedTitlebar": "Integrerad namnlist",
+  "settings.window.integratedTitlebarHint": "Meron ritar en egen namnlist, med uppgifter och snabbinställningar bredvid fönsterknapparna. Stäng av för att använda skrivbordets namnlist.",
+  "settings.window.restartToApply": "Starta om Meron för att använda namnlisten.",
   "settings.viewSyncLog": "Visa loggar",
   "shortcuts.conflict": "Används redan av {name}",
   "shortcuts.customize": "Anpassa",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Enkel (Standard)",
   "wallpaper.uploadCustom": "Ladda upp anpassad",
   "wallpaper.uploadFailed": "Kunde inte ladda upp bakgrund",
-  "wallpaper.uploading": "Laddar upp..."
+  "wallpaper.uploading": "Laddar upp...",
+  "window.maximize": "Maximera",
+  "window.minimize": "Minimera",
+  "window.restore": "Återställ"
 }

@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Look for new releases in the background. Updates are never installed without asking.",
   "settings.window.closeToTray": "Close to tray",
   "settings.window.closeToTrayHint": "Keep Meron running in the system tray when the window is closed. Use {quit} in the tray menu to exit.",
+  "settings.window.integratedTitlebar": "Integrated title bar",
+  "settings.window.integratedTitlebarHint": "Meron draws its own title bar, with Tasks and quick settings beside the window buttons. Turn off to use your desktop's title bar.",
+  "settings.window.restartToApply": "Restart Meron to apply the title bar.",
   "settings.viewSyncLog": "View logs",
   "shortcuts.conflict": "Already used by {name}",
   "shortcuts.customize": "Customize",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Plain (Default)",
   "wallpaper.uploadCustom": "Upload Custom",
   "wallpaper.uploadFailed": "Failed to upload background",
-  "wallpaper.uploading": "Uploading..."
+  "wallpaper.uploading": "Uploading...",
+  "window.maximize": "Maximize",
+  "window.minimize": "Minimize",
+  "window.restore": "Restore"
 }

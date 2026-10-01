@@ -146,6 +146,27 @@ body,
   margin: 0;
 }
 
+/* A floating Linux window: the webview is transparent, so clipping the page
+   rounds the bottom corners to match the title bar's (see useAppEffects). */
+html.window-rounded {
+  clip-path: inset(0 round 0 0 8px 8px);
+}
+
+/* The integrated title bar (Linux): the window is libadwaita-shaped, 15px on
+   every corner (see decorationCss in Go). */
+html.titlebar-integrated.window-rounded {
+  clip-path: inset(0 round 15px);
+}
+
+/* The body's background would go to the canvas, which the clip doesn't reach. */
+html.window-rounded body {
+  background: transparent;
+}
+
+html.window-rounded #root {
+  background: var(--me-bg-app);
+}
+
 body {
   background: var(--me-bg-app);
   color: var(--me-text-primary);
@@ -309,17 +330,111 @@ textarea,
   cursor: text;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
+/* Meron's title bar (TitleBar.tsx) moves the window: Wails reads
+   --wails-draggable off the pressed element, so the buttons in it opt out. A
+   double-click runs the desktop's title bar action where it reads drag (see
+   windowChrome.ts), and must not select anything on the way. */
+[data-titlebar] {
+  --wails-draggable: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-titlebar] :is(button, a, [role='button']) {
+  --wails-draggable: no-drag;
+}
+
+/* Windows 11's caption buttons: a subtle fill on hover (SubtleFillColor
+   Secondary/Tertiary), and the close button's red. */
+.caption-button {
+  display: inline-flex;
+  width: 46px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 10px;
+  cursor: default;
+}
+
+.caption-button:hover {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.caption-button:active {
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.caption-button-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.caption-button-close:active {
+  background: color-mix(in srgb, #c42b1c 90%, transparent);
+  color: rgb(255 255 255 / 0.7);
+}
+
+.caption-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--me-accent) 50%, transparent);
+  outline-offset: -2px;
+}
+
+/* libadwaita 1.8 default.css, windowcontrols > button and its image, but flat
+   like the title bar's other buttons (TitleBar.tsx): the ink at 60%, full on
+   hover, and the circle only under the pointer, at their 10% and 15% fills. */
+.window-control {
+  display: inline-flex;
+  padding: 5px;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  cursor: default;
+  transition: color 150ms ease;
+}
+
+.window-control:hover,
+.window-control:active {
+  color: inherit;
+}
+
+.window-control-circle {
+  fill: currentColor;
+  fill-opacity: 0;
+  transition: fill-opacity 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.window-control:hover .window-control-circle {
+  fill-opacity: 0.1;
+}
+
+.window-control:active .window-control-circle {
+  fill-opacity: 0.15;
+}
+
+.window-control:focus-visible {
+  outline: none;
+}
+
+.window-control:focus-visible svg {
+  border-radius: 9999px;
+  outline: 2px solid color-mix(in srgb, var(--me-accent) 50%, transparent);
+}
+
+/* Custom scrollbars, except on Linux, where WebKitGTK's own overlay
+   scrollbars match the desktop (html.native-scrollbars, set in main.tsx). */
+html:not(.native-scrollbars) ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-::-webkit-scrollbar-track {
+html:not(.native-scrollbars) ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+html:not(.native-scrollbars) ::-webkit-scrollbar-thumb {
   background-color: rgba(100, 116, 139, 0.2);
   border: 3px solid transparent;
   background-clip: padding-box;
@@ -327,30 +442,30 @@ textarea,
   transition: background-color 0.15s ease;
 }
 
-::-webkit-scrollbar-thumb:hover {
+html:not(.native-scrollbars) ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(100, 116, 139, 0.45);
   border: 2px solid transparent;
 }
 
-.dark ::-webkit-scrollbar-thumb {
+html.dark:not(.native-scrollbars) ::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.15);
 }
 
-.dark ::-webkit-scrollbar-thumb:hover {
+html.dark:not(.native-scrollbars) ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.35);
 }
 
 /* Thread lists keep symmetric padding, so the gutter is kept as narrow as the
    thumb to limit how much extra space the scrollbar adds on the right. */
-[data-thread-list]::-webkit-scrollbar {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar {
   width: 6px;
 }
 
-[data-thread-list]::-webkit-scrollbar-thumb {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb {
   border-width: 1px;
 }
 
-[data-thread-list]::-webkit-scrollbar-thumb:hover {
+html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   border-width: 0;
 }
 

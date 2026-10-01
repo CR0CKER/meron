@@ -26,7 +26,7 @@ import { AppToast } from './components/toast/AppToast'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
-import { MacTitleBar } from './components/titlebar/MacTitleBar'
+import { TitleBar } from './components/titlebar/TitleBar'
 import { ConnectivityBanner } from './components/banner/ConnectivityBanner'
 import { UpdateBanner } from './components/banner/UpdateBanner'
 import { SetupScreen } from './components/setup/SetupScreen'
@@ -60,7 +60,7 @@ export default function App() {
   if (system && accounts.length === 0) {
     return (
       <div className="flex h-full w-full flex-col bg-app text-primary">
-        <MacTitleBar />
+        <TitleBar tools={false} />
         <div className="min-h-0 flex-1">
           <SetupScreen />
         </div>
@@ -71,7 +71,7 @@ export default function App() {
 
   return (
     <div className="flex h-full w-full flex-col bg-app text-primary">
-      <MacTitleBar />
+      <TitleBar />
       <ConnectivityBanner />
       <UpdateBanner />
       <main ref={mainRef} className="flex min-h-0 w-full flex-1 overflow-hidden">

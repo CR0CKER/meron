@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "البحث عن إصدارات جديدة في الخلفية. لا يتم تثبيت التحديثات أبدًا دون إذنك.",
   "settings.window.closeToTray": "الإغلاق إلى علبة النظام",
   "settings.window.closeToTrayHint": "إبقاء Meron قيد التشغيل في علبة النظام عند إغلاق النافذة. استخدم «{quit}» من قائمة العلبة للخروج.",
+  "settings.window.integratedTitlebar": "شريط عنوان مدمج",
+  "settings.window.integratedTitlebarHint": "يرسم Meron شريط عنوانه الخاص، مع المهام والإعدادات السريعة بجانب أزرار النافذة. أوقفه لاستخدام شريط عنوان سطح المكتب.",
+  "settings.window.restartToApply": "أعد تشغيل Meron لتطبيق شريط العنوان.",
   "settings.viewSyncLog": "عرض السجلات",
   "shortcuts.conflict": "مستخدم بالفعل بواسطة {name}",
   "shortcuts.customize": "تخصيص",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "عادي (افتراضي)",
   "wallpaper.uploadCustom": "رفع خلفية مخصصة",
   "wallpaper.uploadFailed": "فشل رفع الخلفية",
-  "wallpaper.uploading": "جاري الرفع..."
+  "wallpaper.uploading": "جاري الرفع...",
+  "window.maximize": "تكبير",
+  "window.minimize": "تصغير",
+  "window.restore": "استعادة"
 }

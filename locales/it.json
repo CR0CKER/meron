@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Cerca nuove versioni in background. Gli aggiornamenti non vengono mai installati senza chiedere.",
   "settings.window.closeToTray": "Chiudi nell'area di notifica",
   "settings.window.closeToTrayHint": "Mantieni Meron in esecuzione nell'area di notifica quando la finestra viene chiusa. Usa «{quit}» nel menu dell'icona per uscire.",
+  "settings.window.integratedTitlebar": "Barra del titolo integrata",
+  "settings.window.integratedTitlebarHint": "Meron disegna la propria barra del titolo, con le attività e le impostazioni rapide accanto ai pulsanti della finestra. Disattivala per usare la barra del titolo del tuo desktop.",
+  "settings.window.restartToApply": "Riavvia Meron per applicare la barra del titolo.",
   "settings.viewSyncLog": "Visualizza log",
   "shortcuts.conflict": "Già usato da {name}",
   "shortcuts.customize": "Personalizza",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Tinta unita (Predefinito)",
   "wallpaper.uploadCustom": "Carica personalizzato",
   "wallpaper.uploadFailed": "Caricamento dello sfondo non riuscito",
-  "wallpaper.uploading": "Caricamento in corso..."
+  "wallpaper.uploading": "Caricamento in corso...",
+  "window.maximize": "Ingrandisci",
+  "window.minimize": "Riduci a icona",
+  "window.restore": "Ripristina"
 }

@@ -3,7 +3,18 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from 
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useValue } from '@legendapp/state/react'
-import { Check, ChevronDown, ChevronRight, ListTodo, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ListTodo,
+  SquareCheckBig,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
 
 import { useTranslation } from '../../lib/i18n'
 import { IconButton } from '../button/IconButton'
@@ -345,7 +356,7 @@ function PanelEmptyState({ title, text }: { title: string; text: string }) {
   return (
     <div className="flex flex-col items-center px-6 py-10 text-center select-none animate-fade-in">
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-raised text-accent">
-        <ListTodo size={18} strokeWidth={1.8} />
+        <SquareCheckBig size={18} strokeWidth={1.8} />
       </div>
       <p className="mt-3 text-sm font-semibold text-primary">{title}</p>
       <p className="mt-1 text-xs leading-relaxed text-secondary">{text}</p>

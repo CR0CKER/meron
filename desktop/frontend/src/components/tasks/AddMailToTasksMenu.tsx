@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useValue } from '@legendapp/state/react'
-import { Check, ChevronRight, ListTodo } from 'lucide-react'
+import { Check, ChevronRight, SquareCheckBig } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { addTaskFromMessage, loadTaskLists, type TaskList } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
@@ -48,7 +48,7 @@ export function AddMailToTasksMenu({
   return (
     <div ref={ref} onMouseEnter={open} onMouseLeave={() => setAnchor(null)}>
       <MenuItem
-        icon={<ListTodo size={13} className="text-secondary" />}
+        icon={<SquareCheckBig size={13} className="text-secondary" />}
         label={t('tasks.addFromMessage')}
         disabled={!lists.length}
         trailing={lists.length > 1 ? <ChevronRight size={13} /> : undefined}

@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Yeni sürümleri arka planda ara. Güncellemeler asla sorulmadan kurulmaz.",
   "settings.window.closeToTray": "Sistem tepsisine kapat",
   "settings.window.closeToTrayHint": "Pencere kapatıldığında Meron sistem tepsisinde çalışmaya devam eder. Çıkmak için tepsi menüsündeki {quit} seçeneğini kullanın.",
+  "settings.window.integratedTitlebar": "Tümleşik başlık çubuğu",
+  "settings.window.integratedTitlebarHint": "Meron kendi başlık çubuğunu çizer; görevler ve hızlı ayarlar pencere düğmelerinin yanında yer alır. Masaüstünüzün başlık çubuğunu kullanmak için kapatın.",
+  "settings.window.restartToApply": "Başlık çubuğunu uygulamak için Meron'u yeniden başlatın.",
   "settings.viewSyncLog": "Günlükleri görüntüle",
   "shortcuts.conflict": "Zaten {name} tarafından kullanılıyor",
   "shortcuts.customize": "Özelleştir",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Düz (Varsayılan)",
   "wallpaper.uploadCustom": "Özel Yükle",
   "wallpaper.uploadFailed": "Arka plan yüklenemedi",
-  "wallpaper.uploading": "Yükleniyor..."
+  "wallpaper.uploading": "Yükleniyor...",
+  "window.maximize": "Büyüt",
+  "window.minimize": "Simge durumuna küçült",
+  "window.restore": "Geri yükle"
 }

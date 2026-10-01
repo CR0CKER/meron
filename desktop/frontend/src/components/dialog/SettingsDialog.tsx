@@ -11,7 +11,7 @@ import {
   Image as ImageIcon,
   Send,
   Inbox,
-  ListTodo,
+  SquareCheckBig,
   Plus,
   Trash2,
   Camera,
@@ -28,6 +28,7 @@ import {
   Keyboard,
   Archive,
   Server,
+  PanelTop,
   PanelTopClose,
   Moon,
   Shrink,
@@ -76,6 +77,7 @@ import { pickImageFile } from '../../lib/nativeFilePicker'
 import { invoke } from '../../lib/bridge'
 import { isMac } from '../../lib/shortcuts'
 import { McpSettingsPanel } from './McpSettingsPanel'
+import { setIntegratedTitlebar, windowChrome$ } from '../../lib/windowChrome'
 
 // General uses the empty selection; Messages, Composer and MCP have ids of
 // their own. Account and board IDs share the selection state with these
@@ -443,13 +445,6 @@ function GeneralSection() {
           checked={showUnreadAccountBadge}
           onChange={() => settings$.showUnreadAccountBadge.set(!showUnreadAccountBadge)}
         />
-        <ToggleRow
-          icon={<ListTodo size={15} />}
-          title={t('settings.tasks.enable')}
-          hint={t('settings.tasks.enableHint')}
-          checked={tasksEnabled}
-          onChange={() => setTasksEnabled(!tasksEnabled)}
-        />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings.sections.kanban')}>
@@ -491,7 +486,15 @@ function GeneralSection() {
             </button>
           }
         />
+        <ToggleRow
+          icon={<SquareCheckBig size={15} />}
+          title={t('settings.tasks.enable')}
+          hint={t('settings.tasks.enableHint')}
+          checked={tasksEnabled}
+          onChange={() => setTasksEnabled(!tasksEnabled)}
+        />
         <CloseToTrayRow />
+        <IntegratedTitlebarRow />
         <AutoUpdateRow />
       </SettingsGroup>
 
@@ -744,6 +747,35 @@ function CloseToTrayRow() {
       hint={t('settings.window.closeToTrayHint', { quit: t('tray.quitMeron') })}
       checked={closeToTray}
       onChange={() => settings$.closeToTray.set(!closeToTray)}
+    />
+  )
+}
+
+// Linux (where GTK draws the frame) and Windows. The choice lives in Go
+// (window.json), since it is needed before the window exists; on Windows it
+// takes effect on the next launch, so the switch shows the saved choice.
+function IntegratedTitlebarRow() {
+  const { t } = useTranslation()
+  const supported = useValue(windowChrome$.supported)
+  const wanted = useValue(windowChrome$.wanted)
+
+  if (!supported) return null
+
+  return (
+    <ToggleRow
+      icon={<PanelTop size={15} />}
+      title={t('settings.window.integratedTitlebar')}
+      hint={t('settings.window.integratedTitlebarHint')}
+      checked={wanted}
+      onChange={() =>
+        void setIntegratedTitlebar(!wanted)
+          .then(() => {
+            if (windowChrome$.wanted.peek() !== windowChrome$.integrated.peek()) {
+              showToast(t('settings.window.restartToApply'), 'success', 4000)
+            }
+          })
+          .catch(() => {})
+      }
     />
   )
 }

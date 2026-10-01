@@ -840,6 +840,9 @@
   "settings.updates.autoCheckHint": "Tìm phiên bản mới ở chế độ nền. Bản cập nhật không bao giờ được cài đặt mà không hỏi.",
   "settings.window.closeToTray": "Đóng xuống khay hệ thống",
   "settings.window.closeToTrayHint": "Giữ Meron chạy trong khay hệ thống khi đóng cửa sổ. Dùng {quit} trong menu khay để thoát.",
+  "settings.window.integratedTitlebar": "Thanh tiêu đề tích hợp",
+  "settings.window.integratedTitlebarHint": "Meron tự vẽ thanh tiêu đề, với Công việc và cài đặt nhanh bên cạnh các nút cửa sổ. Tắt đi để dùng thanh tiêu đề của màn hình nền.",
+  "settings.window.restartToApply": "Khởi động lại Meron để áp dụng thanh tiêu đề.",
   "settings.viewSyncLog": "Xem nhật ký",
   "shortcuts.conflict": "Đã được {name} sử dụng",
   "shortcuts.customize": "Tùy chỉnh",
@@ -968,5 +971,8 @@
   "wallpaper.plainDefault": "Màu trơn (Mặc định)",
   "wallpaper.uploadCustom": "Tải lên ảnh tùy chỉnh",
   "wallpaper.uploadFailed": "Tải lên hình nền thất bại",
-  "wallpaper.uploading": "Đang tải lên..."
+  "wallpaper.uploading": "Đang tải lên...",
+  "window.maximize": "Phóng to",
+  "window.minimize": "Thu nhỏ",
+  "window.restore": "Khôi phục"
 }

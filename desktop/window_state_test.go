@@ -48,16 +48,21 @@ type fakeWindow struct {
 	width, height int
 	maximised     bool
 	normal        bool
+	tiled         bool
+	// desktopFrame: the desktop draws the frame (KDE Plasma, X11), not GTK.
+	desktopFrame bool
 }
 
 func stubWindowState(t *testing.T, w *fakeWindow) {
 	t.Helper()
-	size, isMaximised, isNormal := windowGetSize, windowIsMaximised, windowIsNormal
+	size, isMaximised, isNormal, isTiled, drawsFrame := windowGetSize, windowIsMaximised, windowIsNormal, windowIsTiled, windowDrawsFrame
 	windowGetSize = func(context.Context) (int, int) { return w.width, w.height }
 	windowIsMaximised = func(context.Context) bool { return w.maximised }
 	windowIsNormal = func(context.Context) bool { return w.normal }
+	windowIsTiled = func() bool { return w.tiled }
+	windowDrawsFrame = func() bool { return !w.desktopFrame }
 	t.Cleanup(func() {
-		windowGetSize, windowIsMaximised, windowIsNormal = size, isMaximised, isNormal
+		windowGetSize, windowIsMaximised, windowIsNormal, windowIsTiled, windowDrawsFrame = size, isMaximised, isNormal, isTiled, drawsFrame
 	})
 }
 
@@ -159,6 +164,41 @@ func TestBeforeClose(t *testing.T) {
 	}
 	if got := loadWindowState(app.windowStatePath); got.Maximised || got.Width != 1000 {
 		t.Fatalf("explicit quit: state not saved, got %+v", got)
+	}
+}
+
+// The frontend rounds the window's corners only while it floats: square when
+// maximised, fullscreen or tiled, and never where the platform doesn't ask for it.
+func TestWindowResizedReportsRoundedCorners(t *testing.T) {
+	rounded := roundedWindowCorners
+	t.Cleanup(func() { roundedWindowCorners = rounded })
+	w := &fakeWindow{width: 1000, height: 600, normal: true}
+	stubWindowState(t, w)
+	app := newWindowStateApp(t)
+
+	cases := []struct {
+		name     string
+		platform bool
+		window   fakeWindow
+		want     bool
+	}{
+		{"floating", true, fakeWindow{width: 1000, height: 600, normal: true}, true},
+		{"maximised", true, fakeWindow{width: 1920, height: 1080, maximised: true}, false},
+		{"fullscreen", true, fakeWindow{width: 1920, height: 1080}, false},
+		{"tiled", true, fakeWindow{width: 960, height: 1080, normal: true, tiled: true}, false},
+		{"desktop frame", true, fakeWindow{width: 1000, height: 600, normal: true, desktopFrame: true}, false},
+		{"other platform", false, fakeWindow{width: 1000, height: 600, normal: true}, false},
+	}
+	for _, c := range cases {
+		roundedWindowCorners = c.platform
+		*w = c.window
+		result, err := app.windowResized()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := result.(map[string]any)["rounded"]; got != c.want {
+			t.Errorf("%s: rounded = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
