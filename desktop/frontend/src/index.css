@@ -938,6 +938,35 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* The conversation details panel (MessagePane). On a narrow window it
+   overlays the conversation and slides in by itself, so its frame steps
+   aside and the panel just goes when closed. On a wide window it sits
+   beside the conversation: the frame grows and narrows like the Tasks panel
+   (animate-pane-open/-close), without the panel's own fading slide, so the
+   conversation header narrows smoothly in step with its folding room. */
+.details-slide {
+  display: contents;
+}
+
+@media (max-width: 1099px) {
+  .details-slide[data-pane-phase='exiting'] {
+    display: none;
+  }
+}
+
+@media (min-width: 1100px) {
+  .details-slide {
+    display: flex;
+    flex-shrink: 0;
+    width: 340px;
+    overflow: hidden;
+  }
+
+  .details-slide > aside {
+    animation: none;
+  }
+}
+
 /* The room a header keeps for the window's corner group, folding in and out
    with the board's conversation pane (TitlebarEnd): same duration and easing,
    so the board's buttons move with the pane. Wider than the group when open,
