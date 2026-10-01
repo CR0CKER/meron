@@ -1024,6 +1024,17 @@ pub async fn list_all_uids(session: &mut Session, folder: &str) -> Result<HashSe
     Ok(set)
 }
 
+/// Every unseen UID in `folder`. Sync keeps the ones outside the cached window
+/// so a folder's unread total matches the server, not just what is cached.
+pub async fn list_unseen_uids(session: &mut Session, folder: &str) -> Result<HashSet<u32>> {
+    session.select(folder).await.context("SELECT")?;
+    let set: HashSet<u32> = session
+        .uid_search("UNSEEN")
+        .await
+        .context("UID SEARCH UNSEEN")?;
+    Ok(set)
+}
+
 /// Every `\Flagged` UID in `folder`, newest (highest) first.
 pub async fn search_starred_uids(session: &mut Session, folder: &str) -> Result<Vec<u32>> {
     session.select(folder).await.context("SELECT")?;

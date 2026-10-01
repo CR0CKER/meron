@@ -358,6 +358,10 @@ pub fn delete_folder_messages(conn: &Connection, account: &str, folder: &str) ->
         "DELETE FROM messages WHERE account = ?1 AND folder = ?2",
         params![account, folder],
     )?;
+    conn.execute(
+        "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
+        params![account, folder],
+    )?;
     Ok(deleted)
 }
 
@@ -398,11 +402,13 @@ pub fn move_messages_by_uid(
     Ok(moved)
 }
 
-/// UIDs of every unseen message in a folder. Used by "mark all as read" to set
-/// `\Seen` on the server for exactly the messages currently flagged unread.
+/// UIDs of every unseen message in a folder, cached or not. Used by "mark all
+/// as read" to set `\Seen` on the server for exactly the messages counted unread.
 pub fn get_unseen_uids(conn: &Connection, account: &str, folder: &str) -> Result<Vec<u32>> {
     let mut stmt = conn.prepare(
-        "SELECT uid FROM messages WHERE account = ?1 AND folder = ?2 AND seen = 0 AND uid <> 0",
+        "SELECT uid FROM messages WHERE account = ?1 AND folder = ?2 AND seen = 0 AND uid <> 0
+         UNION
+         SELECT uid FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
     )?;
     let rows = stmt.query_map(params![account, folder], |row| row.get::<_, u32>(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -414,5 +420,11 @@ pub fn mark_folder_seen(conn: &Connection, account: &str, folder: &str, seen: bo
         "UPDATE messages SET seen = ?3 WHERE account = ?1 AND folder = ?2",
         params![account, folder, seen as i64],
     )?;
+    if seen {
+        conn.execute(
+            "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
+            params![account, folder],
+        )?;
+    }
     Ok(())
 }

@@ -71,6 +71,10 @@ pub fn delete_folder(conn: &Connection, account: &str, name: &str) -> Result<usi
         params![account, name],
     )?;
     tx.execute(
+        "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
+        params![account, name],
+    )?;
+    tx.execute(
         "DELETE FROM folders WHERE account = ?1 AND name = ?2",
         params![account, name],
     )?;
@@ -110,12 +114,11 @@ pub fn child_folders(conn: &Connection, account: &str, name: &str) -> Result<Vec
 }
 
 pub fn get_folders(conn: &Connection, account: &str) -> Result<Vec<Folder>> {
-    let mut stmt = conn.prepare(
-        "SELECT f.name, f.delimiter, f.special_use,
-                (SELECT COUNT(*) FROM messages m
-                  WHERE m.account = f.account AND m.folder = f.name AND m.seen = 0) AS unread
+    let mut stmt = conn.prepare(&format!(
+        "SELECT f.name, f.delimiter, f.special_use, {UNREAD_SQL} AS unread
            FROM folders f WHERE f.account = ?1 ORDER BY f.name",
-    )?;
+        UNREAD_SQL = unread_sql("f.account", "f.name"),
+    ))?;
     let rows = stmt.query_map(params![account], |row| {
         let name = row.get::<_, String>(0)?;
         let special_use = row.get::<_, Option<String>>(2)?;
@@ -131,16 +134,50 @@ pub fn get_folders(conn: &Connection, account: &str) -> Result<Vec<Folder>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+/// Unread total for the folder named by the `account`/`folder` SQL expressions:
+/// cached unseen messages plus the unseen server UIDs the cache doesn't hold.
+fn unread_sql(account: &str, folder: &str) -> String {
+    format!(
+        "((SELECT COUNT(*) FROM messages m
+            WHERE m.account = {account} AND m.folder = {folder} AND m.seen = 0)
+          + (SELECT COUNT(*) FROM uncached_unseen u
+            WHERE u.account = {account} AND u.folder = {folder}))"
+    )
+}
+
 /// Authoritative unread-message total for one folder. Thread-list responses
 /// carry this alongside their cards so clients do not have to join a separately
 /// cached folder-list response to the freshly loaded page.
 pub fn get_folder_unread(conn: &Connection, account: &str, folder: &str) -> Result<u32> {
     let unread = conn.query_row(
-        "SELECT COUNT(*) FROM messages WHERE account = ?1 AND folder = ?2 AND seen = 0",
+        &format!("SELECT {}", unread_sql("?1", "?2")),
         params![account, folder],
         |row| row.get::<_, i64>(0),
     )?;
     Ok(unread as u32)
+}
+
+/// Replace the folder's `uncached_unseen` rows with the members of
+/// `unseen` (the server's unseen UIDs) that aren't cached.
+pub fn set_uncached_unseen(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    unseen: &std::collections::HashSet<u32>,
+) -> Result<()> {
+    conn.execute(
+        "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
+        params![account, folder],
+    )?;
+    let mut insert = conn.prepare_cached(
+        "INSERT INTO uncached_unseen(account, folder, uid)
+         SELECT ?1, ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM messages
+           WHERE account = ?1 AND folder = ?2 AND uid = ?3)",
+    )?;
+    for uid in unseen {
+        insert.execute(params![account, folder, uid])?;
+    }
+    Ok(())
 }
 
 pub fn classify_folder_role(name: &str, special_use: Option<&str>) -> &'static str {

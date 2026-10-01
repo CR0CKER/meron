@@ -711,6 +711,10 @@ pub fn clear_folder_messages(conn: &Connection, account: &str, folder: &str) -> 
         "DELETE FROM messages WHERE account = ?1 AND folder = ?2",
         params![account, folder],
     )?;
+    conn.execute(
+        "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
+        params![account, folder],
+    )?;
     Ok(())
 }
 

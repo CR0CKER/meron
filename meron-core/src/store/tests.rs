@@ -233,6 +233,65 @@ fn folder_unread_counts_messages_without_requiring_a_folder_row() {
 }
 
 #[test]
+fn folder_unread_includes_unseen_server_mail_outside_the_cache() {
+    let conn = test_conn();
+    insert_message(&conn, 10, "Cached", "Ada", "ada@example.com", None);
+    // The server reports 10 (cached) and 3..=5 (older, not cached) unseen.
+    set_uncached_unseen(&conn, "acct", "INBOX", &[3, 4, 5, 10].into_iter().collect()).unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 4);
+    ensure_folder(&conn, "acct", "INBOX").unwrap();
+    let folders = get_folders(&conn, "acct").unwrap();
+    assert_eq!(
+        folders.iter().find(|f| f.name == "INBOX").unwrap().unread,
+        4
+    );
+
+    // Paging an older message into the cache doesn't count it twice, and
+    // reading it there is reflected.
+    insert_message(&conn, 4, "Paged in", "Bea", "bea@example.com", None);
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 4);
+    update_message_seen(&conn, "acct", "INBOX", 4, true).unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 3);
+
+    let mut unseen = get_unseen_uids(&conn, "acct", "INBOX").unwrap();
+    unseen.sort_unstable();
+    assert_eq!(unseen, vec![3, 5, 10]);
+    mark_folder_seen(&conn, "acct", "INBOX", true).unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 0);
+}
+
+#[test]
+fn removing_a_paged_in_message_does_not_revive_its_uncached_unread() {
+    let conn = test_conn();
+    set_uncached_unseen(&conn, "acct", "INBOX", &[4].into_iter().collect()).unwrap();
+    insert_message(&conn, 4, "Paged in", "Bea", "bea@example.com", None);
+    update_message_seen(&conn, "acct", "INBOX", 4, true).unwrap();
+    conn.execute(
+        "DELETE FROM messages WHERE account = 'acct' AND folder = 'INBOX' AND uid = 4",
+        [],
+    )
+    .unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 0);
+}
+
+#[test]
+fn moving_a_cached_message_onto_an_uncached_unseen_uid_counts_it_once() {
+    let conn = test_conn();
+    insert_message(&conn, 4, "Moved", "Bea", "bea@example.com", None);
+    set_uncached_unseen(&conn, "acct", "Archive", &[4].into_iter().collect()).unwrap();
+    move_messages_by_uid(&conn, "acct", "INBOX", "Archive", &[4]).unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "Archive").unwrap(), 1);
+}
+
+#[test]
+fn emptying_a_folder_clears_its_uncached_unread() {
+    let conn = test_conn();
+    set_uncached_unseen(&conn, "acct", "INBOX", &[3, 5].into_iter().collect()).unwrap();
+    delete_folder_messages(&conn, "acct", "INBOX").unwrap();
+    assert_eq!(get_folder_unread(&conn, "acct", "INBOX").unwrap(), 0);
+}
+
+#[test]
 fn delete_folder_drops_the_row_its_messages_and_its_sync_state() {
     let conn = test_conn();
     upsert_folders(
@@ -2346,7 +2405,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 
     for table in [
         "accounts",
@@ -2382,7 +2441,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 }
 
 #[test]
@@ -2410,7 +2469,7 @@ fn concurrent_first_open_runs_migrations_once() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -4099,7 +4158,7 @@ fn tasks_tables_arrive_on_an_existing_install() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 
     // Cached mail is untouched, and the new tables are writable.
     let messages: i64 = conn

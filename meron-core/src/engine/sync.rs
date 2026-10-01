@@ -307,10 +307,11 @@ pub(super) async fn sync_state_isolating_unparseable(
     imap::RecentBatch,
     Option<imap::FlagSync>,
     Option<std::collections::HashSet<u32>>,
+    Option<std::collections::HashSet<u32>>,
 )> {
     let batch = recover_recent_batch(engine, account, folder, limit).await?;
     let uidvalidity = batch.uidvalidity;
-    let (flag_sync, server_uids) = engine
+    let (flag_sync, server_uids, server_unseen) = engine
         .with_read_session(account, |session| {
             let folder = folder.to_string();
             Box::pin(async move {
@@ -319,12 +320,13 @@ pub(super) async fn sync_state_isolating_unparseable(
                     .await
                     .ok();
                 let server_uids = imap::list_all_uids(session, &folder).await.ok();
-                anyhow::Ok((flag_sync, server_uids))
+                let server_unseen = imap::list_unseen_uids(session, &folder).await.ok();
+                anyhow::Ok((flag_sync, server_uids, server_unseen))
             })
         })
         .await
-        .unwrap_or((None, None));
-    Ok((batch, flag_sync, server_uids))
+        .unwrap_or((None, None, None));
+    Ok((batch, flag_sync, server_uids, server_unseen))
 }
 
 /// [`imap::fetch_recent`] for one folder, recovering from messages whose FETCH
@@ -542,7 +544,10 @@ async fn sync_messages_with_policy(
                     // Server-side UID set so we can drop locally cached messages another
                     // client moved or deleted. Best-effort: a failure here skips the prune.
                     let server_uids = imap::list_all_uids(session, &folder).await.ok();
-                    anyhow::Ok((batch, flag_sync, server_uids))
+                    // Unread mail older than the window still counts toward the
+                    // folder's unread total. Best-effort like the prune above.
+                    let server_unseen = imap::list_unseen_uids(session, &folder).await.ok();
+                    anyhow::Ok((batch, flag_sync, server_uids, server_unseen))
                 })
             })
             .await;
@@ -571,7 +576,7 @@ async fn sync_messages_with_policy(
             Err(err) => Err(err),
         }
     };
-    let (batch, flag_sync, server_uids) = if background {
+    let (batch, flag_sync, server_uids, server_unseen) = if background {
         retry_background_sync(&format!("sync {folder} for {account}"), || true, fetch).await?
     } else {
         fetch().await?
@@ -649,6 +654,9 @@ async fn sync_messages_with_policy(
         }
     }
     let flags_time = phase_started.elapsed();
+    if let Some(unseen) = server_unseen.as_ref() {
+        store::set_uncached_unseen(&db, account, folder, unseen)?;
+    }
     let phase_started = std::time::Instant::now();
     store::set_folder_state(&db, account, folder, batch.uidvalidity, batch.uid_next)?;
     let state_time = phase_started.elapsed();
