@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu, SquareCheckBig } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
@@ -23,6 +23,8 @@ export function useTitleBar(): boolean {
   return isMac || integrated
 }
 
+type MenuPosition = { x: number; y: number } | null
+
 /**
  * The window's top row, in the side navigation's colors so the two read as
  * one frame. It moves the window ([data-titlebar] in index.css) and holds the
@@ -32,6 +34,9 @@ export function useTitleBar(): boolean {
  * which float over its left end, stay centred in it.
  */
 export function TitleBar({ tools = true }: { tools?: boolean }) {
+  const { t } = useTranslation()
+  const [menu, setMenu] = useState<MenuPosition>(null)
+  const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const shown = useTitleBar()
   const windows = useValue(windowChrome$.platform) === 'windows'
   if (!shown) return null
@@ -40,22 +45,41 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
   // Linux: room for GNOME's 34px window controls.
   const layout = isMac ? 'h-7 pr-2 pl-20' : windows ? 'h-8 pl-1.5' : 'h-10 px-1.5'
   return (
-    <div data-titlebar className={`flex shrink-0 items-center bg-sidenav text-sidenav-ink ${layout}`}>
+    <div
+      data-titlebar
+      className={`flex shrink-0 items-center bg-sidenav text-sidenav-ink ${layout}`}
+      onContextMenu={(event) => {
+        if (!tools || event.defaultPrevented) return
+        event.preventDefault()
+        setMenu({ x: event.clientX, y: event.clientY })
+      }}
+    >
       <WindowControls side="start" />
       <div className="flex-1" />
-      {tools && <TitleBarTools />}
+      {tools && <TitleBarTools menu={menu} setMenu={setMenu} />}
       <WindowControls side="end" />
+      {menu && (
+        <QuickSettingsMenu
+          anchor={{ x: menu.x, y: menu.y, placement: 'down' }}
+          onAddKanbanBoard={() => setBoardDialog({ mode: 'create', name: t('kanban.board.defaultName') })}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {/* Out of the title bar, which would make the dialog move the window. */}
+      {boardDialog &&
+        createPortal(
+          <BoardDialog state={boardDialog} onChange={setBoardDialog} onClose={() => setBoardDialog(null)} />,
+          document.body,
+        )}
     </div>
   )
 }
 
-function TitleBarTools() {
+function TitleBarTools({ menu, setMenu }: { menu: MenuPosition; setMenu: Dispatch<SetStateAction<MenuPosition>> }) {
   const { t } = useTranslation()
   const windows = useValue(windowChrome$.platform) === 'windows'
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
-  const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const compact = isMac || windows
   const button = `flex shrink-0 items-center justify-center rounded-lg transition-colors cursor-pointer ${
     compact ? 'h-6 w-6' : 'h-8 w-8'
@@ -92,19 +116,6 @@ function TitleBarTools() {
       >
         <Menu size={iconSize} />
       </button>
-      {menu && (
-        <QuickSettingsMenu
-          anchor={{ x: menu.x, y: menu.y, placement: 'down' }}
-          onAddKanbanBoard={() => setBoardDialog({ mode: 'create', name: t('kanban.board.defaultName') })}
-          onClose={() => setMenu(null)}
-        />
-      )}
-      {/* Out of the title bar, which would make the dialog move the window. */}
-      {boardDialog &&
-        createPortal(
-          <BoardDialog state={boardDialog} onChange={setBoardDialog} onClose={() => setBoardDialog(null)} />,
-          document.body,
-        )}
     </div>
   )
 }

@@ -100,7 +100,10 @@ static void applyTitlebar(void) {
 		gtk_widget_set_no_show_all(bar, TRUE);
 		gtk_window_set_titlebar(mainWindow, bar);
 	} else if (gtk_window_get_titlebar(mainWindow) != NULL) {
+		// As create_titlebar sets it up. has-subtitle defaults to TRUE, which
+		// reserves a subtitle line: 47px tall instead of GTK's 37px.
 		GtkWidget *bar = gtk_header_bar_new();
+		g_object_set(bar, "spacing", 0, "has-subtitle", FALSE, NULL);
 		gtk_header_bar_set_title(GTK_HEADER_BAR(bar), gtk_window_get_title(mainWindow));
 		gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(bar), TRUE);
 		gtk_style_context_add_class(gtk_widget_get_style_context(bar), "default-decoration");

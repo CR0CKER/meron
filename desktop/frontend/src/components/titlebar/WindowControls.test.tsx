@@ -90,6 +90,21 @@ describe('TitleBar', () => {
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'Tasks', 'More', 'Minimize'])
   })
 
+  it('opens quick settings at the cursor when the title bar is right-clicked', () => {
+    const { container } = render(<TitleBar />)
+    const titleBar = container.querySelector('[data-titlebar]')!
+    expect(fireEvent.contextMenu(titleBar, { clientX: 120, clientY: 20 })).toBe(false)
+    const settings = screen.getByRole('button', { name: /Settings/ })
+    const menu = settings.parentElement!
+    expect(menu.style.left).toBe('120px')
+    expect(menu.style.top).toBe('24px')
+    expect(screen.getByRole('button', { name: 'Add kanban board' })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: /Settings/ })).toBeTruthy()
+  })
+
   it('leaves the app buttons out on the setup screen', () => {
     render(<TitleBar tools={false} />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Minimize', 'Maximize', 'Close'])
