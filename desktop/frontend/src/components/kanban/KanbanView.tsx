@@ -36,10 +36,16 @@ import { wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
 import { WindowControls } from '../titlebar/WindowControls'
 import { TitlebarEnd, TitlebarMenu } from '../titlebar/TitleBar'
+import { usePaneTitlebar } from '../titlebar/titlebarMode'
 import { HeaderComposeIcon, HeaderSearchIcon } from '../titlebar/headerIcons'
 
 export function KanbanView({ boardId }: { boardId: string }) {
   const { t } = useTranslation()
+  // Under the GNOME header bar the header sits in the window's rounded top
+  // corner, and WebKit doesn't always clip a blurred (separately composited)
+  // layer to it after a maximise and restore. Nothing scrolls under the
+  // header, so the blur changes nothing there: drop it.
+  const panes = usePaneTitlebar()
   const accounts = useValue(accounts$)
   const foldersByAccount = useFoldersByAccount()
   const boards = useValue(settings$.kanbanBoards)
@@ -216,7 +222,9 @@ export function KanbanView({ boardId }: { boardId: string }) {
     <section className="flex flex-1 min-w-0 flex-col bg-chats max-[768px]:w-full">
       <div
         data-titlebar="pane"
-        className="@container relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 backdrop-blur-md px-4 py-3"
+        className={`@container relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 px-4 py-3 ${
+          panes ? '' : 'backdrop-blur-md'
+        }`}
       >
         <WindowControls side="start" />
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
