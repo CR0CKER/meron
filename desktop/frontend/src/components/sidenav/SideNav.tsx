@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { DragEvent } from 'react'
-import { Mail, ListTodo, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
+import { Mail, SquareCheckBig, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { formatShortcut, isMac, RAIL_SHORTCUT_IDS } from '../../lib/shortcuts'
@@ -272,7 +272,7 @@ export function SideNav() {
               aria-label={t('tasks.title')}
               aria-pressed={tasksPanelOpen}
             >
-              <ListTodo size={18} />
+              <SquareCheckBig size={18} />
             </button>
           )}
           <button

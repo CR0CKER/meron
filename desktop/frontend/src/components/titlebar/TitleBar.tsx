@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ListTodo, Menu } from 'lucide-react'
+import { Menu, SquareCheckBig } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { isMac } from '../../lib/shortcuts'
@@ -76,7 +76,7 @@ function TitleBarTools() {
           aria-label={t('tasks.title')}
           aria-pressed={tasksPanelOpen}
         >
-          <ListTodo size={iconSize} />
+          <SquareCheckBig size={iconSize} />
         </button>
       )}
       <button

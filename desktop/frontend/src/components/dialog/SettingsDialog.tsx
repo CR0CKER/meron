@@ -11,7 +11,7 @@ import {
   Image as ImageIcon,
   Send,
   Inbox,
-  ListTodo,
+  SquareCheckBig,
   Plus,
   Trash2,
   Camera,
@@ -445,13 +445,6 @@ function GeneralSection() {
           checked={showUnreadAccountBadge}
           onChange={() => settings$.showUnreadAccountBadge.set(!showUnreadAccountBadge)}
         />
-        <ToggleRow
-          icon={<ListTodo size={15} />}
-          title={t('settings.tasks.enable')}
-          hint={t('settings.tasks.enableHint')}
-          checked={tasksEnabled}
-          onChange={() => setTasksEnabled(!tasksEnabled)}
-        />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings.sections.kanban')}>
@@ -492,6 +485,13 @@ function GeneralSection() {
               {t('shortcuts.customize')}
             </button>
           }
+        />
+        <ToggleRow
+          icon={<SquareCheckBig size={15} />}
+          title={t('settings.tasks.enable')}
+          hint={t('settings.tasks.enableHint')}
+          checked={tasksEnabled}
+          onChange={() => setTasksEnabled(!tasksEnabled)}
         />
         <CloseToTrayRow />
         <IntegratedTitlebarRow />

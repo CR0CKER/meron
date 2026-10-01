@@ -203,8 +203,8 @@ describe('addTaskFromMessage', () => {
 })
 
 describe('the Tasks toggle', () => {
-  it('is off by default', () => {
-    expect(settings$.tasksEnabled.peek()).toBe(false)
+  it('is on by default', () => {
+    expect(settings$.tasksEnabled.peek()).toBe(true)
   })
 
   // Otherwise a panel stays on screen that the rail no longer offers a way to.
@@ -312,6 +312,11 @@ describe('restoreTasksSession', () => {
     await restoreTasksSession({ tasks_enabled: true, session_tasks_panel: true, session_task_list: 'deleted' })
     expect(ui$.activeTaskList.get()).toBe('list-1')
     expect(tasks$.lists.get()).toHaveLength(2)
+  })
+
+  it('treats Tasks as enabled when the pref was never set', async () => {
+    await restoreTasksSession({ session_tasks_panel: true, session_task_list: 'list-2' })
+    expect(ui$.tasksPanelOpen.get()).toBe(true)
   })
 
   it('keeps the panel closed when Tasks is disabled', async () => {

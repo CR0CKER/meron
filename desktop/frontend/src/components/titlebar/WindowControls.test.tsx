@@ -24,7 +24,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  settings$.tasksEnabled.set(false)
+  settings$.tasksEnabled.set(true)
   ;(window as any).go = original
 })
 
@@ -83,6 +83,7 @@ describe('WindowControls on Windows', () => {
 describe('TitleBar', () => {
   it('holds the app buttons between the two sides of window controls', () => {
     windowChrome$.layout.set({ start: ['close'], end: ['minimize'] })
+    settings$.tasksEnabled.set(false)
     render(<TitleBar />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'More', 'Minimize'])
     act(() => settings$.tasksEnabled.set(true))

@@ -1,16 +1,18 @@
+import { Copy, Minus, Square, X, type LucideIcon } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { windowChrome$, windowCommand, type WindowButton } from '../../lib/windowChrome'
 
-// Adwaita's window-*-symbolic glyphs (adwaita-icon-theme, LGPL-3.0 or
-// CC-BY-SA-3.0), the ones GTK draws in its own title bar buttons.
-const GLYPHS: Record<WindowButton | 'restore', string> = {
-  close:
-    'm4 4h1.03c.25.01.51.13.69.31l2.28 2.28 2.31-2.28c.27-.23.45-.3.69-.31h1v1c0 .29-.04.55-.25.75l-2.28 2.28 2.25 2.25c.19.19.28.45.28.72v1h-1c-.27 0-.53-.09-.72-.28l-2.28-2.28-2.28 2.28c-.19.19-.45.28-.72.28h-1v-1c0-.27.09-.53.28-.72l2.28-2.25-2.28-2.28c-.21-.2-.3-.47-.28-.75z',
-  minimize: 'm4 10.01h8v1.99h-8z',
-  maximize: 'm3.99 3.99v8.01h8.01v-8.01zm2 2h4.01v4.01h-4.01z',
-  restore: 'm4.99 4.99v6.01h6.01v-6.01zm2 2h2.01v2.01h-2.01z',
+// Lucide, like the title bar's other buttons (TitleBar.tsx), at their size, so
+// the row reads as one set of icons.
+const ICONS: Record<WindowButton | 'restore', LucideIcon> = {
+  minimize: Minus,
+  maximize: Square,
+  restore: Copy,
+  close: X,
 }
+
+const ICON_SIZE = 17
 
 // The Windows caption glyphs (ChromeMinimize, ChromeMaximize, ChromeRestore,
 // ChromeClose) in Segoe Fluent Icons (Windows 11) and Segoe MDL2 Assets
@@ -28,12 +30,12 @@ const COMMAND = { minimize: 'minimise', maximize: 'toggleMaximise', close: 'clos
  * Window controls for one side of the integrated title bar, in the desktop's
  * button layout. Renders nothing with the system title bar. On Windows they
  * are the system's caption buttons: 46px wide, the title bar's full height,
- * flush with the corner. On Linux they are GNOME's.
- * Metrics are libadwaita's (1.8 default.css, windowcontrols): a 24px circle
- * (16px glyph, 4px padding) in a button padded 5px, currentColor at 10% (15%
- * hover, 30% pressed), 3px apart. Circle and glyph are one SVG: as a CSS
- * background the circle landed on fractional pixels while the glyph was
- * snapped to whole ones, leaving the glyph visibly off-centre.
+ * flush with the corner. On Linux they are laid out like GNOME's (libadwaita
+ * 1.8 default.css, windowcontrols: a 24px hover circle in a button padded
+ * 5px, 3px apart) but drawn like the title bar's own flat buttons: lucide
+ * icons in their colors (index.css). The icon is nested in the circle's SVG:
+ * as separate boxes the circle landed on fractional pixels while the icon was
+ * snapped to whole ones, leaving it visibly off-centre.
  */
 export function WindowControls({ side }: { side: 'start' | 'end' }) {
   const { t } = useTranslation()
@@ -85,14 +87,16 @@ export function WindowControls({ side }: { side: 'start' | 'end' }) {
         >
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
             <circle className="window-control-circle" cx="12" cy="12" r="12" />
-            <path
-              d={GLYPHS[button === 'maximize' && maximised ? 'restore' : button]}
-              transform="translate(4 4)"
-              fill="currentColor"
-            />
+            <WindowIcon button={button === 'maximize' && maximised ? 'restore' : button} />
           </svg>
         </button>
       ))}
     </div>
   )
+}
+
+function WindowIcon({ button }: { button: WindowButton | 'restore' }) {
+  const Icon = ICONS[button]
+  const offset = (24 - ICON_SIZE) / 2
+  return <Icon x={offset} y={offset} size={ICON_SIZE} />
 }

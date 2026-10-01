@@ -424,7 +424,7 @@ export const settings$ = observable<Settings>({
   kanbanMinimizedColumns: {},
   hiddenSideNavAccounts: [],
   showUnifiedInboxInSideNav: true,
-  tasksEnabled: false,
+  tasksEnabled: true,
   closeToTray: true,
   autoUpdateCheck: true,
   dismissedUpdateVersion: null,
