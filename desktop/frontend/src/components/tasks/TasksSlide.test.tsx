@@ -67,7 +67,7 @@ describe('TasksSlide', () => {
     expect(root(view)?.dataset.panePhase).toBe('exiting')
     // Narrows without fading: the list and the window controls on the panel
     // stay solid until it has gone.
-    expect(root(view)?.className).toContain('animate-tasks-close')
+    expect(root(view)?.className).toContain('animate-pane-close')
     expect(view.queryByText('tasks')).not.toBeNull()
 
     act(() => {

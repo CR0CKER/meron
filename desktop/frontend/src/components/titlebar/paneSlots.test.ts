@@ -81,4 +81,12 @@ describe('paneTitlebarSlots', () => {
     const board = paneTitlebarSlots({ ...wide, kanban: true, tasksOpen: true })
     expect(board.list).toEqual({ start: true, end: false, reserve: true })
   })
+
+  it("keeps the room in the board's header while a card's conversation is open", () => {
+    const reading = paneTitlebarSlots({ ...wide, kanban: true, kanbanPaneOpen: true })
+    expect(reading.list).toEqual({ start: true, end: false, reserve: true })
+    expect(reading.conversation.end).toBe(true)
+    // The thread list never holds the end beside a conversation, so it needs none.
+    expect(paneTitlebarSlots(wide).list).toEqual({ start: true, end: false, reserve: false })
+  })
 })
