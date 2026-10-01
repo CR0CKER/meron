@@ -1,0 +1,27 @@
+import type { ReactNode } from 'react'
+import { usePresence } from '../../lib/usePresence'
+import { PANE_ANIMATION_MS } from '../kanban/KanbanConversationPane'
+import { TASKS_PANEL_WIDTH } from './TasksPanel'
+
+// The Tasks panel slides in and out like the board's conversation pane
+// (KanbanConversationPane): the frame grows from or shrinks to zero width
+// while the panel inside keeps its full width, so the list is revealed rather
+// than reflowed every frame. Unlike the conversation, the list stays on screen
+// while it slides out: it is still the list the panel will reopen on.
+export function TasksSlide({ open, children }: { open: boolean; children: ReactNode }) {
+  const phase = usePresence(open, PANE_ANIMATION_MS)
+  if (phase === 'closed') return null
+
+  const animation = phase === 'entering' ? ' animate-pane-open' : phase === 'exiting' ? ' animate-pane-close' : ''
+
+  return (
+    <div
+      data-pane-phase={phase}
+      // Hidden on a narrow window, like the panel itself.
+      className={`flex min-h-0 shrink-0 overflow-hidden max-[900px]:hidden${animation}`}
+      style={{ width: TASKS_PANEL_WIDTH }}
+    >
+      {children}
+    </div>
+  )
+}

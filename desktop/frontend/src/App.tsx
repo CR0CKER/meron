@@ -14,6 +14,7 @@ import { ThreadList } from './components/threads/ThreadList'
 import { KanbanView } from './components/kanban/KanbanView'
 import { KanbanConversationPane } from './components/kanban/KanbanConversationPane'
 import { TasksPanel } from './components/tasks/TasksPanel'
+import { TasksSlide } from './components/tasks/TasksSlide'
 import { MessagePane } from './components/chat/MessagePane'
 import { AboutDialog } from './components/dialog/AboutDialog'
 import { ChangelogDialog } from './components/dialog/ChangelogDialog'
@@ -136,13 +137,15 @@ export default function App() {
 
         {/* Tasks is a panel, not a view: it sits to the right of whatever is
           open so a list can be worked against the thread list beside it. */}
-        {showTasksPanel && activeTaskList ? (
-          <ErrorBoundary label="tasks">
-            <TitlebarSlotsProvider value={slots.tasks}>
-              <TasksPanel listId={activeTaskList} />
-            </TitlebarSlotsProvider>
-          </ErrorBoundary>
-        ) : null}
+        <TasksSlide open={showTasksPanel}>
+          {activeTaskList ? (
+            <ErrorBoundary label="tasks">
+              <TitlebarSlotsProvider value={slots.tasks}>
+                <TasksPanel listId={activeTaskList} />
+              </TitlebarSlotsProvider>
+            </ErrorBoundary>
+          ) : null}
+        </TasksSlide>
 
         <AppHotkeys />
         <QuitHotkey />
