@@ -2,8 +2,8 @@ import { observable } from '@legendapp/state'
 import { invoke } from './bridge'
 
 // The integrated title bar (Linux): GTK draws the window frame but no title
-// bar, and Meron's own (TitleBar.tsx) takes its place, drawing the window
-// controls itself. Button set, side and double-click action follow the desktop
+// bar, and the pane headers take its place (TitleBar.tsx), drawing the window
+// controls themselves. Button set, side and double-click action follow the desktop
 // (GNOME's button-layout and action-double-click-titlebar, as GTK reports
 // them) instead of settings of our own.
 

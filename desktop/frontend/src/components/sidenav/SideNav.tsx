@@ -24,7 +24,7 @@ import { RailContextMenu, RailMenuItem } from './RailContextMenu'
 import { AccountContextMenu } from './AccountContextMenu'
 import { BoardContextMenu } from './BoardContextMenu'
 import { BoardDialog, type BoardDialogState } from './BoardDialog'
-import { useTitleBar } from '../titlebar/TitleBar'
+import { useTitlebarTools } from '../titlebar/TitleBar'
 import type { Account } from '../../types'
 
 // Every rail divider sits 9px from its neighbours: the gap the compose button
@@ -45,8 +45,9 @@ export function SideNav() {
   const activeBoardId = useValue(kanban$.activeBoardId)
   const selectedAccount = useValue(ui$.selectedAccount)
   const hasSendableAccount = accounts.some(isSendableAccount)
-  // Tasks and the more menu live in Meron's own title bar when there is one.
-  const utilities = !useTitleBar()
+  // Tasks and the more menu live in the title bar when Meron draws it (the
+  // strip, or the pane headers on Linux).
+  const utilities = !useTitlebarTools()
   // Right-click context menu anchored at the cursor for one account.
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const menuAccount = menu ? accounts.find((acc) => acc.id === menu.id) : null

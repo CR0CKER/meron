@@ -26,7 +26,10 @@ import { AppToast } from './components/toast/AppToast'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
-import { TitleBar } from './components/titlebar/TitleBar'
+import { TitleBar, TitlebarStrip, usePaneTitlebar } from './components/titlebar/TitleBar'
+import { TitlebarSlotsProvider } from './components/titlebar/WindowControls'
+import { NO_PANE_SLOTS, paneTitlebarSlots } from './components/titlebar/paneSlots'
+import { useMinWidth } from './lib/useMinWidth'
 import { ConnectivityBanner } from './components/banner/ConnectivityBanner'
 import { UpdateBanner } from './components/banner/UpdateBanner'
 import { SetupScreen } from './components/setup/SetupScreen'
@@ -34,6 +37,8 @@ import { AccountDialog } from './components/dialog/AccountDialog'
 import { SettingsDialog } from './components/dialog/SettingsDialog'
 import { AddFeedDialog } from './components/dialog/AddFeedDialog'
 import { FeedEditDialog } from './components/dialog/FeedEditDialog'
+
+const BOTH_SLOTS = { start: true, end: true }
 
 export default function App() {
   const { t } = useTranslation()
@@ -56,11 +61,32 @@ export default function App() {
   useAppEffects()
 
   const showKanbanMessagePane = !!kanbanPaneThreadId || composeTabs.some((tab) => tab.id === activeComposeTab)
+  const showTasksPanel = tasksPanelOpen && !!activeTaskList
+  // With the integrated title bar on Linux, the pane headers are the title bar
+  // (GNOME's header bars) and host the window controls at the window edges; on
+  // Windows and macOS TitleBar draws a strip instead and no pane hosts anything.
+  const panes = usePaneTitlebar()
+  const mobilePane = useValue(ui$.mobilePane)
+  const tasksFit = useMinWidth(900)
+  const split = useMinWidth(769)
+  const slots = panes
+    ? paneTitlebarSlots({
+        kanban: !!activeBoardId,
+        kanbanPaneOpen: showKanbanMessagePane,
+        tasksOpen: showTasksPanel,
+        tasksFit,
+        split,
+        mobilePane,
+      })
+    : NO_PANE_SLOTS
 
   if (system && accounts.length === 0) {
     return (
       <div className="flex h-full w-full flex-col bg-app text-primary">
         <TitleBar tools={false} />
+        <TitlebarSlotsProvider value={panes ? BOTH_SLOTS : NO_PANE_SLOTS.list}>
+          <TitlebarStrip tools={false} />
+        </TitlebarSlotsProvider>
         <div className="min-h-0 flex-1">
           <SetupScreen />
         </div>
@@ -79,15 +105,19 @@ export default function App() {
           <SideNav />
         </ErrorBoundary>
         <ErrorBoundary label="thread list">
-          {activeBoardId ? (
-            <KanbanView boardId={activeBoardId} />
-          ) : (
-            <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
-          )}
+          <TitlebarSlotsProvider value={slots.list}>
+            {activeBoardId ? (
+              <KanbanView boardId={activeBoardId} />
+            ) : (
+              <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
+            )}
+          </TitlebarSlotsProvider>
         </ErrorBoundary>
         {!activeBoardId ? (
           <ErrorBoundary label="conversation">
-            <MessagePane />
+            <TitlebarSlotsProvider value={slots.conversation}>
+              <MessagePane />
+            </TitlebarSlotsProvider>
           </ErrorBoundary>
         ) : (
           <KanbanConversationPane
@@ -97,16 +127,20 @@ export default function App() {
             onResizeStart={(event) => startKanbanResize(event, mainRef.current)}
           >
             <ErrorBoundary label="conversation">
-              <MessagePane />
+              <TitlebarSlotsProvider value={slots.conversation}>
+                <MessagePane />
+              </TitlebarSlotsProvider>
             </ErrorBoundary>
           </KanbanConversationPane>
         )}
 
         {/* Tasks is a panel, not a view: it sits to the right of whatever is
           open so a list can be worked against the thread list beside it. */}
-        {tasksPanelOpen && activeTaskList ? (
+        {showTasksPanel && activeTaskList ? (
           <ErrorBoundary label="tasks">
-            <TasksPanel listId={activeTaskList} />
+            <TitlebarSlotsProvider value={slots.tasks}>
+              <TasksPanel listId={activeTaskList} />
+            </TitlebarSlotsProvider>
           </ErrorBoundary>
         ) : null}
 

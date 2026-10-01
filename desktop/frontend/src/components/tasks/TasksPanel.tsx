@@ -10,10 +10,10 @@ import {
   ListTodo,
   SquareCheckBig,
   MoreHorizontal,
+  PanelRightClose,
   Pencil,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react'
 
 import { useTranslation } from '../../lib/i18n'
@@ -37,6 +37,7 @@ import {
 } from '../../states/tasks'
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
+import { TitlebarEnd } from '../titlebar/TitleBar'
 
 /**
  * Fixed, like the panel it is modelled on. The thread list and conversation
@@ -100,7 +101,11 @@ export function TasksPanel({ listId }: { listId: string }) {
       className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-chats max-[900px]:hidden"
       style={{ width: TASKS_PANEL_WIDTH }}
     >
-      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1.5">
+      <header data-titlebar="pane" className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1.5">
+        {/* At the panel's start and as a panel icon, not an ✕: with the
+          integrated title bar the window's own close button sits at the end
+          of this header (TitlebarEnd). */}
+        <IconButton label={t('buttons.close')} icon={PanelRightClose} size="sm" onClick={closeTasksPanel} />
         {renaming ? (
           <RenameField
             value={listName}
@@ -134,9 +139,9 @@ export function TasksPanel({ listId }: { listId: string }) {
               size="sm"
               onClick={() => setActionsMenu(anchorUnder(actionsButtonRef.current))}
             />
-            <IconButton label={t('buttons.close')} icon={X} size="sm" onClick={closeTasksPanel} />
           </>
         )}
+        <TitlebarEnd />
       </header>
 
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">

@@ -34,6 +34,8 @@ import { BoardMenu, FilterSwitch } from './KanbanBoardMenu'
 import { isRSSAccount, loadKanbanColumn, resolveKanbanMove, useFoldersByAccount } from '../../lib/kanbanData'
 import { wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
+import { WindowControls } from '../titlebar/WindowControls'
+import { TitlebarEnd } from '../titlebar/TitleBar'
 
 export function KanbanView({ boardId }: { boardId: string }) {
   const { t } = useTranslation()
@@ -211,7 +213,11 @@ export function KanbanView({ boardId }: { boardId: string }) {
 
   return (
     <section className="flex flex-1 min-w-0 flex-col bg-chats max-[768px]:w-full">
-      <div className="@container relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 backdrop-blur-md px-4 py-3">
+      <div
+        data-titlebar="pane"
+        className="@container relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 backdrop-blur-md px-4 py-3"
+      >
+        <WindowControls side="start" />
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {board?.avatarUrl ? (
             <img
@@ -291,6 +297,7 @@ export function KanbanView({ boardId }: { boardId: string }) {
           onAttachmentsOnlyChange={setGlobalKanbanAttachmentsOnly}
           onAddColumn={openDialog}
         />
+        <TitlebarEnd />
       </div>
       {dialogOpen && (
         <AddColumnDialog

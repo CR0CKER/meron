@@ -7,11 +7,11 @@ import {
   Image,
   Loader2,
   MessageSquare,
+  PanelRightClose,
   Play,
   Search,
   SquarePen,
   Users,
-  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
@@ -20,6 +20,7 @@ import { openExternal } from '../../lib/native'
 import { downloadAttachment, openAttachment } from '../../states/mail'
 import { Avatar } from '../avatar/Avatar'
 import { IconButton } from '../button/IconButton'
+import { TitlebarEnd } from '../titlebar/TitleBar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { fileIconFor, formatFileSize } from './messageHelpers'
@@ -109,14 +110,22 @@ export function ConversationDetailsPanel({
           animate-slide-in-right
         "
       >
-        {/* Header */}
+        {/* Header. The close is a panel icon at the start, not an ✕ at the end:
+          with the integrated title bar the window controls end this row
+          (TitlebarEnd). */}
         {view === 'overview' ? (
-          <div className="flex h-12 shrink-0 items-center justify-end border-b border-border px-4">
-            <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+          <div data-titlebar="pane" className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-2">
+            <IconButton icon={PanelRightClose} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+            <div className="flex-1" />
+            <TitlebarEnd />
           </div>
         ) : (
-          <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <div className="min-w-0">
+          <div
+            data-titlebar="pane"
+            className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border px-2 py-3"
+          >
+            <IconButton icon={PanelRightClose} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+            <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-bold text-primary">
                 {view === 'media' ? t('chat.media') : t('chat.files')}
               </h3>
@@ -136,7 +145,7 @@ export function ConversationDetailsPanel({
                 label={t('buttons.back')}
                 onClick={() => setView('overview')}
               />
-              <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
+              <TitlebarEnd />
             </div>
           </div>
         )}

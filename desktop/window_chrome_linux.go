@@ -37,7 +37,7 @@ static void onChromeSettingChanged(GObject *object, GParamSpec *pspec, gpointer 
 
 // An empty custom titlebar that is never shown: GTK keeps its client-side
 // decorations (shadow, resize edges outside the window, tiling) but draws no
-// title bar, so the page's own title bar (TitleBar.tsx) takes its place.
+// title bar, so the page's pane headers take its place (TitleBar.tsx).
 //
 // Switching back sets a title bar built the way GTK builds its default one
 // (gtkwindow.c, create_titlebar): unsetting the custom one instead left the

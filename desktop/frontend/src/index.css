@@ -330,17 +330,41 @@ textarea,
   cursor: text;
 }
 
-/* Meron's title bar (TitleBar.tsx) moves the window: Wails reads
-   --wails-draggable off the pressed element, so the buttons in it opt out. A
-   double-click runs the desktop's title bar action where it reads drag (see
-   windowChrome.ts), and must not select anything on the way. */
-[data-titlebar] {
+/* Meron's title bar strip (TitleBar.tsx, macOS and Windows) moves the window:
+   Wails reads --wails-draggable off the pressed element, so the buttons in it
+   opt out. A double-click runs the desktop's title bar action where it reads
+   drag (see windowChrome.ts), and must not select anything on the way. */
+[data-titlebar]:not([data-titlebar='pane']) {
   --wails-draggable: drag;
   -webkit-user-select: none;
   user-select: none;
 }
 
-[data-titlebar] :is(button, a, [role='button']) {
+[data-titlebar]:not([data-titlebar='pane']) :is(button, a, [role='button']) {
+  --wails-draggable: no-drag;
+}
+
+/* On Linux the pane headers are the title bar instead (data-titlebar="pane"),
+   but only while the integrated title bar is on: with the system one they are
+   plain headers. They hold more than buttons, so fields, draggable items and
+   conversation tabs opt out of moving the window too. */
+html.titlebar-integrated [data-titlebar='pane'] {
+  --wails-draggable: drag;
+}
+
+html.titlebar-integrated
+  [data-titlebar='pane']
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role='button'],
+    [contenteditable='true'],
+    [draggable='true'],
+    [data-tab-id]
+  ) {
   --wails-draggable: no-drag;
 }
 
@@ -382,36 +406,30 @@ textarea,
   outline-offset: -2px;
 }
 
-/* libadwaita 1.8 default.css, windowcontrols > button and its image, but flat
-   like the title bar's other buttons (TitleBar.tsx): the ink at 60%, full on
-   hover, and the circle only under the pointer, at their 10% and 15% fills. */
+/* libadwaita 1.8 default.css, windowcontrols > button and its image: the
+   glyph in the text color on a circle of it at 10%, 15% on hover, 30%
+   pressed, so they read as GNOME's own window buttons. */
 .window-control {
   display: inline-flex;
   padding: 5px;
   border: 0;
   background: none;
-  color: color-mix(in srgb, currentColor 60%, transparent);
+  color: var(--me-text-primary);
   cursor: default;
-  transition: color 150ms ease;
-}
-
-.window-control:hover,
-.window-control:active {
-  color: inherit;
 }
 
 .window-control-circle {
   fill: currentColor;
-  fill-opacity: 0;
+  fill-opacity: 0.1;
   transition: fill-opacity 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .window-control:hover .window-control-circle {
-  fill-opacity: 0.1;
+  fill-opacity: 0.15;
 }
 
 .window-control:active .window-control-circle {
-  fill-opacity: 0.15;
+  fill-opacity: 0.3;
 }
 
 .window-control:focus-visible {

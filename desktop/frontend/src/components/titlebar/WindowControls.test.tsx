@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { ReactNode } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { windowChrome$ } from '../../lib/windowChrome'
 import { settings$ } from '../../states/settings'
-import { TitleBar } from './TitleBar'
-import { WindowControls } from './WindowControls'
+import { TitleBar, TitlebarEnd, TitlebarStrip } from './TitleBar'
+import { TitlebarSlotsProvider, WindowControls, type TitlebarSlots } from './WindowControls'
 
 const original = (window as any).go
 let calls: string[] = []
@@ -30,9 +31,15 @@ afterEach(() => {
 
 const labels = (buttons: HTMLElement[]) => buttons.map((button) => button.getAttribute('aria-label'))
 
+const BOTH = { start: true, end: true }
+
+function inRow(children: ReactNode, slots: TitlebarSlots = BOTH) {
+  return render(<TitlebarSlotsProvider value={slots}>{children}</TitlebarSlotsProvider>)
+}
+
 describe('WindowControls', () => {
   it("draws the side's buttons in the desktop's layout, and runs each command", () => {
-    render(<WindowControls side="end" />)
+    inRow(<WindowControls side="end" />)
     const buttons = screen.getAllByRole('button')
     expect(labels(buttons)).toEqual(['Minimize', 'Maximize', 'Close'])
     buttons.forEach((button) => fireEvent.click(button))
@@ -40,27 +47,43 @@ describe('WindowControls', () => {
   })
 
   it('draws nothing for a side the layout leaves empty', () => {
-    render(<WindowControls side="start" />)
+    inRow(<WindowControls side="start" />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it("draws nothing in a row that doesn't host that side", () => {
+    inRow(<WindowControls side="end" />, { start: true, end: false })
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
   it('draws nothing with the system title bar', () => {
     windowChrome$.integrated.set(false)
-    render(<WindowControls side="end" />)
+    inRow(<WindowControls side="end" />)
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
   it('offers restore while maximised', () => {
     windowChrome$.maximised.set(true)
-    render(<WindowControls side="end" />)
+    inRow(<WindowControls side="end" />)
     expect(screen.getByRole('button', { name: 'Restore' })).toBeTruthy()
+  })
+
+  it("draws Adwaita's glyphs on their circle, as GTK's own title bar does", () => {
+    windowChrome$.layout.set({ start: [], end: ['maximize'] })
+    const { container } = inRow(<WindowControls side="end" />)
+    const glyph = () => container.querySelector('.window-control svg path')?.getAttribute('d')
+    expect(container.querySelector('.window-control svg circle.window-control-circle')).not.toBeNull()
+    // window-maximize-symbolic, then window-restore-symbolic once maximised.
+    expect(glyph()).toBe('m3.99 3.99v8.01h8.01v-8.01zm2 2h4.01v4.01h-4.01z')
+    act(() => windowChrome$.maximised.set(true))
+    expect(glyph()).toBe('m4.99 4.99v6.01h6.01v-6.01zm2 2h2.01v2.01h-2.01z')
   })
 })
 
 describe('WindowControls on Windows', () => {
   it('draws the caption buttons, the close one marked for its red hover', () => {
     windowChrome$.platform.set('windows')
-    render(<WindowControls side="end" />)
+    inRow(<WindowControls side="end" />)
     const buttons = screen.getAllByRole('button')
     expect(labels(buttons)).toEqual(['Minimize', 'Maximize', 'Close'])
     expect(buttons.map((button) => button.className)).toEqual([
@@ -75,12 +98,14 @@ describe('WindowControls on Windows', () => {
   it('shows the restore glyph while maximised', () => {
     windowChrome$.platform.set('windows')
     windowChrome$.maximised.set(true)
-    render(<WindowControls side="end" />)
-    expect(screen.getByRole('button', { name: 'Restore' }).textContent).toBe('\uE923')
+    inRow(<WindowControls side="end" />)
+    expect(screen.getByRole('button', { name: 'Restore' }).textContent).toBe('')
   })
 })
 
-describe('TitleBar', () => {
+describe('TitleBar (the strip, Windows)', () => {
+  beforeEach(() => windowChrome$.platform.set('windows'))
+
   it('holds the app buttons between the two sides of window controls', () => {
     windowChrome$.layout.set({ start: ['close'], end: ['minimize'] })
     settings$.tasksEnabled.set(false)
@@ -114,6 +139,68 @@ describe('TitleBar', () => {
     const { container } = render(<TitleBar />)
     expect(container.querySelector('[data-titlebar]')).not.toBeNull()
     act(() => windowChrome$.integrated.set(false))
+    expect(container.querySelector('[data-titlebar]')).toBeNull()
+  })
+
+  it('is not drawn on Linux, where the pane headers are the title bar', () => {
+    const { container } = render(<TitleBar />)
+    act(() => windowChrome$.platform.set('linux'))
+    expect(container.querySelector('[data-titlebar]')).toBeNull()
+  })
+})
+
+describe('TitlebarEnd (the pane header at the right window edge, Linux)', () => {
+  it('puts Tasks and quick settings before the window controls, set apart by a divider', () => {
+    const { container } = inRow(<TitlebarEnd />)
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More', 'Minimize', 'Maximize', 'Close'])
+    expect(container.querySelector('.window-controls')?.previousElementSibling?.className).toContain('w-px')
+  })
+
+  it('opens quick settings from its menu button', () => {
+    inRow(<TitlebarEnd />)
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: /Settings/ })).toBeTruthy()
+  })
+
+  it('has no divider when the window buttons are on the other side', () => {
+    windowChrome$.layout.set({ start: ['close'], end: [] })
+    const { container } = inRow(<TitlebarEnd />)
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More'])
+    expect(container.querySelector('.w-px')).toBeNull()
+  })
+
+  it("draws nothing in a pane that isn't at the right window edge", () => {
+    inRow(<TitlebarEnd />, { start: true, end: false })
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('draws nothing with the system title bar', () => {
+    windowChrome$.integrated.set(false)
+    inRow(<TitlebarEnd />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('draws nothing on Windows, where the strip holds the app buttons', () => {
+    windowChrome$.platform.set('windows')
+    inRow(<TitlebarEnd />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+})
+
+describe('TitlebarStrip (a pane without a header, Linux)', () => {
+  it('is a pane drag region holding the app buttons and the window controls', () => {
+    const { container } = inRow(<TitlebarStrip />)
+    expect(container.querySelector('[data-titlebar="pane"]')).not.toBeNull()
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Tasks', 'More', 'Minimize', 'Maximize', 'Close'])
+  })
+
+  it('leaves the app buttons out on the setup screen', () => {
+    inRow(<TitlebarStrip tools={false} />)
+    expect(labels(screen.getAllByRole('button'))).toEqual(['Minimize', 'Maximize', 'Close'])
+  })
+
+  it('is not drawn in a pane hosting neither side', () => {
+    const { container } = inRow(<TitlebarStrip />, { start: false, end: false })
     expect(container.querySelector('[data-titlebar]')).toBeNull()
   })
 })

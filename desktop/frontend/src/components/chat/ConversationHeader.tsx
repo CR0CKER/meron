@@ -12,6 +12,7 @@ import {
   Mail,
   MoreHorizontal,
   PanelRight,
+  PanelRightClose,
   Printer,
   ReplyAll,
   Search,
@@ -37,6 +38,8 @@ import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
+import { TitlebarEnd } from '../titlebar/TitleBar'
+import { WindowControls } from '../titlebar/WindowControls'
 
 // The conversation header: back/close affordances, sender info, the desktop
 // in-thread search box and the overflow actions menu (view mode, star, archive,
@@ -119,7 +122,11 @@ export function ConversationHeader({
 
   return (
     <>
-      <header className="relative z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none">
+      <header
+        data-titlebar="pane"
+        className="relative z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none"
+      >
+        <WindowControls side="start" />
         {printing && (
           <LoaderCircle
             size={16}
@@ -136,13 +143,16 @@ export function ConversationHeader({
           <ChevronLeft size={20} />
         </button>
 
+        {/* A side pane closes with a panel icon, never an ✕, which only ever
+          means the window's close button (TitlebarEnd). */}
         {inKanban && !tabOwnsPane && (
           <button
             className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-hover text-secondary cursor-pointer max-[768px]:hidden"
             onClick={closeCurrentConversation}
             title={t('chat.closeConversationEsc')}
+            aria-label={t('chat.closeConversationEsc')}
           >
-            <X size={18} />
+            <PanelRightClose size={18} />
           </button>
         )}
 
@@ -339,6 +349,7 @@ export function ConversationHeader({
             )}
           </div>
         </div>
+        <TitlebarEnd />
       </header>
       {senderMenu && !isRSS && (
         <FloatingContextMenu
