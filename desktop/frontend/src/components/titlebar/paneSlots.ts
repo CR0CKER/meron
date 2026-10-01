@@ -25,6 +25,10 @@ const NONE: TitlebarSlots = { start: false, end: false }
  * navigation is too narrow for three buttons), `end` to the rightmost visible
  * one. Panes that CSS hides at the current width never get a slot, so the
  * controls can't vanish with them.
+ *
+ * `reserve` marks the pane that holds the end once the Tasks panel closes: it
+ * keeps an invisible copy of the window-edge group (TitlebarEnd), so its own
+ * buttons don't jump when the group moves between it and the panel.
  */
 export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
   const { kanban, kanbanPaneOpen, tasksOpen, tasksFit, split, mobilePane } = layout
@@ -50,8 +54,8 @@ export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
 
   const conversationShown = !kanban || kanbanPaneOpen
   return {
-    list: { start: true, end: !conversationShown && !tasks },
-    conversation: { start: false, end: conversationShown && !tasks },
+    list: { start: true, end: !conversationShown && !tasks, reserve: !conversationShown && tasks },
+    conversation: { start: false, end: conversationShown && !tasks, reserve: conversationShown && tasks },
     tasks: { start: false, end: tasks },
   }
 }

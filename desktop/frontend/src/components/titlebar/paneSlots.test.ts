@@ -72,4 +72,13 @@ describe('paneTitlebarSlots', () => {
     expect(paneTitlebarSlots(reading).list).toEqual({ start: true, end: false })
     expect(paneTitlebarSlots(reading).conversation).toEqual({ start: false, end: true })
   })
+
+  it("keeps the window-edge group's space in the pane that gets it back when Tasks closes", () => {
+    const open = paneTitlebarSlots({ ...wide, tasksOpen: true })
+    expect(open.conversation).toEqual({ start: false, end: false, reserve: true })
+    expect(open.tasks.end).toBe(true)
+    expect(paneTitlebarSlots(wide).conversation).toEqual({ start: false, end: true, reserve: false })
+    const board = paneTitlebarSlots({ ...wide, kanban: true, tasksOpen: true })
+    expect(board.list).toEqual({ start: true, end: false, reserve: true })
+  })
 })

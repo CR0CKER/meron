@@ -22,6 +22,7 @@ type MenuPosition = { x: number; y: number } | null
 type MenuProps = { menu: MenuPosition; setMenu: Dispatch<SetStateAction<MenuPosition>> }
 
 const BOTH_SLOTS = { start: true, end: true }
+const END_SLOT = { start: false, end: true }
 
 /**
  * The window's top row on macOS and Windows, in the side navigation's colors
@@ -70,14 +71,24 @@ export function TitlebarEnd() {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
   const endButtons = useValue(windowChrome$.layout.end)
-  if (!panes || !slots.end) return null
+  if (!panes || (!slots.end && !slots.reserve)) return null
   // One element, so index.css can give every header that hosts it the same
-  // inset from the window edge (.titlebar-end).
+  // inset from the window edge (.titlebar-end). Reserved, it is the same group
+  // made invisible: exactly its width, and out of reach and of the a11y tree.
+  const reserved = !slots.end
   return (
-    <div className="titlebar-end flex shrink-0 items-center">
+    <div
+      className="titlebar-end flex shrink-0 items-center"
+      aria-hidden={reserved || undefined}
+      style={reserved ? { visibility: 'hidden' } : undefined}
+    >
       <PaneTasksToggle />
       {endButtons.length > 0 && <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
-      <WindowControls side="end" />
+      {/* The controls check their own slot; the reserved copy must draw them
+        too, or it would be narrower than the group it stands in for. */}
+      <TitlebarSlotsProvider value={END_SLOT}>
+        <WindowControls side="end" />
+      </TitlebarSlotsProvider>
     </div>
   )
 }
@@ -115,7 +126,7 @@ export function TitlebarMenu() {
 export function TitlebarStrip({ tools = true }: { tools?: boolean }) {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
-  if (!panes || (!slots.start && !slots.end)) return null
+  if (!panes || (!slots.start && !slots.end && !slots.reserve)) return null
   return (
     <div data-titlebar="pane" className="flex h-16 shrink-0 items-center px-2">
       <WindowControls side="start" />

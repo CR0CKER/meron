@@ -38,7 +38,8 @@ export function headerIcon(name: string, Fallback: LucideIcon): HeaderIcon {
 
 // freedesktop / Adwaita names for the pane headers' buttons.
 export const HeaderMenuIcon = headerIcon('open-menu-symbolic', Menu)
-export const HeaderMoreIcon = headerIcon('view-more-horizontal-symbolic', MoreHorizontal)
+// Vertical, as GNOME's own header bar menus (Settings, Files, Contacts).
+export const HeaderMoreIcon = headerIcon('view-more-symbolic', MoreHorizontal)
 export const HeaderSearchIcon = headerIcon('system-search-symbolic', Search)
 export const HeaderTasksIcon = headerIcon('checkbox-checked-symbolic', SquareCheckBig)
 export const HeaderAddIcon = headerIcon('list-add-symbolic', Plus)

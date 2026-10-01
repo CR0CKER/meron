@@ -177,6 +177,16 @@ describe('TitlebarEnd (the header bar at the right window edge, Linux)', () => {
     expect(container.querySelector('.w-px')).toBeNull()
   })
 
+  it('keeps its exact space, invisible and out of reach, where it is only reserved', () => {
+    const { container } = inRow(<TitlebarEnd />, { start: false, end: false, reserve: true })
+    const group = container.querySelector<HTMLElement>('.titlebar-end')!
+    expect(group.style.visibility).toBe('hidden')
+    expect(group.getAttribute('aria-hidden')).toBe('true')
+    // The same buttons as the real group, so the same width.
+    expect(group.querySelectorAll('button')).toHaveLength(4)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
   it("draws nothing in a pane that isn't at the right window edge", () => {
     inRow(<TitlebarEnd />, { start: true, end: false })
     expect(screen.queryAllByRole('button')).toHaveLength(0)

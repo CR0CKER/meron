@@ -327,15 +327,34 @@ export function MessagePane() {
         mobilePane === 'conversation' ? 'max-[768px]:flex' : 'max-[768px]:hidden'
       }`}
     >
-      <TitlebarSlotsProvider value={{ start: titlebarSlots.start && hasTabs, end: titlebarSlots.end && hasTabs }}>
+      <TitlebarSlotsProvider
+        value={{
+          start: titlebarSlots.start && hasTabs,
+          end: titlebarSlots.end && hasTabs,
+          reserve: !!titlebarSlots.reserve && hasTabs,
+        }}
+      >
         <ConversationTabs />
       </TitlebarSlotsProvider>
-      <TitlebarSlotsProvider value={{ start: titlebarSlots.start && !hasTabs, end: titlebarSlots.end && !hasTabs }}>
+      <TitlebarSlotsProvider
+        value={{
+          start: titlebarSlots.start && !hasTabs,
+          end: titlebarSlots.end && !hasTabs,
+          reserve: !!titlebarSlots.reserve && !hasTabs,
+        }}
+      >
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           {/* The details panel, when open, is the top row at the right window
             edge (beside the header, or over it when it overlays). */}
           <TitlebarSlotsProvider
-            value={{ start: titlebarSlots.start && !hasTabs, end: titlebarSlots.end && !hasTabs && !detailsOpen }}
+            value={{
+              start: titlebarSlots.start && !hasTabs,
+              end: titlebarSlots.end && !hasTabs && !detailsOpen,
+              // Keeps the group's space while details or Tasks hold it, so
+              // this header's buttons don't jump when they open or close.
+              reserve:
+                (titlebarSlots.end || !!titlebarSlots.reserve) && !hasTabs && (detailsOpen || !titlebarSlots.end),
+            }}
           >
             <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
               <div
