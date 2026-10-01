@@ -12,7 +12,7 @@ import { TASKS_PANEL_WIDTH } from './TasksPanel'
 export function TasksSlide({ phase, children }: { phase: PresencePhase; children: ReactNode }) {
   if (phase === 'closed') return null
 
-  const animation = phase === 'entering' ? ' animate-pane-open' : phase === 'exiting' ? ' animate-pane-close' : ''
+  const animation = phase === 'entering' ? ' animate-pane-open' : phase === 'exiting' ? ' animate-tasks-close' : ''
 
   return (
     <div

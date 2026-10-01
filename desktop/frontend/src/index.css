@@ -963,9 +963,24 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   animation: paneClose 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* The Tasks panel keeps its list, and the title bar group at the window edge,
+   while it slides out (TasksSlide), so it only narrows: fading it would show
+   the window's background through the whole corner and blink the window
+   controls before they move to the next header. */
+@keyframes tasksClose {
+  to {
+    width: 0;
+  }
+}
+
+.animate-tasks-close {
+  animation: tasksClose 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-pane-open,
-  .animate-pane-close {
+  .animate-pane-close,
+  .animate-tasks-close {
     animation: none;
   }
 }
