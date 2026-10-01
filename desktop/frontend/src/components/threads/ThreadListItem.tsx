@@ -17,6 +17,7 @@ export function ThreadListItem({
   onSelect,
   onOpenInNewTab,
   onContextMenu,
+  contextMenuOpen = false,
   draggable,
   onDragStart,
   onDragEnd,
@@ -35,6 +36,7 @@ export function ThreadListItem({
   // Double-click opens the row in its own tab (single click previews it).
   onOpenInNewTab?: () => void
   onContextMenu?: (event: MouseEvent) => void
+  contextMenuOpen?: boolean
   draggable?: boolean
   onDragStart?: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd?: (event: DragEvent<HTMLDivElement>) => void
@@ -69,7 +71,11 @@ export function ThreadListItem({
           // Rows are inset pills, told apart by spacing rather than divider
           // lines; unread weight and the count badge mark unread, not a tint.
           'relative w-full rounded-lg px-2.5 py-2.5 text-primary transition-colors duration-150 flex items-center gap-2.5 cursor-pointer select-none text-left',
-          (bulkSelectable ? bulkSelected : isActive) ? 'bg-accent/[0.13] dark:bg-accent/20' : 'hover:bg-hover',
+          (bulkSelectable ? bulkSelected : isActive)
+            ? 'bg-accent/[0.13] dark:bg-accent/20'
+            : contextMenuOpen
+              ? 'bg-hover'
+              : 'hover:bg-hover',
         )}
         onClick={onSelect}
         onDoubleClick={onOpenInNewTab}

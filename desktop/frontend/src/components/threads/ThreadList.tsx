@@ -473,6 +473,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                   accounts={accounts}
                   selectedAccount={selectedAccount}
                   selectedThread={selectedThread}
+                  contextMenuOpen={threadMenu.isOpen(thread)}
                   rootRef={thread.thread_id === selectedThread ? selectedItemRef : undefined}
                   showAccountBadge={isStarredView ? true : undefined}
                   draggable={feedRowsDraggable}

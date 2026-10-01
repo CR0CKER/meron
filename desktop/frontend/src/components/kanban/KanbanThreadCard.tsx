@@ -91,6 +91,7 @@ export function KanbanThreadCard({
         accounts={accounts}
         selectedAccount={column.accountId}
         selectedThread={paneThreadId}
+        contextMenuOpen={threadMenu.isOpen(thread, ownerKey)}
         active={starredColumn ? active : undefined}
         rootRef={active ? selectedItemRef : undefined}
         showAccountBadge={column.accountId === 'unified'}

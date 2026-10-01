@@ -1362,36 +1362,39 @@ func TestIntegrationMailFlow(t *testing.T) {
 
 		aliceSubject := "Meron integration unified cursor alice " + nonce
 		bobSubject := "Meron integration unified cursor bob " + nonce
+		// Alice must be newer than Bob's rows so she is exhausted on the first
+		// page. Wall-clock send dates can put her last when sends cross a second.
+		newest := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
 		fixtures := []struct {
-			account, to, subject, id string
-		}{{"bob", "alice@maddy.test", aliceSubject, "alice"}}
+			account, subject, id string
+			date                 time.Time
+		}{{"alice", aliceSubject, "alice", newest}}
 		for i := 0; i < 5; i++ {
 			fixtures = append(fixtures, struct {
-				account, to, subject, id string
+				account, subject, id string
+				date                 time.Time
 			}{
-				"alice",
-				"bob@maddy.test",
+				"bob",
 				fmt.Sprintf("%s %d", bobSubject, i),
 				fmt.Sprintf("bob-%d", i),
+				newest.Add(-time.Duration(i+1) * time.Minute),
 			})
 		}
 		for _, fixture := range fixtures {
-			if _, err := sidecar.Call("send", map[string]any{
-				"account":    fixture.account,
-				"to":         fixture.to,
-				"subject":    fixture.subject,
-				"body":       "unified cursor fixture",
-				"message_id": fmt.Sprintf("itest-unified-cursor-%s-%s@maddy.test", fixture.id, nonce),
-			}); err != nil {
-				t.Fatalf("send unified cursor fixture for %s: %v", fixture.id, err)
-			}
+			user := fixture.account + "@maddy.test"
+			imapAppend(t, server.imapPort, user, testPassword, "INBOX", rawMessage([]string{
+				"From: Carol <carol@example.net>",
+				"To: " + user,
+				"Subject: " + fixture.subject,
+				fmt.Sprintf("Message-ID: <itest-unified-cursor-%s-%s@maddy.test>", fixture.id, nonce),
+				"Date: " + fixture.date.Format(time.RFC1123Z),
+			}, "unified cursor fixture"))
 		}
-		pollInbox(t, sidecar, "alice", func(m map[string]any) bool {
-			return str(m, "subject") == aliceSubject
-		})
-		pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
-			return str(m, "subject") == bobSubject+" 4"
-		})
+		for _, fixture := range fixtures {
+			pollInbox(t, sidecar, fixture.account, func(m map[string]any) bool {
+				return str(m, "subject") == fixture.subject
+			})
+		}
 
 		seenIDs := map[string]bool{}
 		seenSubjects := map[string]bool{}
@@ -1448,9 +1451,9 @@ func TestIntegrationMailFlow(t *testing.T) {
 			}
 			cursor = next
 		}
-		for _, subject := range []string{aliceSubject, bobSubject + " 4"} {
-			if !seenSubjects[subject] {
-				t.Fatalf("unified cursor traversal missed %q", subject)
+		for _, fixture := range fixtures {
+			if !seenSubjects[fixture.subject] {
+				t.Fatalf("unified cursor traversal missed %q", fixture.subject)
 			}
 		}
 		if !sawBobOnlyContinuation {

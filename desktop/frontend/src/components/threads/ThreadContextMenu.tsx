@@ -74,6 +74,7 @@ export type ThreadContextAction =
 export type ThreadContextMenuController = {
   menu: ThreadMenuState | null
   close: () => void
+  isOpen: (thread: Message, ownerKey?: string) => boolean
   // `ownerKey` scopes the menu to a single kanban column when the controller is
   // shared across columns; omit it in single-list views (e.g. the chat view).
   open: (event: MouseEvent, thread: Message, ownerKey?: string) => void
@@ -104,6 +105,11 @@ export function useThreadContextMenu(accounts: Account[]): ThreadContextMenuCont
   return {
     menu,
     close: () => setMenu(null),
+    isOpen: (thread, ownerKey) =>
+      menu !== null &&
+      menu.ownerKey === ownerKey &&
+      menu.accountId === thread.account_id &&
+      (menu.kind === 'feed' ? menu.message.id === thread.id : menu.threadId === thread.thread_id),
     open: (event, thread, ownerKey) => {
       event.preventDefault()
       if (isRssThread(thread, accounts)) {
