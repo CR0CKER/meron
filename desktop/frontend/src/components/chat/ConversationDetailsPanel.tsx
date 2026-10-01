@@ -114,7 +114,7 @@ export function ConversationDetailsPanel({
           with the integrated title bar the window controls end this row
           (TitlebarEnd). */}
         {view === 'overview' ? (
-          <div data-titlebar="pane" className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-2">
+          <div data-titlebar="pane" className="flex h-16 shrink-0 items-center gap-1 border-b border-border px-2">
             <IconButton icon={HeaderCloseSidePaneIcon} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
             <div className="flex-1" />
             <TitlebarEnd />

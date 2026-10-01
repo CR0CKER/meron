@@ -91,7 +91,7 @@ export function TasksPanel({ listId }: { listId: string }) {
       className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-chats max-[900px]:hidden"
       style={{ width: TASKS_PANEL_WIDTH }}
     >
-      <header data-titlebar="pane" className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1.5">
+      <header data-titlebar="pane" className="flex h-16 shrink-0 items-center gap-1 border-b border-border px-1.5">
         {/* At the panel's start and as a panel icon, not an ✕: with the
           integrated title bar the window's own close button sits at the end
           of this header (TitlebarEnd). */}

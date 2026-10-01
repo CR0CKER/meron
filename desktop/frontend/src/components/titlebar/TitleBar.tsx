@@ -72,13 +72,15 @@ export function TitlebarEnd() {
   const panes = usePaneTitlebar()
   const endButtons = useValue(windowChrome$.layout.end)
   if (!panes || !slots.end) return null
+  // One element, so index.css can give every header that hosts it the same
+  // inset from the window edge (.titlebar-end).
   return (
-    <>
+    <div className="titlebar-end flex shrink-0 items-center">
       <PaneTools menu={menu} setMenu={setMenu} />
       {endButtons.length > 0 && <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
       <WindowControls side="end" />
       <TitleBarMenus menu={menu} setMenu={setMenu} />
-    </>
+    </div>
   )
 }
 
@@ -93,7 +95,7 @@ export function TitlebarStrip({ tools = true }: { tools?: boolean }) {
   const panes = usePaneTitlebar()
   if (!panes || (!slots.start && !slots.end)) return null
   return (
-    <div data-titlebar="pane" className="flex h-12 shrink-0 items-center px-2">
+    <div data-titlebar="pane" className="flex h-16 shrink-0 items-center px-2">
       <WindowControls side="start" />
       <div className="flex-1" />
       {tools ? <TitlebarEnd /> : <WindowControls side="end" />}

@@ -368,6 +368,13 @@ html.titlebar-integrated
   --wails-draggable: no-drag;
 }
 
+/* The header at the right window edge ends with Tasks, quick settings and the
+   window controls (TitlebarEnd). Whichever pane that is, they sit the same
+   distance from the window edge, so they don't shift when a pane opens. */
+html.titlebar-integrated [data-titlebar='pane']:has(> .titlebar-end) {
+  padding-right: 8px;
+}
+
 /* Windows 11's caption buttons: a subtle fill on hover (SubtleFillColor
    Secondary/Tertiary), and the close button's red. */
 .caption-button {
