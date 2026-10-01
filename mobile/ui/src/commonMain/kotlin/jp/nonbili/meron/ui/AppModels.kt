@@ -259,6 +259,10 @@ internal data class KanbanColumnState(
     // The search and filters the cursors were issued for: the next page must be
     // asked for with these, not whatever the board shows by then.
     val cursorView: KanbanColumnView = KanbanColumnView(),
+    // The limit the listing has been read with so far, page by page. The core's
+    // limit counts message headers, which group into fewer threads, so a reload
+    // re-reads this many rather than the number of cards shown.
+    val readDepth: Int = MAILBOX_PAGE_SIZE,
 )
 
 internal data class KanbanColumnView(

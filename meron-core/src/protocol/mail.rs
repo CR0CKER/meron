@@ -813,6 +813,7 @@ fn list_mobile_account_threads(
 }
 
 fn list_mobile_unified_threads(data_dir: &str, params: &Value) -> Result<Value, String> {
+    let limit = thread_list::ThreadListQuery::from_params(params, "folder_id").limit;
     let account_cursors = params
         .get("before_cursor")
         .and_then(Value::as_str)
@@ -877,7 +878,11 @@ fn list_mobile_unified_threads(data_dir: &str, params: &Value) -> Result<Value, 
             .ok_or_else(|| "params must be an object".to_string())?;
         object.insert("account_id".to_string(), Value::String(account_id.clone()));
         object.insert("folder_id".to_string(), Value::String(folder));
-        match account_cursors.get(&account_id) {
+        let from = account_cursors
+            .get(&account_id)
+            .cloned()
+            .unwrap_or_default();
+        match &from.cursor {
             Some(cursor) => {
                 object.insert("before_cursor".to_string(), Value::String(cursor.clone()));
             }
@@ -885,9 +890,15 @@ fn list_mobile_unified_threads(data_dir: &str, params: &Value) -> Result<Value, 
                 object.remove("before_cursor");
             }
         }
-        pages.push((account_id, list_mobile_threads(data_dir, &account_params)));
+        object.insert("limit".to_string(), json!(from.fetch_limit(limit)));
+        let result = list_mobile_threads(data_dir, &account_params);
+        pages.push(crate::unified::AccountPage {
+            account_id,
+            from,
+            result,
+        });
     }
-    Ok(crate::unified::merge_pages(pages, "threads"))
+    Ok(crate::unified::merge_pages(pages, "threads", limit))
 }
 
 fn open_mobile_db(data_dir: &str) -> Result<rusqlite::Connection, String> {

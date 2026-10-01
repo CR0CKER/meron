@@ -197,6 +197,9 @@ type ThreadListRequest struct {
 	Attachments  bool   `json:"attachments"`
 	BeforeCursor string `json:"before_cursor"`
 	Refresh      bool   `json:"refresh"`
+	// Limit is the page size; a reload of a column the user has scrolled asks
+	// for every row it already shows. Zero means the default page.
+	Limit int `json:"limit"`
 }
 
 type AttachmentInput struct {

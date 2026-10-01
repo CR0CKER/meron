@@ -373,6 +373,44 @@ describe('kanban column loading filters', () => {
     expect(kanban$.loading['acc1\nArchive'].get()).toBe(false)
   })
 
+  it('reads on after a reload until the oldest card shown is back', async () => {
+    // Each request answers one card whatever its limit — as an attachments
+    // filter or a long thread can — so the read depth alone falls short.
+    const pages: Record<string, { threads: import('../types').Message[]; next_cursor: string }> = {
+      '': { threads: [message({ id: 't3', thread_id: 't3', date: 300 })], next_cursor: 'c1' },
+      c1: { threads: [message({ id: 't2', thread_id: 't2', date: 200 })], next_cursor: 'c2' },
+      c2: { threads: [message({ id: 't1', thread_id: 't1', date: 100 })], next_cursor: '' },
+    }
+    const calls: { before_cursor?: string; limit?: number }[] = []
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string, payload: { before_cursor?: string; limit?: number }) => {
+            if (command !== 'mail.threadList') return {}
+            calls.push(payload)
+            return pages[payload.before_cursor ?? '']
+          },
+        },
+      },
+    }
+    const column = { accountId: 'deep', folderId: 'INBOX' }
+    const key = 'deep\nINBOX'
+
+    await loadKanbanColumn(column)
+    await loadMoreKanbanColumn(column)
+    expect(kanban$.threads[key].get()?.map((thread) => thread.id)).toEqual(['t3', 't2'])
+
+    calls.length = 0
+    await loadKanbanColumn(column)
+
+    expect(calls.map((call) => [call.before_cursor, call.limit])).toEqual([
+      [undefined, 100],
+      ['c1', 50],
+    ])
+    expect(kanban$.threads[key].get()?.map((thread) => thread.id)).toEqual(['t3', 't2'])
+    expect(kanban$.cursors[key].get()).toBe('c2')
+  })
+
   it('keeps using the active filter when loading more of a column', async () => {
     const calls: { command: string; payload: unknown }[] = []
     ;(window as any).go = {

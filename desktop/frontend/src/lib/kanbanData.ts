@@ -12,6 +12,10 @@ import type { Account, Folder, Message } from '../types'
 import type { ThreadContextAction, ThreadContextActionDetail } from '../components/threads/ThreadContextMenu'
 
 export const COLUMN_LIMIT = 50
+// How deep a reload re-reads a scrolled column (mobile's MAILBOX_MAX_RELOAD_DEPTH).
+const COLUMN_MAX_RELOAD_DEPTH = 500
+// How many further pages a reload may read to get back to the oldest card shown.
+const COLUMN_RELOAD_TOP_UP_PAGES = 10
 export const KANBAN_COLUMN_MINIMIZED_WIDTH = 48
 export const SEARCH_DEBOUNCE_MS = 300
 
@@ -20,6 +24,10 @@ const columnLoadVersions = new Map<string, number>()
 // continues the listing that produced it, so the next page is asked for with this
 // view rather than whatever the search box or filters say by then.
 const columnCursorViews = new Map<string, ColumnView>()
+// The limit each column's listing has been read with so far, page by page. The
+// core's limit counts message headers, which group into fewer threads, so a
+// reload re-reads this many rather than the number of cards on screen.
+const columnReadDepths = new Map<string, number>()
 const KANBAN_SYNC_TIMEOUT_MS = 130_000
 // A first look at a folder that was never synced answers from an empty cache, so
 // the column waits this long for the background sync the read kicked off rather
@@ -465,6 +473,10 @@ function currentColumnView(column: KanbanColumn, query: string): ColumnView {
   }
 }
 
+function sameColumnView(a: ColumnView | undefined, b: ColumnView): boolean {
+  return !!a && a.query === b.query && a.filter === b.filter && a.attachments === b.attachments
+}
+
 // Fetch one page of a column's threads. `before` carries the cursors from the
 // previous page; omit it for the first page. Unified columns page each account's
 // inbox independently and only re-request accounts that still have a cursor.
@@ -473,6 +485,7 @@ async function fetchColumnThreads(
   refresh: boolean,
   view: ColumnView,
   before?: { single?: string; unified?: Record<string, string> },
+  limit = COLUMN_LIMIT,
 ): Promise<ColumnPage> {
   const { query: trimmedQuery, filter, attachments } = view
   if (isUnifiedStarredColumn(column)) {
@@ -480,7 +493,7 @@ async function fetchColumnThreads(
       query: trimmedQuery,
       filter,
       attachments,
-      limit: COLUMN_LIMIT,
+      limit,
       before_cursor: before?.single,
     })
     return {
@@ -509,7 +522,7 @@ async function fetchColumnThreads(
       filter,
       attachments,
       refresh,
-      limit: COLUMN_LIMIT,
+      limit,
       before_cursor: before?.single,
     })
     return {
@@ -534,7 +547,7 @@ async function fetchColumnThreads(
     filter,
     attachments,
     refresh,
-    limit: COLUMN_LIMIT,
+    limit,
     before_cursor: before?.single,
   })
   return {
@@ -567,17 +580,53 @@ function keepReadThreads(column: KanbanColumn, key: string, fetched: Message[]):
   return [...fetched, ...kept].sort((a, b) => b.date - a.date)
 }
 
+function oldestThreadDate(threads: Message[]): number | undefined {
+  return threads.length > 0 ? Math.min(...threads.map((thread) => thread.date)) : undefined
+}
+
 export async function loadKanbanColumn(column: KanbanColumn, refresh = false, query = '') {
   const key = kanbanColumnKey(column)
   const view = currentColumnView(column, query)
   const trimmedQuery = view.query
   const version = (columnLoadVersions.get(key) ?? 0) + 1
   columnLoadVersions.set(key, version)
+  // Reloading the view already on screen (after a move, a sync, new mail) keeps
+  // every page scrolled in so far; cutting back to the first page would shrink
+  // the list under the reader and throw the scroll position. A new query or
+  // filter starts over at one page.
+  const sameView = sameColumnView(columnCursorViews.get(key), view)
+  const depth = sameView ? (columnReadDepths.get(key) ?? 0) : 0
+  const limit = Math.min(Math.max(COLUMN_LIMIT, depth), COLUMN_MAX_RELOAD_DEPTH)
+  const shown = sameView ? (kanban$.threads[key].peek() ?? []) : []
+  const oldestShown = oldestThreadDate(shown)
   kanban$.loading[key].set(true)
   try {
-    const { threads, folderUnread, folderUnreadByAccount, folderSynced, nextSingle, nextUnified } =
-      await fetchColumnThreads(column, refresh, view)
+    const page = await fetchColumnThreads(column, refresh, view, undefined, limit)
     if (columnLoadVersions.get(key) !== version) return
+    const { folderUnread, folderUnreadByAccount, folderSynced } = page
+    let { threads, nextSingle, nextUnified } = page
+    let readDepth = limit
+    // The depth is only a first guess at how far the reader had scrolled: the
+    // core may read past it (an attachments-filtered page skips empty stretches),
+    // and the reload cap stops short of a very deep column. Read on until the
+    // oldest card that was on screen is reached again.
+    for (
+      let extra = 0;
+      oldestShown !== undefined &&
+      nextSingle &&
+      extra < COLUMN_RELOAD_TOP_UP_PAGES &&
+      (oldestThreadDate(threads) ?? Infinity) > oldestShown;
+      extra++
+    ) {
+      const more = await fetchColumnThreads(column, false, view, { single: nextSingle, unified: nextUnified })
+      if (columnLoadVersions.get(key) !== version) return
+      const seen = new Set(threads.map((thread) => thread.thread_id))
+      threads = [...threads, ...more.threads.filter((thread) => !seen.has(thread.thread_id))]
+      if (column.accountId === 'unified') threads.sort((a, b) => b.date - a.date)
+      nextSingle = more.nextSingle
+      nextUnified = more.nextUnified
+      readDepth += COLUMN_LIMIT
+    }
     // Only Inbox totals back the side-nav badges. A unified column on another
     // role reports that role's per-account unreads, which must not be written
     // to the cache under 'inbox' — that would overwrite the badge with, say,
@@ -594,6 +643,7 @@ export async function loadKanbanColumn(column: KanbanColumn, refresh = false, qu
     kanban$.cursors[key].set(nextSingle)
     kanban$.accountCursors[key].set(nextUnified)
     columnCursorViews.set(key, view)
+    columnReadDepths.set(key, readDepth)
 
     // A folder nobody has opened yet has nothing cached, so this read served an
     // empty page and only kicked off the background sync. Stay in the loading
@@ -609,7 +659,7 @@ export async function loadKanbanColumn(column: KanbanColumn, refresh = false, qu
         completion.cancel()
       }
       if (columnLoadVersions.get(key) !== version) return
-      const synced = await fetchColumnThreads(column, false, view)
+      const synced = await fetchColumnThreads(column, false, view, undefined, limit)
       if (columnLoadVersions.get(key) !== version) return
       kanban$.threads[key].set(keepReadThreads(column, key, synced.threads))
       if (synced.folderUnread !== undefined) kanban$.unreadCounts[key].set(synced.folderUnread)
@@ -717,6 +767,7 @@ export async function loadMoreKanbanColumn(column: KanbanColumn) {
     }
     if (unified) merged.sort((a, b) => b.date - a.date)
     kanban$.threads[key].set(merged)
+    columnReadDepths.set(key, (columnReadDepths.get(key) ?? COLUMN_LIMIT) + COLUMN_LIMIT)
     kanban$.cursors[key].set(nextSingle)
     kanban$.accountCursors[key].set(nextUnified)
   } finally {

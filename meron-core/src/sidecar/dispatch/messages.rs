@@ -55,19 +55,21 @@ pub(crate) async fn dispatch(
                     }
                 }
             }
+            let limit = u32::from(req_u16(p, "limit").unwrap_or(50));
             let mut pages = Vec::with_capacity(folders.len());
             for (account, folder) in folders {
+                let from = cursors.get(&account).cloned().unwrap_or_default();
                 let mut params = json!({
                     "account": account.clone(),
                     "folder": folder,
                     "query": req_str(p, "query").unwrap_or_default(),
                     "filter": req_str(p, "filter").unwrap_or_default(),
                     "attachments": p.get("attachments").and_then(Value::as_bool).unwrap_or(false),
-                    "limit": req_u16(p, "limit").unwrap_or(50),
+                    "limit": from.fetch_limit(limit),
                     "refresh": p.get("refresh").and_then(Value::as_bool).unwrap_or(true),
                     "group": true,
                 });
-                if let Some(cursor) = cursors.get(&account) {
+                if let Some(cursor) = &from.cursor {
                     params["before_cursor"] = Value::String(cursor.clone());
                 }
                 let request = Request {
@@ -78,9 +80,13 @@ pub(crate) async fn dispatch(
                 let result = Box::pin(dispatch(engine, &request, out))
                     .await
                     .map_err(|err| format!("{err:#}"));
-                pages.push((account, result));
+                pages.push(unified::AccountPage {
+                    account_id: account,
+                    from,
+                    result,
+                });
             }
-            Ok(unified::merge_pages(pages, "threads"))
+            Ok(unified::merge_pages(pages, "threads", limit))
         }
 
         // RSS returns final thread Message JSON under "threads"; mail returns raw

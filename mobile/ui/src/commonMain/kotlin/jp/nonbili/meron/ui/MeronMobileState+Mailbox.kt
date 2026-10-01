@@ -203,6 +203,47 @@ internal fun MeronMobileState.reloadVisibleMailboxFor(
         }
 }
 
+// How many further pages a reload may read to get back to the oldest row shown.
+internal const val MAILBOX_RELOAD_TOP_UP_PAGES = 10
+
+/**
+ * Read on from a reload's [first] page, with [nextPage], until it reaches back
+ * to [oldestShown], the oldest row the list showed before. The page depth is
+ * only a first guess at how far the reader had scrolled: the core may read past
+ * it (an attachments-filtered page skips empty stretches, and its limit counts
+ * messages, which group into fewer threads), and the reload cap stops short of
+ * a very deep list. Returns the pages joined, and the depth read.
+ */
+internal suspend fun readMailboxToOldestShown(
+    first: MailboxLoadResult,
+    listLimit: Int,
+    oldestShown: Long?,
+    nextPage: suspend (beforeCursor: String, accountCursors: Map<String, String>) -> MailboxLoadResult,
+): Pair<MailboxLoadResult, Int> {
+    var result = first
+    var readDepth = listLimit
+    var extra = 0
+    while (
+        oldestShown != null &&
+        result.nextCursor.isNotBlank() &&
+        extra < MAILBOX_RELOAD_TOP_UP_PAGES &&
+        (result.threads.minOfOrNull { it.dateEpochSeconds } ?: Long.MAX_VALUE) > oldestShown
+    ) {
+        val more = nextPage(result.nextCursor, result.accountCursors)
+        val ids = result.threads.map { it.id }.toSet()
+        result =
+            result.copy(
+                threads = (result.threads + more.threads.filterNot { it.id in ids }).sortedByDescending { it.dateEpochSeconds },
+                nextCursor = more.nextCursor,
+                accountCursors = more.accountCursors,
+                searchIncomplete = result.searchIncomplete || more.searchIncomplete,
+            )
+        readDepth = (readDepth + MAILBOX_PAGE_SIZE).coerceAtMost(MAILBOX_MAX_RELOAD_DEPTH)
+        extra++
+    }
+    return result to readDepth
+}
+
 internal fun MeronMobileState.syncCoreThreads(
     accountOverride: String? = null,
     folderOverride: String? = null,
@@ -262,12 +303,14 @@ internal fun MeronMobileState.syncCoreThreads(
     // scroll anchor disappears, and the position clamps to the end. A request for
     // a *different* mailbox (folder switch, new search, filter change) starts at
     // one page, since that list is not on screen yet.
+    val reloadingVisible = visibleMailboxKey == requestKey
     val listLimit =
-        if (visibleMailboxKey == requestKey) {
+        if (reloadingVisible) {
             mailboxPageDepth.coerceIn(MAILBOX_PAGE_SIZE, MAILBOX_MAX_RELOAD_DEPTH)
         } else {
             MAILBOX_PAGE_SIZE
         }
+    val oldestShown = if (reloadingVisible) coreThreads.minOfOrNull { it.dateEpochSeconds } else null
     Log.i(
         "MailLoad",
         "sync start account=$accountId folder=$requestedFolder accounts=${selectedAccounts.size} syncFirst=$syncFirst limit=$syncLimit listLimit=$listLimit query=${query.isNotBlank()} filter=${filter.protocolValue()}",
@@ -277,40 +320,74 @@ internal fun MeronMobileState.syncCoreThreads(
         runCatching {
             withContext(ioDispatcher) {
                 val client = MobileMailCommandClient(core)
-                if (unifiedStarred) {
-                    // The starred listing spans folders, so there is no mailbox
-                    // to sync first: the core reads whatever the accounts'
-                    // own syncs have already starred.
-                    loadUnifiedStarred(client = client, query = query, filter = filter, attachmentsOnly = attachmentsOnly, limit = listLimit)
-                } else if (accountId == UNIFIED_ACCOUNT_ID) {
-                    loadUnifiedInbox(
-                        client = client,
-                        accounts = selectedAccounts,
-                        query = query,
-                        filter = filter,
-                        attachmentsOnly = attachmentsOnly,
-                        syncFirst = syncFirst,
-                        syncLimit = syncLimit,
-                        listLimit = listLimit,
-                        refreshSearch = refreshSearch,
-                        folderRole = requestedFolder,
-                    )
-                } else {
-                    loadAccountInbox(
-                        client,
-                        selectedAccounts.first(),
-                        requestedFolder,
-                        query = query,
-                        filter = filter,
-                        attachmentsOnly = attachmentsOnly,
-                        syncFirst = syncFirst,
-                        syncLimit = syncLimit,
-                        listLimit = listLimit,
-                        refreshSearch = refreshSearch,
-                    )
+                val first =
+                    if (unifiedStarred) {
+                        // The starred listing spans folders, so there is no mailbox
+                        // to sync first: the core reads whatever the accounts'
+                        // own syncs have already starred.
+                        loadUnifiedStarred(client = client, query = query, filter = filter, attachmentsOnly = attachmentsOnly, limit = listLimit)
+                    } else if (accountId == UNIFIED_ACCOUNT_ID) {
+                        loadUnifiedInbox(
+                            client = client,
+                            accounts = selectedAccounts,
+                            query = query,
+                            filter = filter,
+                            attachmentsOnly = attachmentsOnly,
+                            syncFirst = syncFirst,
+                            syncLimit = syncLimit,
+                            listLimit = listLimit,
+                            refreshSearch = refreshSearch,
+                            folderRole = requestedFolder,
+                        )
+                    } else {
+                        loadAccountInbox(
+                            client,
+                            selectedAccounts.first(),
+                            requestedFolder,
+                            query = query,
+                            filter = filter,
+                            attachmentsOnly = attachmentsOnly,
+                            syncFirst = syncFirst,
+                            syncLimit = syncLimit,
+                            listLimit = listLimit,
+                            refreshSearch = refreshSearch,
+                        )
+                    }
+                readMailboxToOldestShown(
+                    first = first,
+                    listLimit = listLimit,
+                    oldestShown = oldestShown,
+                ) { beforeCursor, accountCursors ->
+                    if (unifiedStarred) {
+                        loadUnifiedStarred(client = client, query = query, filter = filter, attachmentsOnly = attachmentsOnly, beforeCursor = beforeCursor)
+                    } else if (accountId == UNIFIED_ACCOUNT_ID) {
+                        loadUnifiedInbox(
+                            client = client,
+                            accounts = selectedAccounts,
+                            query = query,
+                            filter = filter,
+                            attachmentsOnly = attachmentsOnly,
+                            syncFirst = false,
+                            beforeCursor = beforeCursor,
+                            refreshSearch = refreshSearch,
+                            folderRole = requestedFolder,
+                        )
+                    } else {
+                        loadAccountInbox(
+                            client,
+                            selectedAccounts.first(),
+                            requestedFolder,
+                            query = query,
+                            filter = filter,
+                            attachmentsOnly = attachmentsOnly,
+                            syncFirst = false,
+                            beforeCursor = beforeCursor,
+                            refreshSearch = refreshSearch,
+                        )
+                    }
                 }
             }
-        }.onSuccess { result ->
+        }.onSuccess { (result, readDepth) ->
             val resultKey = mailboxCacheKey(accountId, result.folder, query, filter, attachmentsOnly)
             mailboxCache =
                 mailboxCache +
@@ -322,7 +399,7 @@ internal fun MeronMobileState.syncCoreThreads(
                             threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(result.threads)),
                             nextCursor = result.nextCursor,
                             accountCursors = result.accountCursors,
-                            pageDepth = listLimit,
+                            pageDepth = readDepth,
                         )
                 )
             if (activeMailboxLoadToken != requestToken || accountId != selectedCoreAccountId) {
@@ -349,7 +426,7 @@ internal fun MeronMobileState.syncCoreThreads(
             visibleMailboxKey = resultKey
             mailboxCursor = result.nextCursor
             mailboxAccountCursors = result.accountCursors
-            mailboxPageDepth = listLimit
+            mailboxPageDepth = readDepth
             // The open conversation is deliberately left alone here. A refresh
             // returns one page of one mailbox, so the open thread being absent
             // means nothing (it may sit past the page limit, or belong to

@@ -134,6 +134,7 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
     view: KanbanColumnView,
     beforeCursor: String? = null,
     accountCursors: Map<String, String> = emptyMap(),
+    listLimit: Int = MAILBOX_PAGE_SIZE,
 ): MailboxLoadResult {
     val columnQuery = view.query
     if (isUnifiedStarredColumn(column)) {
@@ -145,6 +146,7 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             filter = FilterMode.All,
             attachmentsOnly = false,
             beforeCursor = beforeCursor,
+            limit = listLimit,
         )
     }
     return if (column.accountId == UNIFIED_ACCOUNT_ID) {
@@ -157,6 +159,7 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             attachmentsOnly = view.attachmentsOnly,
             syncFirst = refresh,
             beforeCursor = beforeCursor,
+            listLimit = listLimit,
             folderRole = column.folderId,
         )
     } else {
@@ -172,6 +175,7 @@ internal suspend fun MeronMobileState.fetchKanbanColumn(
             attachmentsOnly = view.attachmentsOnly,
             syncFirst = refresh,
             beforeCursor = beforeCursor,
+            listLimit = listLimit,
         )
     }
 }
@@ -189,20 +193,38 @@ internal fun MeronMobileState.loadKanbanColumn(
     val query = view.query
     val token = (kanbanColumnLoadTokens[key] ?: 0L) + 1
     kanbanColumnLoadTokens[key] = token
+    // As in the mailbox list: re-reading the view already on screen (after a
+    // sync or mail event) keeps every page scrolled in so far, or the column
+    // shrinks under the reader and the scroll position jumps. A new query or
+    // filter starts over at one page.
+    val shown = kanbanColumns[key]?.takeIf { it.cursorView == view }
+    val listLimit = shown?.readDepth?.coerceIn(MAILBOX_PAGE_SIZE, MAILBOX_MAX_RELOAD_DEPTH) ?: MAILBOX_PAGE_SIZE
+    val oldestShown = shown?.threads?.minOfOrNull { it.dateEpochSeconds }
     updateKanbanColumn(key) { it.copy(loading = true, error = null) }
     scope.launch {
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
                 val client = MobileMailCommandClient(core)
-                val cached = fetchKanbanColumn(client, column, refresh, view)
-                if (shouldSyncUnfetchedKanbanColumn(column, refresh, query, cached, coreAccounts)) {
-                    fetchKanbanColumn(client, column, refresh = true, view = view)
-                } else {
-                    cached
+                val cached = fetchKanbanColumn(client, column, refresh, view, listLimit = listLimit)
+                val first =
+                    if (shouldSyncUnfetchedKanbanColumn(column, refresh, query, cached, coreAccounts)) {
+                        fetchKanbanColumn(client, column, refresh = true, view = view, listLimit = listLimit)
+                    } else {
+                        cached
+                    }
+                readMailboxToOldestShown(first, listLimit, oldestShown) { beforeCursor, accountCursors ->
+                    fetchKanbanColumn(
+                        client = client,
+                        column = column,
+                        refresh = false,
+                        view = view,
+                        beforeCursor = beforeCursor,
+                        accountCursors = accountCursors,
+                    )
                 }
             }
-        }.onSuccess { result ->
+        }.onSuccess { (result, readDepth) ->
             // A newer load of this column is out or has landed; its rows are the
             // answer, and it clears the loading flag itself.
             if (kanbanColumnLoadTokens[key] != token) return@onSuccess
@@ -222,6 +244,7 @@ internal fun MeronMobileState.loadKanbanColumn(
                     nextCursor = result.nextCursor,
                     accountCursors = result.accountCursors,
                     cursorView = view,
+                    readDepth = readDepth,
                 )
             }
         }.onFailure {
@@ -273,6 +296,7 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
                     error = null,
                     nextCursor = result.nextCursor,
                     accountCursors = result.accountCursors,
+                    readDepth = current.readDepth + MAILBOX_PAGE_SIZE,
                 )
             }
         }.onFailure {

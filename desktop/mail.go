@@ -175,6 +175,10 @@ func (a *App) threadList(payload map[string]any) (any, error) {
 			folderRole = req.FolderID
 		}
 	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50
+	}
 	res, err := a.sidecar.Call(method, map[string]any{
 		"account":       req.AccountID,
 		"folder":        req.FolderID,
@@ -183,7 +187,7 @@ func (a *App) threadList(payload map[string]any) (any, error) {
 		"filter":        req.Filter,
 		"attachments":   req.Attachments,
 		"before_cursor": req.BeforeCursor,
-		"limit":         50,
+		"limit":         limit,
 		"refresh":       req.Refresh,
 		// Thread grouping (subject branching, root titles, unread counts)
 		// runs in the core, shared with mobile; the bridge only mints ids.
