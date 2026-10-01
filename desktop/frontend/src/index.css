@@ -333,15 +333,21 @@ textarea,
 /* Meron's title bar (TitleBar.tsx) moves the window: Wails reads
    --wails-draggable off the pressed element, so the buttons in it opt out. A
    double-click runs the desktop's title bar action where it reads drag (see
-   windowChrome.ts), and must not select anything on the way. */
+   windowChrome.ts), and must not select anything on the way; the search box
+   keeps its text selectable. */
 [data-titlebar] {
   --wails-draggable: drag;
   -webkit-user-select: none;
   user-select: none;
 }
 
-[data-titlebar] :is(button, a, [role='button']) {
+[data-titlebar] :is(button, a, [role='button'], input, [data-no-drag]) {
   --wails-draggable: no-drag;
+}
+
+[data-titlebar] input {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Windows 11's caption buttons: a subtle fill on hover (SubtleFillColor

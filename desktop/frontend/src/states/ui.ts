@@ -134,7 +134,7 @@ export function closeCommandPalette() {
   ui$.paletteOpen.set(false)
 }
 
-// Ask the ThreadList to focus (and select) its search box.
+// Ask the open search box (thread list or kanban board) to focus and select.
 export function focusGlobalSearch() {
   ui$.globalSearchFocus.set(ui$.globalSearchFocus.peek() + 1)
 }

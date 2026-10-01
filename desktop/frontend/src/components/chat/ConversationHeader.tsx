@@ -119,7 +119,7 @@ export function ConversationHeader({
 
   return (
     <>
-      <header className="relative z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none">
+      <header className="relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none">
         {printing && (
           <LoaderCircle
             size={16}
@@ -150,6 +150,7 @@ export function ConversationHeader({
           name={activeThread.from_name || activeThread.from_addr}
           email={isRSS ? undefined : activeThread.from_addr}
           src={isRSS && activeThread.feed_icon ? `/media/${activeThread.feed_icon}` : undefined}
+          size={32}
         />
 
         <div className="min-w-0 flex-1">
@@ -188,7 +189,15 @@ export function ConversationHeader({
           {!threadSearchOpen ? (
             <IconButton icon={Search} label={t('chat.searchThread')} onClick={() => thread$.searchOpen.set(true)} />
           ) : (
-            <div className="hidden min-[900px]:flex w-[286px] items-center gap-1 rounded-xl bg-hover px-2 py-1.5 border border-transparent focus-within:border-accent/40 focus-within:bg-chats">
+            <div
+              className="hidden min-[900px]:flex w-[286px] items-center gap-1 rounded-xl bg-hover px-2 py-1.5 border border-transparent focus-within:border-accent/40 focus-within:bg-chats"
+              // Folds back to the icon once focus leaves it empty, like the kanban
+              // board's search; moving between its own buttons keeps it open.
+              onBlur={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                if (!thread$.search.peek()) thread$.searchOpen.set(false)
+              }}
+            >
               <Search size={14} className="text-secondary shrink-0" />
               <input
                 ref={desktopSearchInputRef}

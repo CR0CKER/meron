@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { windowChrome$ } from '../../lib/windowChrome'
+import { kanban$ } from '../../states/kanban'
 import { settings$ } from '../../states/settings'
+import { ui$ } from '../../states/ui'
 import { TitleBar } from './TitleBar'
 import { WindowControls } from './WindowControls'
 
@@ -20,6 +22,9 @@ beforeEach(() => {
     doubleClick: 'toggle-maximize',
     maximised: false,
   })
+  ui$.query.set('')
+  kanban$.activeBoardId.set('')
+  kanban$.searchQuery.set('')
 })
 
 afterEach(() => {
@@ -88,6 +93,23 @@ describe('TitleBar', () => {
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'More', 'Minimize'])
     act(() => settings$.tasksEnabled.set(true))
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'Tasks', 'More', 'Minimize'])
+  })
+
+  it("holds the thread list's search, or the kanban board's", () => {
+    render(<TitleBar />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'invoice' } })
+    expect(ui$.query.get()).toBe('invoice')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(ui$.query.get()).toBe('')
+    act(() => kanban$.activeBoardId.set('board-1'))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'invoice' } })
+    expect(kanban$.searchQuery.get()).toBe('invoice')
+    expect(ui$.query.get()).toBe('')
+  })
+
+  it('leaves no search box on the setup screen', () => {
+    render(<TitleBar tools={false} />)
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('opens quick settings at the cursor when the title bar is right-clicked', () => {

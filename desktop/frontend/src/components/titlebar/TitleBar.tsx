@@ -2,14 +2,18 @@ import { useState, type Dispatch, type SetStateAction } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu, SquareCheckBig } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
+import logo from '../../assets/logo.png'
 import { useTranslation } from '../../lib/i18n'
 import { isMac } from '../../lib/shortcuts'
 import { windowChrome$ } from '../../lib/windowChrome'
+import { kanban$ } from '../../states/kanban'
 import { settings$ } from '../../states/settings'
 import { toggleTasksPanel } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
+import { KanbanSearch } from '../kanban/KanbanSearch'
 import { BoardDialog, type BoardDialogState } from '../sidenav/BoardDialog'
 import { QuickSettingsMenu } from '../sidenav/QuickSettingsMenu'
+import { ThreadSearchInput } from '../threads/ThreadSearchInput'
 import { WindowControls } from './WindowControls'
 
 /**
@@ -28,8 +32,8 @@ type MenuPosition = { x: number; y: number } | null
 /**
  * The window's top row, in the side navigation's colors so the two read as
  * one frame. It moves the window ([data-titlebar] in index.css) and holds the
- * app-wide Tasks and quick-settings buttons, plus the window controls on Linux
- * and Windows.
+ * search box of the thread list or kanban board, the app-wide Tasks and quick-settings buttons, plus
+ * the window controls on Linux and Windows.
  * On macOS it stays at the hidden title bar's height so the traffic lights,
  * which float over its left end, stay centred in it.
  */
@@ -39,25 +43,52 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const shown = useTitleBar()
   const windows = useValue(windowChrome$.platform) === 'windows'
+  const kanbanBoard = useValue(kanban$.activeBoardId)
+  const startControls = useValue(windowChrome$.layout.start)
   if (!shown) return null
-  // macOS: the hidden title bar's height, clear of the traffic lights. Windows:
-  // the caption's 32px, the caption buttons flush with the right edge.
-  // Linux: room for GNOME's 34px window controls.
-  const layout = isMac ? 'h-7 pr-2 pl-20' : windows ? 'h-8 pl-1.5' : 'h-10 px-1.5'
+  // macOS: the hidden title bar's height. Windows: the caption's 32px, the
+  // caption buttons flush with the right edge. Linux: room for GNOME's 34px
+  // window controls.
+  const layout = isMac ? 'h-7 px-2' : windows ? 'h-8 pl-1.5' : 'h-10 px-1.5'
   return (
     <div
       data-titlebar
-      className={`flex shrink-0 items-center bg-sidenav text-sidenav-ink ${layout}`}
+      // Three columns, the outer two equal while there is room, so the search
+      // is centred on the window rather than between the ends' unequal contents.
+      // Each end keeps at least its own width; the search gives way first.
+      className={`grid shrink-0 grid-cols-[minmax(max-content,1fr)_minmax(0,28rem)_minmax(max-content,1fr)] items-center bg-sidenav text-sidenav-ink ${layout}`}
       onContextMenu={(event) => {
-        if (!tools || event.defaultPrevented) return
+        // The search box keeps the webview's own menu for its text.
+        if (!tools || event.defaultPrevented || event.target instanceof HTMLInputElement) return
         event.preventDefault()
         setMenu({ x: event.clientX, y: event.clientY })
       }}
     >
-      <WindowControls side="start" />
-      <div className="flex-1" />
-      {tools && <TitleBarTools menu={menu} setMenu={setMenu} />}
-      <WindowControls side="end" />
+      <div className="flex h-full items-center">
+        {/* Clear of the traffic lights, which float over the left end. */}
+        {isMac && <div className="w-18 shrink-0" />}
+        <WindowControls side="start" />
+        {/* Weight for the left end, across from the buttons on the right, when no
+          window controls sit there. macOS has its traffic lights. Centred over
+          the 60px side navigation's tiles: 6px row padding + margin + half the logo. */}
+        {!isMac && startControls.length === 0 && (
+          <img
+            src={logo}
+            alt=""
+            draggable={false}
+            className={`shrink-0 ${windows ? 'ml-4 h-4 w-4' : 'ml-3.5 h-5 w-5'}`}
+          />
+        )}
+      </div>
+      {/* The search of whatever is open: the thread list, or a kanban board.
+        Most of the row's height, a little off it on each side. */}
+      <div className={`flex min-w-0 px-2 ${isMac ? 'h-6' : windows ? 'h-6.5' : 'h-8'}`}>
+        {tools && (kanbanBoard ? <KanbanSearch boardId={kanbanBoard} compact /> : <ThreadSearchInput compact />)}
+      </div>
+      <div className="flex h-full items-center justify-end">
+        {tools && <TitleBarTools menu={menu} setMenu={setMenu} />}
+        <WindowControls side="end" />
+      </div>
       {menu && (
         <QuickSettingsMenu
           anchor={{ x: menu.x, y: menu.y, placement: 'down' }}

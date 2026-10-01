@@ -2,7 +2,10 @@ import type { Message } from '../types'
 import { t } from '../lib/i18n'
 import { showToast, ui$ } from './ui'
 import { accounts$, isSendableAccount } from './accounts'
-import { mail$, getActiveThread, normalizeMessageId } from './mail'
+import { getActiveThread, normalizeMessageId } from './mail'
+// From the leaf module: this one subscribes to it while loading, which can be
+// inside an import cycle through mail.ts.
+import { mail$ } from './mailState'
 import { isDraftFolder } from './mailFolders'
 import { discardSavedDraftCopy } from './mailMoves'
 import { getPendingSend, getUnsentRescue, unsentRescues } from './pendingSends'

@@ -27,8 +27,8 @@ import { BoardDialog, type BoardDialogState } from './BoardDialog'
 import { useTitleBar } from '../titlebar/TitleBar'
 import type { Account } from '../../types'
 
-// Every rail divider sits 9px from its neighbours: the gap the compose button
-// leaves above its divider, which lines up with the 64px header borders.
+// Every rail divider sits 9px from its neighbours, except the compose button's,
+// which is tucked under the button to line up with the 48px header borders.
 const railDivider = 'h-px w-8 shrink-0 bg-sidenav-ink/10'
 
 export function SideNav() {
@@ -146,7 +146,7 @@ export function SideNav() {
 
   return (
     <aside
-      className="flex w-[60px] shrink-0 flex-col items-center bg-sidenav px-0 pt-2.5 pb-4 max-[768px]:hidden select-none"
+      className="flex w-[60px] shrink-0 flex-col items-center bg-sidenav px-0 pt-1 pb-4 max-[768px]:hidden select-none"
       onContextMenu={(event) => {
         if (event.defaultPrevented) return
         event.preventDefault()
@@ -156,14 +156,15 @@ export function SideNav() {
       {hasSendableAccount && (
         <>
           <button
-            className="relative isolate flex h-11 w-11 shrink-0 transform-gpu items-center justify-center overflow-hidden rounded-[22px] bg-accent text-accent-label transition-all duration-200 ease-out hover:rounded-2xl hover:bg-accent-hover hover:text-accent-hover-label cursor-pointer"
+            className="relative isolate flex h-10 w-10 shrink-0 transform-gpu items-center justify-center overflow-hidden rounded-[20px] bg-accent text-accent-label transition-all duration-200 ease-out hover:rounded-2xl hover:bg-accent-hover hover:text-accent-hover-label cursor-pointer"
             onClick={() => openComposeTab()}
             title={`${t('composer.actions.newMessage')} (${formatShortcut('compose.new').join(isMac ? '' : '+')})`}
             aria-label={t('composer.actions.newMessage')}
           >
-            <SquarePen size={19} />
+            <SquarePen size={18} />
           </button>
-          <div className={`mt-[9px] ${railDivider}`} />
+          {/* 4 + 40 + 3: the divider lands on the 48px header row's bottom border. */}
+          <div className={`mt-[3px] ${railDivider}`} />
         </>
       )}
       <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto no-scrollbar py-[9px]">

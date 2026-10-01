@@ -4,7 +4,10 @@ import { invoke } from '../lib/bridge'
 import { CONVERSATION_PAGE_SIZE } from '../lib/pagination'
 import { ui$, showToast } from './ui'
 import { accounts$, isSendableAccount, accountIdentities } from './accounts'
-import { mail$, getActiveThread, normalizeMessageId } from './mail'
+import { getActiveThread, normalizeMessageId } from './mail'
+// From the leaf module: this one subscribes to it while loading, which can be
+// inside an import cycle through mail.ts.
+import { mail$ } from './mailState'
 import { isDraftFolder } from './mailFolders'
 import { discardSavedDraftCopy } from './mailMoves'
 import { LOCAL_SEND_PREFIX } from './pendingSends'

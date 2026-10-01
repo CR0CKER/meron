@@ -60,7 +60,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-4 z-10 select-none">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-4 z-10 select-none">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold text-primary leading-tight" title={tab.subject}>
             {tab.subject}

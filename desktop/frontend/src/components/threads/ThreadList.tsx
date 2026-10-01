@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent, PointerEventHandler } from 'react'
-import { Search, X, Plus, SquarePen, MoreHorizontal, Loader2 } from 'lucide-react'
+import { Plus, SquarePen, MoreHorizontal, Loader2 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { openAddFeed, RSS_FEED_DRAG_TYPE } from '../../states/feeds'
@@ -35,7 +35,6 @@ import {
   deletableFolder,
   deleteFolder,
 } from '../../states/mailFolders'
-import { clsx } from '../../lib/utils'
 import { isRssAccount } from '../../lib/threadActions'
 import { folderLabel } from '../../lib/kanbanData'
 import { isUnifiedStarred } from '../../lib/unifiedFolders'
@@ -47,6 +46,7 @@ import { FolderSwitcher } from '../menu/FolderSwitcher'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { ThreadContextMenu, useThreadContextMenu } from './ThreadContextMenu'
 import { ThreadListItem } from './ThreadListItem'
+import { ThreadSearchInput } from './ThreadSearchInput'
 import { BulkActionBar } from './BulkActionBar'
 
 type ThreadListProps = {
@@ -88,20 +88,12 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   // The side navigation that normally hosts these controls is hidden at this width.
   const [quickMenu, setQuickMenu] = useState<{ x: number; y: number } | null>(null)
   const titleBar = useTitleBar()
-  // Focus the search box when ⌘/Ctrl+Shift+F (or the palette) bumps the signal.
-  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
-  // Searching takes over the header: the folder name and the icon buttons step
-  // aside so the box is full width while it is being used. It stays open with
-  // text in it after blur, so a typed query is never truncated out of view.
-  const searchExpanded = searchFocused || query.length > 0
-  const globalSearchFocus = useValue(ui$.globalSearchFocus)
-  useEffect(() => {
-    if (globalSearchFocus === 0) return
-    const input = searchInputRef.current
-    input?.focus()
-    input?.select()
-  }, [globalSearchFocus])
+  // Without a title bar of ours the search box is in this header, and searching
+  // takes it over: the folder name and the icon buttons step aside so the box is
+  // full width while it is being used. It stays open with text in it after blur,
+  // so a typed query is never truncated out of view.
+  const searchExpanded = !titleBar && (searchFocused || query.length > 0)
 
   // Keep the selected thread visible when it changes — chiefly so j/k keyboard
   // navigation can walk past the fold. `block: "nearest"` leaves already-visible
@@ -276,11 +268,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
         </div>
       )}
       {bulkInThisList ? (
-        <BulkActionBar items={bulkItems} allItems={filteredThreads.map(bulkItemFor)} className="min-h-16" />
+        <BulkActionBar items={bulkItems} allItems={filteredThreads.map(bulkItemFor)} className="min-h-12" />
       ) : (
         // Less padding on the right than the left: the trailing icon buttons carry
         // their own, so px-4 on both sides left the row lopsided.
-        <div className="flex h-16 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60">
+        <div className="flex h-12 shrink-0 flex-row items-center gap-3 pl-4 pr-2 border-b border-border/60">
           <div className="flex items-center gap-2 w-full">
             {/* Current folder, doubling as a picker: switching here retargets the
               list the same way it retargets a kanban column. Capped so a deep
@@ -294,35 +286,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                 onSelect={(nextFolderId) => ui$.selectedFolder.set(nextFolderId)}
               />
             )}
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-secondary" size={15} />
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={(event) => ui$.query.set(event.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return
-                  ui$.query.set('')
-                  event.currentTarget.blur()
-                }}
-                placeholder={isRSSAccount ? t('threads.searchFeeds') : t('threads.searchMessages')}
-                className={clsx(
-                  'w-full rounded-xl bg-hover py-2 pl-8 text-[0.8125rem] text-primary placeholder-secondary focus:ring-1 focus:ring-accent focus:bg-chats border border-transparent focus:border-transparent transition-all duration-150',
-                  // The right padding only has to clear the clear button while there is one.
-                  query ? 'pr-8' : 'pr-3',
-                )}
-              />
-              {query && (
-                <button
-                  onClick={() => ui$.query.set('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-secondary hover:text-primary cursor-pointer"
-                >
-                  <X size={15} />
-                </button>
-              )}
-            </div>
+            {titleBar ? <div className="flex-1" /> : <ThreadSearchInput onFocusChange={setSearchFocused} />}
 
             {!searchExpanded && (
               <>
