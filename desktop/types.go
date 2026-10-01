@@ -122,6 +122,7 @@ type ThreadSender struct {
 }
 
 type AddPasswordAccountRequest struct {
+	ID           string `json:"id"`
 	Email        string `json:"email"`
 	DisplayName  string `json:"display_name"`
 	SenderName   string `json:"sender_name"`
@@ -144,6 +145,7 @@ type AddPasswordAccountRequest struct {
 }
 
 type AddGmailOAuthRequest struct {
+	ID           string `json:"id"`
 	Email        string `json:"email"`
 	DisplayName  string `json:"display_name"`
 	SenderName   string `json:"sender_name"`
@@ -157,6 +159,7 @@ type AddGmailOAuthRequest struct {
 // AddOutlookOAuthRequest mirrors AddGmailOAuthRequest. AvatarURL is unused
 // (Microsoft's id_token carries no picture) but kept for shape parity.
 type AddOutlookOAuthRequest struct {
+	ID           string `json:"id"`
 	Email        string `json:"email"`
 	DisplayName  string `json:"display_name"`
 	SenderName   string `json:"sender_name"`
