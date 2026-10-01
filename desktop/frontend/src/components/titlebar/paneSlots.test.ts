@@ -10,12 +10,14 @@ const wide: PaneLayout = {
   mobilePane: 'threads',
 }
 
+// The Tasks panel is only drawn while it is on screen (TasksSlide), so its
+// slot only counts when it is open.
 const ends = (layout: PaneLayout) => {
   const slots = paneTitlebarSlots(layout)
   return {
     list: slots.list.end,
     conversation: slots.conversation.end,
-    tasks: slots.tasks.end,
+    tasks: layout.tasksOpen && slots.tasks.end,
   }
 }
 
@@ -73,20 +75,20 @@ describe('paneTitlebarSlots', () => {
     expect(paneTitlebarSlots(reading).conversation).toEqual({ start: false, end: true })
   })
 
-  it("keeps the window-edge group's space in the pane that gets it back when Tasks closes", () => {
+  it('folds the room in the header beside the Tasks panel shut while it is open', () => {
     const open = paneTitlebarSlots({ ...wide, tasksOpen: true })
-    expect(open.conversation).toEqual({ start: false, end: false, reserve: true })
+    expect(open.conversation).toEqual({ start: false, end: false, fold: true })
     expect(open.tasks.end).toBe(true)
-    expect(paneTitlebarSlots(wide).conversation).toEqual({ start: false, end: true, reserve: false })
+    expect(paneTitlebarSlots(wide).conversation).toEqual({ start: false, end: true, fold: true })
     const board = paneTitlebarSlots({ ...wide, kanban: true, tasksOpen: true })
-    expect(board.list).toEqual({ start: true, end: false, reserve: true, fold: true })
+    expect(board.list).toEqual({ start: true, end: false, fold: true })
   })
 
   it("folds the room in the board's header with the conversation pane instead of keeping a gap", () => {
     const reading = paneTitlebarSlots({ ...wide, kanban: true, kanbanPaneOpen: true })
-    expect(reading.list).toEqual({ start: true, end: false, reserve: false, fold: true })
+    expect(reading.list).toEqual({ start: true, end: false, fold: true })
     expect(reading.conversation.end).toBe(true)
-    // The thread list never holds the end beside a conversation, so it needs neither.
-    expect(paneTitlebarSlots(wide).list).toEqual({ start: true, end: false, reserve: false, fold: false })
+    // The thread list never holds the end beside a conversation, so it needs no room.
+    expect(paneTitlebarSlots(wide).list).toEqual({ start: true, end: false, fold: false })
   })
 })

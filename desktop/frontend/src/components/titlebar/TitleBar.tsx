@@ -79,7 +79,7 @@ function EdgeGroupButtons() {
 /**
  * The room for the window-edge group at the end of the header at the right
  * window edge (Linux), or of the header that gets it back when Tasks or the
- * details panel closes (`reserve`). It is an invisible copy of the group, so
+ * details panel closes (`fold`). It is an invisible copy of the group, so
  * exactly its width, out of reach and out of the accessibility tree: the
  * group itself is drawn once over the corner (WindowEdgeGroup), so it never
  * moves or redraws when panes open, close or slide.
@@ -87,7 +87,7 @@ function EdgeGroupButtons() {
 export function TitlebarEnd() {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
-  const room = slots.end || !!slots.reserve
+  const room = slots.end
   if (!panes || (!room && !slots.fold)) return null
   // .titlebar-end: index.css gives every header that holds it the same inset
   // from the window edge, which WindowEdgeGroup matches.
@@ -156,7 +156,7 @@ export function TitlebarMenu() {
 export function TitlebarStrip({ tools = true }: { tools?: boolean }) {
   const slots = useTitlebarSlots()
   const panes = usePaneTitlebar()
-  if (!panes || (!slots.start && !slots.end && !slots.reserve)) return null
+  if (!panes || (!slots.start && !slots.end && !slots.fold)) return null
   return (
     <div data-titlebar="pane" className="flex h-16 shrink-0 items-center px-2">
       <WindowControls side="start" />

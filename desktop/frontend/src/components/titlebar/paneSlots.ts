@@ -5,7 +5,8 @@ export type PaneLayout = {
   kanban: boolean
   /** The conversation pane is open beside the kanban board. */
   kanbanPaneOpen: boolean
-  /** The Tasks panel is open (it hides itself below 900px). */
+  /** The Tasks panel is open, or opening (it hides itself below 900px). Not
+   * while it slides out: the header beside it folds its room back meanwhile. */
   tasksOpen: boolean
   /** At least 900px wide: the Tasks panel can show. */
   tasksFit: boolean
@@ -26,12 +27,11 @@ const NONE: TitlebarSlots = { start: false, end: false }
  * one. Panes that CSS hides at the current width never get a slot, so the
  * controls can't vanish with them.
  *
- * `reserve` keeps the room for the window's corner group (TitlebarEnd) in the
- * header left of the Tasks panel, which holds the end once the panel closes,
- * so its own buttons don't jump when the panel opens or closes. `fold` makes
- * the room fold in and out with the board's conversation pane instead, which
- * comes and goes with every card: no gap while a card is open, and the
- * board's buttons move with the pane rather than jumping.
+ * `fold` marks a header whose room for the window's corner group
+ * (TitlebarEnd) comes and goes with a pane sliding in to its right, the
+ * Tasks panel or the board's conversation pane: the room folds shut as the
+ * pane opens and back as it closes, timed like the pane, so there is no gap
+ * beside the pane and the header's own buttons glide instead of jumping.
  */
 export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
   const { kanban, kanbanPaneOpen, tasksOpen, tasksFit, split, mobilePane } = layout
@@ -57,9 +57,10 @@ export function paneTitlebarSlots(layout: PaneLayout): PaneSlots {
 
   const conversationShown = !kanban || kanbanPaneOpen
   return {
-    list: { start: true, end: !conversationShown && !tasks, reserve: !conversationShown && tasks, fold: kanban },
-    conversation: { start: false, end: conversationShown && !tasks, reserve: conversationShown && tasks },
-    tasks: { start: false, end: tasks },
+    list: { start: true, end: !conversationShown && !tasks, fold: kanban },
+    conversation: { start: false, end: conversationShown && !tasks, fold: conversationShown },
+    // Only drawn while it is on screen (TasksSlide), always at the window edge.
+    tasks: { start: false, end: tasksFit },
   }
 }
 

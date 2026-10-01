@@ -201,11 +201,6 @@ describe('TitlebarEnd (room for the corner group in a header, Linux)', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
-  it('keeps the room in the header that gets the corner back when Tasks closes', () => {
-    const { container } = inRow(<TitlebarEnd />, { start: false, end: false, reserve: true })
-    expect(container.querySelector('.titlebar-end')).not.toBeNull()
-  })
-
   it('folds the room shut, rather than dropping it, where it folds with a pane', () => {
     const { container, rerender } = inRow(<TitlebarEnd />, { start: true, end: false, fold: true })
     const fold = () => container.querySelector<HTMLElement>('.titlebar-fold')!

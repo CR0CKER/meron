@@ -331,7 +331,7 @@ export function MessagePane() {
         value={{
           start: titlebarSlots.start && hasTabs,
           end: titlebarSlots.end && hasTabs,
-          reserve: !!titlebarSlots.reserve && hasTabs,
+          fold: !!titlebarSlots.fold && hasTabs,
         }}
       >
         <ConversationTabs />
@@ -340,7 +340,7 @@ export function MessagePane() {
         value={{
           start: titlebarSlots.start && !hasTabs,
           end: titlebarSlots.end && !hasTabs,
-          reserve: !!titlebarSlots.reserve && !hasTabs,
+          fold: !!titlebarSlots.fold && !hasTabs,
         }}
       >
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -350,10 +350,9 @@ export function MessagePane() {
             value={{
               start: titlebarSlots.start && !hasTabs,
               end: titlebarSlots.end && !hasTabs && !detailsOpen,
-              // Keeps the group's space while details or Tasks hold it, so
-              // this header's buttons don't jump when they open or close.
-              reserve:
-                (titlebarSlots.end || !!titlebarSlots.reserve) && !hasTabs && (detailsOpen || !titlebarSlots.end),
+              // Folds its room for the corner group shut while details (or
+              // Tasks) sit at the window edge, so its buttons glide.
+              fold: (titlebarSlots.end || !!titlebarSlots.fold) && !hasTabs,
             }}
           >
             <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">

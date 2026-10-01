@@ -8,10 +8,10 @@ import { windowChrome$, windowCommand, type WindowButton } from '../../lib/windo
  * Linux, App gives `end` to the rightmost pane and `start` to the first content
  * pane (the side navigation is too narrow for three buttons), and a pane passes
  * it on to whichever of its rows is at the top. TitleBar (Windows, macOS)
- * hosts both. `reserve` and `fold`: how a header keeps room for the end
- * (paneSlots.ts).
+ * hosts both. `fold`: the row's room for the end folds in and out instead of
+ * appearing at once (paneSlots.ts).
  */
-export type TitlebarSlots = { start: boolean; end: boolean; reserve?: boolean; fold?: boolean }
+export type TitlebarSlots = { start: boolean; end: boolean; fold?: boolean }
 
 const TitlebarSlotsContext = createContext<TitlebarSlots>({ start: false, end: false })
 

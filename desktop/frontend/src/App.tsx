@@ -64,7 +64,7 @@ export default function App() {
 
   const showKanbanMessagePane = !!kanbanPaneThreadId || composeTabs.some((tab) => tab.id === activeComposeTab)
   const showTasksPanel = tasksPanelOpen && !!activeTaskList
-  // The panel keeps the window controls until it has slid out (TasksSlide).
+  // The panel stays mounted while it slides out (TasksSlide).
   const tasksPhase = usePresence(showTasksPanel, PANE_ANIMATION_MS)
   // With the integrated title bar on Linux, the pane headers are the title bar
   // (GNOME's header bars) and host the window controls at the window edges; on
@@ -77,7 +77,7 @@ export default function App() {
     ? paneTitlebarSlots({
         kanban: !!activeBoardId,
         kanbanPaneOpen: showKanbanMessagePane,
-        tasksOpen: tasksPhase !== 'closed',
+        tasksOpen: showTasksPanel,
         tasksFit,
         split,
         mobilePane,
