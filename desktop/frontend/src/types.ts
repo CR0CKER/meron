@@ -121,13 +121,16 @@ export type ComposerAttachment = {
 
 /** Both reply forms of one message, as address-list strings: `to`/`cc` for a
  * plain reply, `all_to`/`all_cc` for reply-all, and whether reply-all reaches
- * anyone the plain reply does not — false hides the reply-all actions. */
+ * anyone the plain reply does not — false hides the reply-all actions.
+ * `accepts_replies` is false when the reply would go only to a no-reply or
+ * bounce address; quick replies then answer an earlier message. */
 export type ReplyRecipients = {
   to: string
   cc: string
   all_to: string
   all_cc: string
   all_adds_recipients: boolean
+  accepts_replies?: boolean
 }
 
 export type Message = {

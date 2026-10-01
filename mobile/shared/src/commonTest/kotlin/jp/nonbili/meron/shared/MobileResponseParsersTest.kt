@@ -286,6 +286,24 @@ class MobileResponseParsersTest {
         assertEquals("Ada <ada@example.com>", reply?.to)
         assertEquals("alice@example.com, bob@example.com", reply?.allCc)
         assertEquals(true, reply?.allAddsRecipients)
+        // Absent on older cores: a message is assumed to take replies.
+        assertEquals(true, reply?.acceptsReplies)
+    }
+
+    @Test
+    fun readsWhetherAMessageAcceptsReplies() {
+        val page =
+            parseThreadReadPage(
+                """{"id":6,"result":{"messages":[{"id":"m1","body":"hi","reply":{"to":"noreply@github.com","cc":"","all_to":"noreply@github.com","all_cc":"","all_adds_recipients":false,"accepts_replies":false}}]}}""",
+            )
+
+        assertEquals(
+            false,
+            page.messages
+                .single()
+                .reply
+                ?.acceptsReplies,
+        )
     }
 
     @Test

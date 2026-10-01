@@ -487,6 +487,7 @@ fun parseThreadReadPage(responseJson: String): ThreadReadPage {
                             allTo = reply.findJsonStringProperty("all_to").orEmpty(),
                             allCc = reply.findJsonStringProperty("all_cc").orEmpty(),
                             allAddsRecipients = reply.findJsonBooleanProperty("all_adds_recipients") ?: false,
+                            acceptsReplies = reply.findJsonBooleanProperty("accepts_replies") ?: true,
                         )
                     },
                 attachments =

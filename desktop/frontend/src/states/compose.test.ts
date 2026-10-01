@@ -3449,6 +3449,40 @@ describe('quick reply send-as identity', () => {
     expect(resolveQuickReplyFrom(inbound, accounts$.get()[0])).toBe('sales@example.com')
   })
 
+  it('skips messages whose reply would only reach a no-reply or bounce address', () => {
+    const inbound = setUpThread()
+    const reply = (to: string, accepts_replies: boolean) => ({
+      to,
+      cc: '',
+      all_to: to,
+      all_cc: '',
+      all_adds_recipients: false,
+      accepts_replies,
+    })
+    // GitHub's pull request mail, its push notification and a bounce.
+    const pullRequest = message({
+      ...inbound,
+      id: 'pr',
+      reply: reply('reply+abc@reply.github.com', true),
+      date: inbound.date + 1,
+    })
+    const push = message({ ...inbound, id: 'push', reply: reply('noreply@github.com', false), date: inbound.date + 2 })
+    const bounce = message({
+      ...inbound,
+      id: 'bounce',
+      from_addr: 'postmaster@microsoft.com',
+      reply: reply('postmaster@microsoft.com', false),
+      date: inbound.date + 3,
+    })
+    mail$.messages.set([inbound, pullRequest, push, bounce])
+    const thread = mail$.threads.get()[0]
+    expect(pickReplyTarget(thread).id).toBe('pr')
+
+    // With nothing that accepts replies, the newest received message still wins.
+    mail$.messages.set([push, bounce])
+    expect(pickReplyTarget(thread).id).toBe('bounce')
+  })
+
   it('hides the picker when the account has a single identity', () => {
     accounts$.set(accounts$.get().map((acc) => ({ ...acc, aliases: [] })))
     setUpThread()

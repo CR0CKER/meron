@@ -34,8 +34,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 // The message a quick reply answers: the newest incoming message that isn't a
-// draft. Keeps mail we sent out of recipient/threading derivation — see
-// [sentByUs] for what counts as ours.
+// draft, preferring one that accepts replies so a no-reply notification or a
+// bounce doesn't take it (the core decides which, see `accepts_replies`). Keeps
+// mail we sent out of recipient/threading derivation — see [sentByUs] for what
+// counts as ours.
 internal fun MeronMobileState.quickReplyParent(): MessageBody? {
     val accountId = selectedCoreThread?.accountId?.ifBlank { defaultSendAccountId() }.orEmpty()
     val account = coreAccounts.firstOrNull { it.id == accountId }
@@ -47,7 +49,9 @@ internal fun MeronMobileState.quickReplyParent(): MessageBody? {
             ?.toSet()
             .orEmpty()
 
-    return messages.lastOrNull { !folderIsDrafts(it.folderId) && !it.sentByUs(ownAddresses) }
+    val received = messages.filter { !folderIsDrafts(it.folderId) && !it.sentByUs(ownAddresses) }
+    return received.lastOrNull { it.reply?.acceptsReplies != false }
+        ?: received.lastOrNull()
         ?: messages.lastOrNull { !folderIsDrafts(it.folderId) }
         ?: messages.lastOrNull()
 }

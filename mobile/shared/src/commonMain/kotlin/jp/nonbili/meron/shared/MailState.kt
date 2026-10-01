@@ -267,13 +267,16 @@ data class ReplyRecipients(
 
 /** Both reply forms of one message, as the core decided them (see
  * meron-core/src/reply.rs): `to`/`cc` for a plain reply, `allTo`/`allCc` for
- * reply-all, and whether reply-all reaches anyone the plain reply does not. */
+ * reply-all, whether reply-all reaches anyone the plain reply does not, and
+ * whether a reply reaches anyone at all (false for no-reply and bounce
+ * addresses, which quick replies pass over). */
 data class MessageReply(
     val to: String = "",
     val cc: String = "",
     val allTo: String = "",
     val allCc: String = "",
     val allAddsRecipients: Boolean = false,
+    val acceptsReplies: Boolean = true,
 )
 
 fun newDraftMessageId(accountId: String = ""): String {
