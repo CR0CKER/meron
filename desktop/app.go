@@ -368,7 +368,11 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.openAttachment(payload)
 	case "mail.print":
 		html, _ := payload["html"].(string)
-		return printNativeMail(html)
+		printed, fallback, err := printNativeMail(html)
+		if fallback != "" {
+			a.logf("mail.print: native print declined (%s), using the browser fallback", fallback)
+		}
+		return printed, err
 	case "mail.saveEml":
 		return a.saveMessageEml(payload)
 	case "mail.copyImage":
