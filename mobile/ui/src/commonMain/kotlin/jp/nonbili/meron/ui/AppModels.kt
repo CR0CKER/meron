@@ -130,6 +130,7 @@ internal const val APPEARANCE_MODE_PREF = "appearance_mode_v1"
 internal const val THEME_FOLLOW_SYSTEM_PREF = "theme_follow_system_v1"
 internal const val LIGHT_THEME_PREF = "light_theme_v1"
 internal const val DARK_THEME_PREF = "dark_theme_v1"
+internal const val CUSTOM_THEMES_PREF = "custom_themes_v1"
 internal const val SHOW_UNREAD_BADGES_PREF = "show_unread_badges_v1"
 internal const val SHOW_UNIFIED_INBOX_PREF = "show_unified_inbox_v1"
 

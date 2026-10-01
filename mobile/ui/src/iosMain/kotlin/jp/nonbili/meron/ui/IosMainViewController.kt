@@ -139,6 +139,10 @@ private class IosMobileHost(
         presentDiagnosticLogShareSheet(disclosure + body)
     }
 
+    override fun shareText(text: String) {
+        presentShareSheet(listOf(text))
+    }
+
     override fun pendingCrashReport(): String = readIosCrashMarker()
 
     override fun clearPendingCrashReport() {

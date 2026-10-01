@@ -100,6 +100,9 @@ interface MobileHost {
      *  is kept. */
     fun shareDiagnosticLog() {}
 
+    /** Offer [text] to other apps through the platform share sheet. */
+    fun shareText(text: String) {}
+
     /** One-line summary of a crash from a previous run that the user has not
      *  been asked about yet, or "" when the last run ended cleanly. Drives the
      *  next-launch "send report?" prompt; crash details stay on the device

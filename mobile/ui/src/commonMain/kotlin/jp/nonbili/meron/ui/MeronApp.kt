@@ -260,7 +260,8 @@ fun MeronApp(
     // go through `backedPrefs` like every other setting. `putString` stages
     // synchronously, which is what makes them survive the Activity recreation the
     // language change triggers.
-    var themeChoice by remember(backedPrefs) { mutableStateOf(loadThemeChoice(backedPrefs)) }
+    var customThemes by remember(backedPrefs) { mutableStateOf(loadCustomThemes(backedPrefs)) }
+    var themeChoice by remember(backedPrefs) { mutableStateOf(loadThemeChoice(backedPrefs, customThemes)) }
     val systemDark = isSystemInDarkTheme()
     // Android 13+ lets the language be changed from system settings while the app
     // is not running; that choice outranks the stored tag.
@@ -282,6 +283,17 @@ fun MeronApp(
     val onThemeChoiceChange: (ThemeChoice) -> Unit = { choice ->
         themeChoice = choice
         saveThemeChoice(backedPrefs, choice)
+    }
+    // An imported theme is applied straight away, the way picking a swatch is.
+    val onImportCustomTheme: (CustomTheme) -> Unit = { theme ->
+        customThemes = customThemes + theme
+        saveCustomThemes(backedPrefs, customThemes)
+        onThemeChoiceChange(themeChoice.select(theme))
+    }
+    val onDeleteCustomTheme: (CustomTheme) -> Unit = { theme ->
+        customThemes = customThemes.filterNot { it.id == theme.id }
+        saveCustomThemes(backedPrefs, customThemes)
+        onThemeChoiceChange(themeChoice.without(theme))
     }
     val onAppLanguageChange: (String) -> Unit = { tag ->
         appLanguageTag = tag
@@ -327,6 +339,9 @@ fun MeronApp(
                 themeChoice = themeChoice,
                 systemDark = systemDark,
                 onThemeChoiceChange = onThemeChoiceChange,
+                customThemes = customThemes,
+                onImportCustomTheme = onImportCustomTheme,
+                onDeleteCustomTheme = onDeleteCustomTheme,
                 appLanguageTag = appLanguageTag,
                 onAppLanguageChange = onAppLanguageChange,
                 packageName = mobileHost.packageName,
@@ -377,6 +392,9 @@ private fun MeronMobileScreenContent(
     themeChoice: ThemeChoice,
     systemDark: Boolean,
     onThemeChoiceChange: (ThemeChoice) -> Unit,
+    customThemes: List<CustomTheme>,
+    onImportCustomTheme: (CustomTheme) -> Unit,
+    onDeleteCustomTheme: (CustomTheme) -> Unit,
     appLanguageTag: String,
     onAppLanguageChange: (String) -> Unit,
     packageName: String,
@@ -1289,6 +1307,10 @@ private fun MeronMobileScreenContent(
                     themeChoice = themeChoice,
                     systemDark = systemDark,
                     onThemeChoiceChange = onThemeChoiceChange,
+                    customThemes = customThemes,
+                    onImportCustomTheme = onImportCustomTheme,
+                    onDeleteCustomTheme = onDeleteCustomTheme,
+                    onShareCustomTheme = { theme -> mobileHost.shareText(serializeThemeSource(theme.source)) },
                     appLanguageTag = appLanguageTag,
                     onAppLanguageChange = onAppLanguageChange,
                     showSenderImages = showSenderImages,

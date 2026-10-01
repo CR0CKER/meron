@@ -161,8 +161,14 @@ internal fun MeronMobileState.importBackup(
                 // Activity / view controller, so only they need a restart, and
                 // only then is it worth saying so.
                 val hostHeldKeys =
-                    listOf(APPEARANCE_MODE_PREF, THEME_FOLLOW_SYSTEM_PREF, LIGHT_THEME_PREF, DARK_THEME_PREF, APP_LANGUAGE_PREF)
-                        .map { settingKeyFor(it) }
+                    listOf(
+                        APPEARANCE_MODE_PREF,
+                        THEME_FOLLOW_SYSTEM_PREF,
+                        LIGHT_THEME_PREF,
+                        DARK_THEME_PREF,
+                        CUSTOM_THEMES_PREF,
+                        APP_LANGUAGE_PREF,
+                    ).map { settingKeyFor(it) }
                 val needsRestart = rehydrated.keys.any { it in hostHeldKeys }
                 status =
                     when {

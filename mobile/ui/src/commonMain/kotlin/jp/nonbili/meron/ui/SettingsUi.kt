@@ -142,6 +142,10 @@ internal fun SettingsScreen(
     themeChoice: ThemeChoice,
     systemDark: Boolean,
     onThemeChoiceChange: (ThemeChoice) -> Unit,
+    customThemes: List<CustomTheme>,
+    onImportCustomTheme: (CustomTheme) -> Unit,
+    onDeleteCustomTheme: (CustomTheme) -> Unit,
+    onShareCustomTheme: (CustomTheme) -> Unit,
     appLanguageTag: String,
     onAppLanguageChange: (String) -> Unit,
     showSenderImages: Boolean,
@@ -392,6 +396,10 @@ internal fun SettingsScreen(
                     choice = themeChoice,
                     systemDark = systemDark,
                     onChange = onThemeChoiceChange,
+                    customThemes = customThemes,
+                    onImportCustomTheme = onImportCustomTheme,
+                    onDeleteCustomTheme = onDeleteCustomTheme,
+                    onShareCustomTheme = onShareCustomTheme,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

@@ -76,25 +76,38 @@ internal fun saveLastMailLocation(
     prefs.putString(LAST_MAIL_FOLDER_PREF, folder.ifBlank { INBOX_FOLDER })
 }
 
-private fun loadAppearanceMode(
+private fun loadAppTheme(
     prefs: AppPreferences,
     key: String,
-    defaultValue: AppAppearanceMode,
-): AppAppearanceMode {
+    defaultValue: AppTheme,
+    customThemes: List<CustomTheme>,
+): AppTheme {
     val stored = prefs.getString(key, defaultValue.storageValue)
-    return AppAppearanceMode.entries.firstOrNull { it.storageValue == stored } ?: defaultValue
+    return AppAppearanceMode.entries.firstOrNull { it.storageValue == stored }
+        ?: customThemes.firstOrNull { it.storageValue == stored }
+        ?: defaultValue
 }
 
-fun loadThemeChoice(prefs: AppPreferences): ThemeChoice {
+fun loadThemeChoice(
+    prefs: AppPreferences,
+    customThemes: List<CustomTheme> = emptyList(),
+): ThemeChoice {
     val defaults = ThemeChoice()
     return ThemeChoice(
-        fixed = loadAppearanceMode(prefs, APPEARANCE_MODE_PREF, defaults.fixed),
+        fixed = loadAppTheme(prefs, APPEARANCE_MODE_PREF, defaults.fixed, customThemes),
         followSystem = prefs.getBoolean(THEME_FOLLOW_SYSTEM_PREF, defaults.followSystem),
         // A pick stored under the wrong appearance would never show; use the default.
-        light = loadAppearanceMode(prefs, LIGHT_THEME_PREF, defaults.light).takeUnless { it.isDark } ?: defaults.light,
-        dark = loadAppearanceMode(prefs, DARK_THEME_PREF, defaults.dark).takeIf { it.isDark } ?: defaults.dark,
+        light = loadAppTheme(prefs, LIGHT_THEME_PREF, defaults.light, customThemes).takeUnless { it.isDark } ?: defaults.light,
+        dark = loadAppTheme(prefs, DARK_THEME_PREF, defaults.dark, customThemes).takeIf { it.isDark } ?: defaults.dark,
     )
 }
+
+fun loadCustomThemes(prefs: AppPreferences): List<CustomTheme> = parseCustomThemes(prefs.getString(CUSTOM_THEMES_PREF, ""))
+
+fun saveCustomThemes(
+    prefs: AppPreferences,
+    themes: List<CustomTheme>,
+) = prefs.putString(CUSTOM_THEMES_PREF, serializeCustomThemes(themes))
 
 fun saveThemeChoice(
     prefs: AppPreferences,

@@ -5,16 +5,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 
+/** A theme the app can paint: a built-in [AppAppearanceMode] or an imported [CustomTheme]. */
+sealed interface AppTheme {
+    /** What the theme settings store: a built-in's name, or a custom theme's id. */
+    val storageValue: String
+    val label: String
+    val isDark: Boolean
+}
+
 enum class AppAppearanceMode(
-    val storageValue: String,
-    val label: String,
-) {
+    override val storageValue: String,
+    override val label: String,
+) : AppTheme {
     Light("light", "Meron Light"),
     Dynamic("dynamic", "Material You"),
     Indigo("indigo", "Indigo"),
@@ -31,14 +40,14 @@ enum class AppAppearanceMode(
     Forest("forest", "Forest"),
     Plum("plum", "Plum"),
     Ember("ember", "Ember"),
+    ;
+
+    override val isDark: Boolean get() = mobileThemeSpec(this).dark
 }
 
 /** The themes that take their colors from the system wallpaper palette (Material You). */
 internal val AppAppearanceMode.isDynamic: Boolean
     get() = this == AppAppearanceMode.Dynamic || this == AppAppearanceMode.DynamicDark
-
-/** Whether [this] is one of the dark themes. */
-internal val AppAppearanceMode.isDark: Boolean get() = mobileThemeSpec(this).dark
 
 /**
  * The theme setting: one fixed theme, or a light and a dark pick the app
@@ -46,13 +55,13 @@ internal val AppAppearanceMode.isDark: Boolean get() = mobileThemeSpec(this).dar
  * themeFollowSystem / lightThemeId / darkThemeId.
  */
 data class ThemeChoice(
-    val fixed: AppAppearanceMode = AppAppearanceMode.Light,
+    val fixed: AppTheme = AppAppearanceMode.Light,
     val followSystem: Boolean = false,
-    val light: AppAppearanceMode = AppAppearanceMode.Light,
-    val dark: AppAppearanceMode = AppAppearanceMode.Dark,
+    val light: AppTheme = AppAppearanceMode.Light,
+    val dark: AppTheme = AppAppearanceMode.Dark,
 ) {
     /** The theme to paint while the system is (or is not) dark. */
-    fun resolve(systemDark: Boolean): AppAppearanceMode =
+    fun resolve(systemDark: Boolean): AppTheme =
         when {
             !followSystem -> fixed
             systemDark -> dark
@@ -60,10 +69,10 @@ data class ThemeChoice(
         }
 
     /** The themes the picker marks as chosen. */
-    val chosen: Set<AppAppearanceMode> get() = if (followSystem) setOf(light, dark) else setOf(fixed)
+    val chosen: Set<AppTheme> get() = if (followSystem) setOf(light, dark) else setOf(fixed)
 
     /** Pick [mode]: the fixed theme, or while following the system, the pick for its own appearance. */
-    fun select(mode: AppAppearanceMode): ThemeChoice =
+    fun select(mode: AppTheme): ThemeChoice =
         when {
             !followSystem -> copy(fixed = mode)
             mode.isDark -> copy(dark = mode)
@@ -87,6 +96,18 @@ data class ThemeChoice(
             else -> copy(followSystem = true, light = current)
         }
     }
+
+    /** Every pick of [theme], which is going away, reset to the default for its appearance. */
+    fun without(theme: AppTheme): ThemeChoice {
+        val defaults = ThemeChoice()
+        val replacement = if (theme.isDark) defaults.dark else defaults.light
+        return ThemeChoice(
+            fixed = if (fixed == theme) replacement else fixed,
+            followSystem = followSystem,
+            light = if (light == theme) defaults.light else light,
+            dark = if (dark == theme) defaults.dark else dark,
+        )
+    }
 }
 
 /** Colors that have no Material slot: the chat bubbles and the sidebar. */
@@ -108,7 +129,7 @@ data class ChatColors(
     val sidebarSelected: Color,
 )
 
-private data class MobileThemeSpec(
+internal data class MobileThemeSpec(
     val dark: Boolean,
     val bgApp: Color,
     val bgChats: Color,
@@ -129,7 +150,7 @@ private data class MobileThemeSpec(
     val sidebarColors: SidebarColors? = null,
 )
 
-private data class SidebarColors(
+internal data class SidebarColors(
     val text: Color,
     val textMuted: Color,
     val selected: Color,
@@ -435,7 +456,7 @@ internal data class ThemePreviewColors(
 /** Swatch colors for [mode], so a theme can be previewed without being applied. */
 @Composable
 internal fun themePreviewColors(
-    mode: AppAppearanceMode,
+    mode: AppTheme,
 ): ThemePreviewColors =
     resolveThemeSpec(mode).spec.let { spec ->
         ThemePreviewColors(
@@ -453,7 +474,7 @@ internal fun themePreviewColors(
 
 @Composable
 fun MeronTheme(
-    appearanceMode: AppAppearanceMode = AppAppearanceMode.Light,
+    appearanceMode: AppTheme = AppAppearanceMode.Light,
     messageFontScale: Int = DEFAULT_MESSAGE_FONT_SCALE,
     darkMailBodies: Boolean = false,
     autoFitMessages: Boolean = false,
@@ -517,12 +538,18 @@ private class ResolvedTheme(
 )
 
 /**
- * The spec for [mode]. A dynamic theme reads the system palette and derives the
- * spec (for chat colors and swatches) from it; without one it falls back to
- * the Meron theme of the same appearance.
+ * The spec for [theme]. A custom theme derives it from its source colors. A
+ * dynamic theme reads the system palette and derives the spec (for chat colors
+ * and swatches) from it; without one it falls back to the Meron theme of the
+ * same appearance.
  */
 @Composable
-private fun resolveThemeSpec(mode: AppAppearanceMode): ResolvedTheme {
+private fun resolveThemeSpec(theme: AppTheme): ResolvedTheme {
+    val mode =
+        when (theme) {
+            is CustomTheme -> return ResolvedTheme(remember(theme.source) { customThemeSpec(theme.source) })
+            is AppAppearanceMode -> theme
+        }
     val fallback = mobileThemeSpec(mode)
     if (!mode.isDynamic) return ResolvedTheme(fallback)
     val platform = platformDynamicColorScheme(fallback.dark) ?: return ResolvedTheme(fallback)
@@ -626,7 +653,7 @@ private fun materialColors(spec: MobileThemeSpec) =
     }
 
 /** WCAG contrast ratio between two opaque colors. */
-private fun contrastRatio(
+internal fun contrastRatio(
     a: Color,
     b: Color,
 ): Float {

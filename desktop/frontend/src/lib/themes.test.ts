@@ -157,6 +157,13 @@ describe('deriveThemeTokens', () => {
     expect(tokens.accent).toBe(SAMPLE_INPUT.accent)
     expect(tokens.textPrimary).toBe(SAMPLE_INPUT.text)
   })
+
+  it('moves accents at either end of the scale until they read', () => {
+    const white = deriveThemeTokens(parseThemeSource('light,#f0f2f1,#ffffff,#121a16,#ffffff,#1b211e')!)
+    expect(white.accent).toBe('#767676')
+    const black = deriveThemeTokens(parseThemeSource('dark,#000000,#000000,#000000,#000000,#ffffff')!)
+    expect(contrastRatio(black.accent, black.bgChats)).toBeGreaterThanOrEqual(4.5)
+  })
 })
 
 describe('cssVarStyle', () => {

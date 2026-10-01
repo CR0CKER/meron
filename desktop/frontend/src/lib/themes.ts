@@ -131,7 +131,10 @@ function withMinContrast(color: string, backgrounds: string[], min: number, dire
   const oklch = toOklch(color)
   if (!oklch) return color
   let out = toHex(color) ?? color
-  while (Math.min(...backgrounds.map((bg) => contrastRatio(out, bg))) < min && oklch.l > 0 && oklch.l < 1) {
+  // Stop only at the end of the scale being moved toward: white sits at the
+  // top of it and can still darken, black at the bottom and can still lighten.
+  const hasRoom = () => (direction < 0 ? oklch.l > 0 : oklch.l < 1)
+  while (Math.min(...backgrounds.map((bg) => contrastRatio(out, bg))) < min && hasRoom()) {
     oklch.l = Math.min(1, Math.max(0, oklch.l + direction * 0.005))
     out = fromOklch(oklch)
   }

@@ -462,6 +462,11 @@ class AndroidMobileHost(
         shareBytesViaFileProvider(activity, (disclosure + body).toByteArray(), "meron-sync-log.txt", "text/plain")
     }
 
+    override fun shareText(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        activity.startActivity(Intent.createChooser(intent, null))
+    }
+
     override fun pendingCrashReport(): String = AndroidCrashLog.pending(activity)
 
     override fun clearPendingCrashReport() {
