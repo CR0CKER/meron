@@ -23,6 +23,7 @@ import {
 import { useValue } from '@legendapp/state/react'
 import { printThread } from '../../lib/printMail'
 import { useTranslation } from '../../lib/i18n'
+import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
 import { starThread } from '../../states/mailFlags'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
@@ -96,9 +97,7 @@ export function ConversationHeader({
   const copyHeaderText = (text: string, toast: string) => {
     const value = text.trim()
     if (!value) return
-    const write = navigator.clipboard?.writeText(value)
-    if (!write) return
-    write
+    copyText(value)
       .then(() => {
         showToast(toast)
       })

@@ -16,7 +16,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
-import { openExternal } from '../../lib/native'
+import { copyText, openExternal } from '../../lib/native'
 import { downloadAttachment, openAttachment } from '../../states/mail'
 import { Avatar } from '../avatar/Avatar'
 import { IconButton } from '../button/IconButton'
@@ -289,7 +289,7 @@ export function ConversationDetailsPanel({
             icon={<Copy size={13} className="text-accent" />}
             label={t('chat.copyEmailAddress')}
             onClick={() => {
-              navigator.clipboard?.writeText(personMenu.person.email).catch(() => undefined)
+              copyText(personMenu.person.email).catch(() => undefined)
               setPersonMenu(null)
             }}
           />

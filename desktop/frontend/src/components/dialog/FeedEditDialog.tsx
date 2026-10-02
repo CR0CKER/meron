@@ -3,6 +3,7 @@ import { X, Rss, Trash2, Copy, Check } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
+import { copyText } from '../../lib/native'
 import { removeFeed } from '../../states/feeds'
 import { ui$ } from '../../states/ui'
 import { Button } from '../button/Button'
@@ -26,7 +27,7 @@ export function FeedEditDialog() {
 
   const onCopy = async () => {
     if (!feed.url) return
-    await navigator.clipboard.writeText(feed.url)
+    await copyText(feed.url)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

@@ -1,6 +1,7 @@
 import { useValue } from '@legendapp/state/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
+import { copyText } from '../../lib/native'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
 import { FRAME_GENERATION_MARKER, applyBubbleTheme, prepareBubbleHtml } from './bubbleHtml'
@@ -308,7 +309,7 @@ export function BubbleHtmlFrame({
         button.addEventListener('click', (event) => {
           event.preventDefault()
           event.stopPropagation()
-          navigator.clipboard?.writeText(pre.innerText).catch(() => undefined)
+          copyText(pre.innerText).catch(() => undefined)
         })
         wrapper.appendChild(button)
       }

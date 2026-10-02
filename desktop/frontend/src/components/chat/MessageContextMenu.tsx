@@ -28,7 +28,7 @@ import { saveMessageAsEml } from '../../states/mail'
 import { markMessageReadState, starMessage } from '../../states/mailFlags'
 import { isDraftFolder } from '../../states/mailFolders'
 import { deleteMessage } from '../../states/mailMoves'
-import { openExternal } from '../../lib/native'
+import { copyText, openExternal } from '../../lib/native'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import type { Message } from '../../types'
@@ -83,7 +83,7 @@ export function MessageContextMenu({
             icon={<Link2 size={13} className="text-accent" />}
             label={t('chat.actions.copyLinkAddress')}
             onClick={() => {
-              navigator.clipboard?.writeText(state.linkUrl!).catch(() => undefined)
+              copyText(state.linkUrl!).catch(() => undefined)
               onClose()
             }}
           />
@@ -124,7 +124,7 @@ export function MessageContextMenu({
                 icon={<Link2 size={13} className="text-accent" />}
                 label={t('chat.actions.copyLinkAddress')}
                 onClick={() => {
-                  navigator.clipboard?.writeText(state.message.link!).catch(() => undefined)
+                  copyText(state.message.link!).catch(() => undefined)
                   onClose()
                 }}
               />

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Copy } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
-import { openExternal } from '../../lib/native'
+import { copyText, openExternal } from '../../lib/native'
 import type { Message } from '../../types'
 import {
   MESSAGE_BODY_MAX_HEIGHT,
@@ -172,7 +172,7 @@ export function MessageBubbleBody({
           <div key={`${section}-code-${blockIndex}`} className="group relative my-2 max-w-full">
             <button
               type="button"
-              onClick={() => navigator.clipboard?.writeText(block.content).catch(() => undefined)}
+              onClick={() => copyText(block.content).catch(() => undefined)}
               className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md border border-border/70 bg-chats/90 text-secondary opacity-0 shadow-sm transition-opacity hover:text-primary group-hover:opacity-100"
               title={t('chat.copyCode')}
             >

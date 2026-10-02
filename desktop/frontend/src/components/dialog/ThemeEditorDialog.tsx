@@ -3,6 +3,7 @@ import { Forward, Upload, X } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import { isValidColor, luminance } from '../../lib/color'
+import { copyText } from '../../lib/native'
 import {
   cssVarStyle,
   defaultCustomInput,
@@ -37,8 +38,7 @@ const COLOR_FIELDS: { key: ColorField; labelKey: string; hintKey: string }[] = [
 
 /** Copy a theme's share string (see serializeThemeSource) and confirm with a toast. */
 export function copyThemeSource(source: CustomThemeInput, copiedLabel: string) {
-  navigator.clipboard
-    ?.writeText(serializeThemeSource(source))
+  copyText(serializeThemeSource(source))
     .then(() => showToast(copiedLabel))
     .catch(() => undefined)
 }

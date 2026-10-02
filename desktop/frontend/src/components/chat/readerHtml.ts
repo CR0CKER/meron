@@ -1,4 +1,5 @@
 import { type MessageFrameFont } from '../../lib/fonts'
+import { copyText } from '../../lib/native'
 import {
   DARKENED_CSS,
   DEFAULT_READER_THEME,
@@ -368,7 +369,7 @@ export function applyReaderLayout(
     button.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()
-      navigator.clipboard?.writeText(pre.innerText).catch(() => undefined)
+      copyText(pre.innerText).catch(() => undefined)
     })
     wrapper.appendChild(button)
   }
