@@ -13,14 +13,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,6 +34,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,11 +44,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import jp.nonbili.meron.shared.AccountSummary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Picks a widget's background opacity, when it is placed and (Android 12+)
- *  whenever the user chooses to reconfigure it. */
+/** Picks a widget's account and background opacity, when it is placed and
+ *  (Android 12+) whenever the user chooses to reconfigure it. Shared by the
+ *  count and list widgets. */
 class AndroidUnreadWidgetConfigureActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(localizedAppContext(newBase))
@@ -57,21 +69,26 @@ class AndroidUnreadWidgetConfigureActivity : ComponentActivity() {
             return
         }
         // Backing out still keeps the widget, at its current (or default)
-        // opacity: below Android 12 a cancelled result would remove it.
+        // settings: below Android 12 a cancelled result would remove it.
         val result = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         setResult(Activity.RESULT_OK, result)
-        AndroidUnreadWidget.repaint(this, appWidgetId)
         AndroidUnreadWidget.refreshAsync(this)
 
-        val initial = AndroidUnreadWidget.opacity(this, appWidgetId)
+        val initialOpacity = AndroidUnreadWidget.opacity(this, appWidgetId)
+        val initialScope = AndroidUnreadWidget.accountScope(this, appWidgetId)
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-                Surface {
-                    OpacityPicker(
-                        initial = initial,
-                        onDone = { percent ->
-                            AndroidUnreadWidget.setOpacity(this, appWidgetId, percent)
-                            AndroidUnreadWidget.repaint(this, appWidgetId)
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    val accounts by produceState(emptyList<AccountSummary>()) {
+                        value = withContext(Dispatchers.IO) { AndroidUnreadWidget.listAccounts(applicationContext) }
+                    }
+                    WidgetSettings(
+                        accounts = accounts,
+                        initialOpacity = initialOpacity,
+                        initialScope = initialScope,
+                        onDone = { opacity, scope ->
+                            AndroidUnreadWidget.save(this, appWidgetId, opacity, scope)
+                            AndroidUnreadWidget.refreshAsync(this)
                             finish()
                         },
                     )
@@ -82,16 +99,37 @@ class AndroidUnreadWidgetConfigureActivity : ComponentActivity() {
 }
 
 @Composable
-private fun OpacityPicker(
-    initial: Int,
-    onDone: (Int) -> Unit,
+private fun WidgetSettings(
+    accounts: List<AccountSummary>,
+    initialOpacity: Int,
+    initialScope: String,
+    onDone: (opacity: Int, scope: String) -> Unit,
 ) {
-    var percent by remember { mutableFloatStateOf(initial.toFloat()) }
+    var percent by remember { mutableFloatStateOf(initialOpacity.toFloat()) }
+    var scope by remember { mutableStateOf(initialScope) }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(stringResource(R.string.mobile_android_widget_name), style = MaterialTheme.typography.titleLarge)
+
+        Text(stringResource(R.string.settings_account_account), style = MaterialTheme.typography.titleSmall)
+        Column {
+            ScopeOption(stringResource(R.string.accounts_unified), selected = scope == AndroidUnreadWidget.UNIFIED) {
+                scope = AndroidUnreadWidget.UNIFIED
+            }
+            accounts.forEach { account ->
+                ScopeOption(account.displayName.ifBlank { account.email }, selected = scope == account.id) {
+                    scope = account.id
+                }
+            }
+        }
+
         Box(
             modifier = Modifier.align(Alignment.CenterHorizontally).size(72.dp),
             contentAlignment = Alignment.Center,
@@ -127,9 +165,27 @@ private fun OpacityPicker(
             valueRange = 0f..100f,
             steps = 19,
         )
-        Spacer(Modifier.size(8.dp))
-        Button(onClick = { onDone(percent.roundToInt()) }, modifier = Modifier.align(Alignment.End)) {
+        Button(onClick = { onDone(percent.roundToInt(), scope) }, modifier = Modifier.align(Alignment.End)) {
             Text(stringResource(R.string.buttons_done))
         }
+    }
+}
+
+@Composable
+private fun ScopeOption(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+                .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(label, modifier = Modifier.padding(start = 12.dp))
     }
 }

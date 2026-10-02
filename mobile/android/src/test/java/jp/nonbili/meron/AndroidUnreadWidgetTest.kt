@@ -2,6 +2,7 @@ package jp.nonbili.meron
 
 import jp.nonbili.meron.shared.FolderSummary
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AndroidUnreadWidgetTest {
@@ -12,13 +13,13 @@ class AndroidUnreadWidgetTest {
                 FolderSummary(accountId = "a", name = "Notifications", unread = 9),
                 FolderSummary(accountId = "a", name = "INBOX", unread = 3, role = "inbox"),
             )
-        assertEquals(3, widgetInboxUnread(folders))
+        assertEquals(3, widgetInbox(folders)?.unread)
     }
 
     @Test
     fun matchesInboxByNameWithoutRole() {
-        assertEquals(4, widgetInboxUnread(listOf(FolderSummary(accountId = "a", name = "Inbox", unread = 4))))
-        assertEquals(0, widgetInboxUnread(emptyList()))
+        assertEquals(4, widgetInbox(listOf(FolderSummary(accountId = "a", name = "Inbox", unread = 4)))?.unread)
+        assertNull(widgetInbox(emptyList()))
     }
 
     @Test
