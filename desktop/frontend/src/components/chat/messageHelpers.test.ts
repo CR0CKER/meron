@@ -18,6 +18,7 @@ import {
   normalizeBodyText,
   normalizeUrl,
   readerAttachmentImages,
+  readerAttachmentVideos,
   parseAddressList,
   parseInlineMessageContent,
   standaloneAttachmentImages,
@@ -259,6 +260,28 @@ describe('readerAttachmentImages', () => {
   it('skips images the body already renders', () => {
     const html = '<img src="/media/inline.png">'
     expect(readerAttachmentImages(attachments, html, true).map((a) => a.filename)).toEqual(['pasted.png', 'pixel.png'])
+  })
+})
+
+describe('readerAttachmentVideos', () => {
+  const attachments = [
+    { key: 'clip.mp4', mime: 'video/mp4', filename: 'clip.mp4' },
+    { url: 'https://cdn.example/remote.mp4?a=1&b=2', mime: 'video/mp4', filename: 'remote.mp4' },
+    { key: 'image.png', mime: 'image/png', filename: 'image.png' },
+    { mime: 'video/mp4', filename: 'missing.mp4' },
+  ] as any[]
+
+  it('gates remote videos while allowing cached clips', () => {
+    expect(readerAttachmentVideos(attachments, undefined, false).map((a) => a.filename)).toEqual(['clip.mp4'])
+    expect(readerAttachmentVideos(attachments, undefined, true).map((a) => a.filename)).toEqual([
+      'clip.mp4',
+      'remote.mp4',
+    ])
+  })
+
+  it('avoids duplicating videos already in the HTML', () => {
+    const html = '<video src="https://cdn.example/remote.mp4?a=1&amp;b=2"></video>'
+    expect(readerAttachmentVideos(attachments, html, true).map((a) => a.filename)).toEqual(['clip.mp4'])
   })
 })
 

@@ -3,11 +3,14 @@ import type { Attachment } from '../../types'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
 import { LinkHoverPreview } from './LinkHoverPreview'
-import { mediaSrc, readerAttachmentImages } from './messageHelpers'
+import { mediaSrc, readerAttachmentImages, readerAttachmentVideos } from './messageHelpers'
 import { applyReaderFont, applyReaderLayout, applyReaderTheme, stripTrackingPixels } from './readerHtml'
 import { applyRemoteContentPolicy } from './remoteContentCsp'
 import { useMessageFrameFont } from './useMessageFrameFont'
 import { useReaderTheme } from './useFrameTheme'
+import { VideoAttachment } from './VideoAttachment'
+import { useTranslation } from '../../lib/i18n'
+import { frameMetrics, measureFrameHeight } from './frameHeight'
 
 const readerScrollPositions = new Map<string, number>()
 
@@ -45,17 +48,40 @@ export function HtmlMessageView({
   viewMode,
   allowRemote = false,
 }: HtmlMessageViewProps) {
+  const { t } = useTranslation()
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const textRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const messageFont = useMessageFrameFont()
   const readerTheme = useReaderTheme()
   const [hoveredLink, setHoveredLink] = useState<string | null>(null)
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([])
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const pendingScrollTop = useRef<number | null>(null)
+  const lastRestoredScrollTop = useRef<number | null>(null)
   const positionKey = `${scrollKey}:${viewMode}`
   const attachmentImages = useMemo(
-    () => readerAttachmentImages(attachments, html, allowRemote),
-    [attachments, html, allowRemote],
+    () => readerAttachmentImages(attachments, viewMode === 'html' ? html : undefined, allowRemote),
+    [attachments, html, viewMode, allowRemote],
+  )
+
+  const attachmentVideos = useMemo(
+    () => readerAttachmentVideos(attachments, viewMode === 'html' ? html : undefined, allowRemote),
+    [attachments, html, viewMode, allowRemote],
+  )
+  const hasAttachments = attachmentImages.length > 0 || attachmentVideos.length > 0
+  const [frameHeight, setFrameHeight] = useState(20)
+  const videoPlayers = attachmentVideos.length > 0 && (
+    <div className="flex flex-col gap-2">
+      {attachmentVideos.map((video, index) => (
+        <VideoAttachment
+          key={`${scrollKey}-${index}`}
+          src={mediaSrc(video)}
+          externalUrl={video.url ?? mediaSrc(video)}
+          externalLabel={t('chat.openExternalPlayer')}
+        />
+      ))}
+    </div>
   )
 
   const openAttachmentImage = useCallback(
@@ -71,8 +97,33 @@ export function HtmlMessageView({
     [attachmentImages],
   )
 
+  const cancelPendingScroll = useCallback(() => {
+    pendingScrollTop.current = null
+    lastRestoredScrollTop.current = null
+  }, [])
+
+  const restorePendingScroll = useCallback(() => {
+    const top = pendingScrollTop.current
+    const container = textRef.current
+    if (top === null || !container) return
+    container.scrollTop = top
+    lastRestoredScrollTop.current = container.scrollTop
+    if (Math.abs(container.scrollTop - top) < 1) pendingScrollTop.current = null
+  }, [])
+
+  // Observe the whole content, so late-loading attachment images retry the
+  // restore too, even when the iframe's measured height stays the same.
+  useLayoutEffect(() => {
+    const content = contentRef.current
+    if (!hasAttachments || viewMode !== 'html' || !html || !content) return
+    const observer = new ResizeObserver(restorePendingScroll)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [hasAttachments, html, viewMode, restorePendingScroll])
+
   const saveScrollPosition = useCallback(() => {
-    if (viewMode === 'plain' || !html) {
+    if (pendingScrollTop.current !== null) return
+    if (viewMode === 'plain' || !html || hasAttachments) {
       const container = textRef.current
       if (container) readerScrollPositions.set(positionKey, container.scrollTop)
       return
@@ -84,24 +135,39 @@ export function HtmlMessageView({
     if (typeof top === 'number') {
       readerScrollPositions.set(positionKey, top)
     }
-  }, [html, positionKey, viewMode])
+  }, [html, positionKey, viewMode, hasAttachments])
+
+  const handleAttachmentScroll = useCallback(() => {
+    const container = textRef.current
+    if (!container) return
+    if (pendingScrollTop.current !== null) {
+      // Programmatic restores may be clamped. Any movement away from their
+      // actual result belongs to the user, including scrollbar dragging.
+      const lastTop = lastRestoredScrollTop.current
+      if (lastTop !== null && Math.abs(container.scrollTop - lastTop) < 1) return
+      cancelPendingScroll()
+    }
+    saveScrollPosition()
+  }, [cancelPendingScroll, saveScrollPosition])
 
   const restoreScrollPosition = useCallback(() => {
     const top = readerScrollPositions.get(positionKey)
     if (top === undefined) return
 
-    if (viewMode === 'plain' || !html) {
+    if (viewMode === 'plain' || !html || hasAttachments) {
       const container = textRef.current
       if (container) container.scrollTop = top
       return
     }
 
     iframeRef.current?.contentWindow?.scrollTo(0, top)
-  }, [html, positionKey, viewMode])
+  }, [html, positionKey, viewMode, hasAttachments])
 
   useLayoutEffect(() => {
     return saveScrollPosition
   }, [saveScrollPosition])
+
+  useLayoutEffect(cancelPendingScroll, [positionKey, html, hasAttachments, cancelPendingScroll])
 
   const sanitizedHtml = useMemo(
     () => (html ? applyRemoteContentPolicy(stripTrackingPixels(html), allowRemote) : html),
@@ -148,9 +214,34 @@ export function HtmlMessageView({
   const handleFrameReady = useCallback(
     (doc: Document) => {
       applyReaderLayout(doc, messageFont, readerTheme)
-      requestAnimationFrame(restoreScrollPosition)
+      pendingScrollTop.current = hasAttachments ? (readerScrollPositions.get(positionKey) ?? null) : null
+      let observer: ResizeObserver | undefined
+      if (hasAttachments) {
+        // The reader and its attachments share one scroll container. Measure
+        // the body instead of letting the iframe fill the remaining viewport.
+        for (const element of [doc.documentElement, doc.body]) {
+          element.style.setProperty('height', 'auto', 'important')
+          element.style.setProperty('min-height', '0', 'important')
+          element.style.setProperty('overflow', 'hidden', 'important')
+        }
+        let overflowExtent = 0
+        const measure = () => {
+          const measurement = measureFrameHeight(frameMetrics(doc), overflowExtent)
+          overflowExtent = measurement.overflowExtent
+          setFrameHeight(measurement.height)
+        }
+        measure()
+        observer = new ResizeObserver(measure)
+        observer.observe(doc.documentElement)
+        observer.observe(doc.body)
+      }
+      const frame = requestAnimationFrame(hasAttachments ? restorePendingScroll : restoreScrollPosition)
+      return () => {
+        cancelAnimationFrame(frame)
+        observer?.disconnect()
+      }
     },
-    [messageFont, readerTheme, restoreScrollPosition],
+    [messageFont, readerTheme, restoreScrollPosition, restorePendingScroll, hasAttachments, positionKey],
   )
 
   // The frame only re-runs `onReady` when its document is replaced, so repaint
@@ -178,8 +269,9 @@ export function HtmlMessageView({
           {attachmentImages.length > 0 && (
             <AttachmentImageGrid images={attachmentImages} onOpen={openAttachmentImage} />
           )}
+          {videoPlayers}
           <div className="whitespace-pre-wrap break-words font-message text-[calc(0.9375rem*var(--me-message-scale))] leading-relaxed text-primary select-text tracking-[0.01em]">
-            {text || (attachmentImages.length > 0 ? '' : '(no content)')}
+            {text || (attachmentImages.length > 0 || attachmentVideos.length > 0 ? '' : '(no content)')}
           </div>
         </div>
         {galleryIndex !== null && galleryItems[galleryIndex] && (
@@ -195,26 +287,43 @@ export function HtmlMessageView({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" onMouseLeave={() => setHoveredLink(null)}>
-      <HtmlFrame
-        ref={iframeRef}
-        html={sanitizedHtml ?? ''}
-        title={title}
-        className="flex-1 w-full border-0"
-        style={{ backgroundColor: readerTheme.pageBg }}
-        onFrameClick={handleFrameClick}
-        onReady={handleFrameReady}
-        onLinkHover={setHoveredLink}
-        onScroll={saveScrollPosition}
-      />
-      <LinkHoverPreview url={hoveredLink} />
-      {attachmentImages.length > 0 && (
-        <div className="shrink-0 border-t border-border bg-chat px-6 py-4">
-          <div className="mx-auto max-w-[680px]">
-            <AttachmentImageGrid images={attachmentImages} onOpen={openAttachmentImage} />
-          </div>
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      style={{ backgroundColor: readerTheme.pageBg }}
+      onMouseLeave={() => setHoveredLink(null)}
+    >
+      <div
+        ref={textRef}
+        className={`flex min-h-0 flex-1 flex-col ${hasAttachments ? 'overflow-y-auto' : ''}`}
+        onScroll={hasAttachments ? handleAttachmentScroll : undefined}
+      >
+        <div ref={contentRef} className={`flex min-h-0 flex-col ${hasAttachments ? 'shrink-0' : 'flex-1'}`}>
+          <HtmlFrame
+            key={hasAttachments ? 'with-attachments' : 'body-only'}
+            ref={iframeRef}
+            html={sanitizedHtml ?? ''}
+            title={title}
+            className={`${hasAttachments ? 'shrink-0' : 'flex-1'} w-full border-0`}
+            style={{ backgroundColor: readerTheme.pageBg, ...(hasAttachments ? { height: frameHeight } : {}) }}
+            scrolling={hasAttachments ? 'no' : 'auto'}
+            onFrameClick={handleFrameClick}
+            onReady={handleFrameReady}
+            onLinkHover={setHoveredLink}
+            onScroll={saveScrollPosition}
+          />
+          {hasAttachments && (
+            <div className="shrink-0 px-6 pb-6">
+              <div className="mx-auto max-w-[680px] space-y-5">
+                {attachmentImages.length > 0 && (
+                  <AttachmentImageGrid images={attachmentImages} onOpen={openAttachmentImage} />
+                )}
+                {videoPlayers}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+      <LinkHoverPreview url={hoveredLink} />
       {galleryIndex !== null && galleryItems[galleryIndex] && (
         <Gallery
           items={galleryItems}

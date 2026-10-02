@@ -115,21 +115,38 @@ export function ConversationTabs() {
       )}
       <div ref={stripRef} className="flex h-9 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
         {hasCurrentConversation && (
-          <button
+          <div
             data-tab-id=""
             onClick={() => activateConversationTab()}
             onContextMenu={(event) => {
               event.preventDefault()
               setMenu({ x: event.clientX, y: event.clientY, tabId: '' })
             }}
-            className={`flex items-center gap-1.5 px-3 text-xs border-b-2 transition-colors cursor-pointer ${
+            className={`group relative flex shrink-0 items-center gap-1.5 px-3 text-xs border-b-2 transition-colors cursor-pointer ${
               activeTab === '' ? ACTIVE_TAB : INACTIVE_TAB
             }`}
             title={t('chat.currentConversation')}
           >
-            <MessageSquare size={13} />
-            {t('chat.current')}
-          </button>
+            <button className="flex items-center gap-1.5 self-stretch cursor-pointer">
+              <MessageSquare size={13} />
+              {t('chat.current')}
+            </button>
+            <button
+              onClick={(event) => {
+                event.stopPropagation()
+                closeCurrentConversation()
+              }}
+              className={`absolute right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-header text-secondary shadow-[-4px_0_4px_var(--color-header)] hover:bg-active hover:text-primary ${
+                activeTab === ''
+                  ? ''
+                  : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
+              }`}
+              title={t('chat.closeTab')}
+              aria-label={t('chat.closeTab')}
+            >
+              <X size={11} />
+            </button>
+          </div>
         )}
         {tabs.map((tab) => (
           <div
@@ -141,7 +158,7 @@ export function ConversationTabs() {
               compose$.activeTab.set(tab.id)
               if (tab.kind === 'thread') ui$.selectedThread.set(tab.threadId)
             }}
-            className={`group flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs border-b-2 transition-colors ${
+            className={`group relative flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs border-b-2 transition-colors ${
               activeTab === tab.id ? ACTIVE_TAB : INACTIVE_TAB
             }`}
             onContextMenu={(event) => {
@@ -166,10 +183,11 @@ export function ConversationTabs() {
                 event.stopPropagation()
                 void closeMessageTab(tab.id)
               }}
-              // Only the active or hovered tab shows its ×, so a row of tabs doesn't
-              // read as a row of close buttons.
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-active hover:text-primary focus-visible:opacity-100 ${
-                activeTab === tab.id ? '' : 'opacity-0 group-hover:opacity-100'
+              // Overlay the label so revealing the × never consumes tab width.
+              className={`absolute right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-header text-secondary shadow-[-4px_0_4px_var(--color-header)] hover:bg-active hover:text-primary ${
+                activeTab === tab.id
+                  ? ''
+                  : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
               }`}
               title={t('chat.closeTab')}
             >

@@ -129,6 +129,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
         </div>
       )}
       <HtmlMessageView
+        key={tab.id}
         scrollKey={tab.id}
         title={tab.subject}
         html={tab.bodyHtml}

@@ -66,6 +66,8 @@ export function ConversationHeader({
   // A tab's conversation is closed from the tab strip, not from here: this
   // button closes the conversation the board's card opened.
   const tabOwnsPane = !!useValue(compose$.activeTab)
+  const hasTabs = useValue(compose$.tabs).length > 0
+  const showCloseConversation = inKanban && !tabOwnsPane && !hasTabs
   const threadSearch = useValue(thread$.search)
   const threadSearchOpen = useValue(thread$.searchOpen)
   const mediaOpen = useValue(thread$.mediaOpen)
@@ -119,7 +121,9 @@ export function ConversationHeader({
 
   return (
     <>
-      <header className="relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-header px-2 select-none">
+      <header
+        className={`relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-header select-none ${showCloseConversation ? 'px-2' : 'px-4'}`}
+      >
         {printing && (
           <LoaderCircle
             size={16}
@@ -136,7 +140,7 @@ export function ConversationHeader({
           <ChevronLeft size={20} />
         </button>
 
-        {inKanban && !tabOwnsPane && (
+        {showCloseConversation && (
           <button
             className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-hover text-secondary cursor-pointer max-[768px]:hidden"
             onClick={closeCurrentConversation}

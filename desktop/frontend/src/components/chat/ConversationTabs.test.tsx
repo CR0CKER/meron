@@ -44,6 +44,29 @@ describe('ConversationTabs', () => {
     expect(view.queryByTitle('Current conversation')).not.toBeNull()
   })
 
+  it('activates Current when its padding is clicked', () => {
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message())
+    const view = render(<ConversationTabs />)
+
+    fireEvent.click(view.getByTitle('Current conversation'))
+
+    expect(compose$.activeTab.get()).toBe('')
+    expect(ui$.selectedThread.get()).toBe('t-current')
+  })
+
+  it('closes Current without activating it when its close button is clicked', () => {
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message())
+    const tabId = compose$.activeTab.get()
+    const view = render(<ConversationTabs />)
+
+    fireEvent.click(view.getByTitle('Current conversation').querySelector('[aria-label="Close tab"]')!)
+
+    expect(compose$.activeTab.get()).toBe(tabId)
+    expect(compose$.conversationThread.get()).toBe('')
+  })
+
   it('hides the Current tab when no conversation is open behind the tabs', () => {
     // A task's mail opened with an empty pane: there is nothing to go back to,
     // and in kanban view the Current tab would close the pane outright.

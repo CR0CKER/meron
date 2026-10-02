@@ -182,6 +182,19 @@ export function readerAttachmentImages(
   })
 }
 
+/** Videos omitted from the HTML body still need a player in the reader. */
+export function readerAttachmentVideos(
+  attachments: Attachment[] | undefined,
+  html: string | undefined,
+  allowRemote: boolean,
+): Attachment[] {
+  return (attachments ?? []).filter((attachment) => {
+    if (!isVideo(attachment) || (!attachment.key && !attachment.url)) return false
+    if (!allowRemote && !isInlineMedia(attachment)) return false
+    return !htmlReferencesMedia(html, attachment)
+  })
+}
+
 export function getVisibleMedia(
   message: Message,
   account: Account | undefined,
