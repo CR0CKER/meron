@@ -134,6 +134,7 @@ class AndroidBackgroundSyncWorker(
             applicationContext,
             "background refresh done: refreshed=$refreshed skipped=$skipped failed=$failed hasTransient=$hasTransientNetworkError",
         )
+        AndroidUnreadWidget.refreshAsync(applicationContext)
         val body = backgroundRefreshSummary(refreshed = refreshed, skipped = skipped, failed = failed)
         if (
             shouldNotifyRefreshComplete(

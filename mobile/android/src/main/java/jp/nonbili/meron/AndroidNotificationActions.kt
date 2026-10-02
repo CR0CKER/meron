@@ -265,6 +265,7 @@ class NotificationActionWorker(
             // archived from the shade. Nobody is listening when the app is
             // closed, which is fine — it reloads on next start anyway.
             notifyAppOfMailboxChange(accountId, folder)
+            AndroidUnreadWidget.refreshAsync(applicationContext)
             return Result.success()
         }
 

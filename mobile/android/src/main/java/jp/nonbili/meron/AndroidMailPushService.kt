@@ -124,6 +124,13 @@ class AndroidMailPushService :
             "mail.newMessages" -> {
                 val detail = envelope.optJSONObject("detail") ?: return
                 AndroidNotificationService.notifyNewMail(this, detail)
+                AndroidUnreadWidget.refreshAsync(this)
+            }
+
+            // A sync with no arrivals — mail read or removed on another device —
+            // still moves the inbox unread count.
+            "mail.synced" -> {
+                AndroidUnreadWidget.refreshAsync(this)
             }
 
             "error" -> {
