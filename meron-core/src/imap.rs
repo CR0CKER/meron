@@ -2030,7 +2030,7 @@ fn header_addrs(headers: &[mailparse::MailHeader<'_>], key: &str) -> Vec<Recipie
     let Some(header) = headers.get_first_header(key) else {
         return Vec::new();
     };
-    let Ok(list) = mailparse::addrparse_header(header) else {
+    let Some(list) = parse::addrparse_lenient(header) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -2283,6 +2283,32 @@ mod tests {
         assert!(header_fields(b"From: x@y\r\n\r\n").subject.is_empty());
         assert!(header_fields(b"Subject:\r\n\r\n").subject.is_empty());
         assert!(header_fields(b"").subject.is_empty());
+    }
+
+    #[test]
+    fn header_fields_decodes_encoded_word_glued_to_from_name() {
+        // "GyRCJUYlOSVIGyhC" is ISO-2022-JP "テスト".
+        let ef = header_fields(
+            b"From: Acme=?iso-2022-jp?B?GyRCJUYlOSVIGyhC?= <news@example.com>\r\n\r\n",
+        );
+        assert_eq!(ef.from_name, "Acme\u{30c6}\u{30b9}\u{30c8}");
+        assert_eq!(ef.from_addr, "news@example.com");
+
+        // Every entry of a list, with non-ASCII before a glued name.
+        let ef = header_fields(
+            "From: x@example.com\r\nTo: \"Zo\u{eb}\" <z@example.com>, Acme=?UTF-8?Q?Foo?= <a@example.com>, Team: Bob=?UTF-8?Q?_Jr?= <b@example.com>;\r\n\r\n".as_bytes(),
+        );
+        assert_eq!(
+            ef.to
+                .iter()
+                .map(|r| (r.name.as_str(), r.addr.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("Zo\u{eb}", "z@example.com"),
+                ("AcmeFoo", "a@example.com"),
+                ("Bob Jr", "b@example.com")
+            ]
+        );
     }
 
     #[test]
