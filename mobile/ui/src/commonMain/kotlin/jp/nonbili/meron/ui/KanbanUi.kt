@@ -481,85 +481,87 @@ internal fun KanbanScreen(
         return
     }
     val boardColumns = board?.columns.orEmpty()
-    val boardBackground = boardBackgroundBrush(board)
     var minimizedColumns by remember(board?.id) { mutableStateOf(emptySet<String>()) }
-    Column(
-        modifier.then(
-            if (boardBackground != null) {
-                Modifier.background(boardBackground)
-            } else {
-                Modifier.background(MaterialTheme.colorScheme.background)
-            },
-        ),
-    ) {
-        if (boardColumns.isEmpty()) {
-            EmptyState(
-                icon = Icons.Filled.ViewKanban,
-                title = tr("empty.noColumns"),
-                text = tr("empty.noColumnsText"),
-                actionLabel = tr("kanban.actions.addColumn"),
-                onAction = onAddColumn,
+    Box(modifier.background(MaterialTheme.colorScheme.background)) {
+        // The picked board background, drawn as the thread view draws an
+        // account's chat wallpaper; the columns are opaque cards on top of it.
+        if (board != null && (board.wallpaperPresetId.isNotBlank() || board.wallpaperUrl.isNotBlank())) {
+            ChatWallpaperBackground(
+                presetId = board.wallpaperPresetId,
+                customUrl = board.wallpaperUrl,
+                modifier = Modifier.matchParentSize(),
             )
-        } else {
-            val boardRowState = rememberLazyListState()
-            LazyRow(
-                Modifier.fillMaxSize().appScrollbar(boardRowState, Orientation.Horizontal),
-                state = boardRowState,
-                contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(boardColumns, key = { kanbanColumnKey(it) }) { column ->
-                    val key = kanbanColumnKey(column)
-                    if (key in minimizedColumns) {
-                        val state = columns[key] ?: KanbanColumnState()
-                        KanbanMinimizedColumn(
-                            column = column,
-                            accounts = accounts,
-                            foldersByAccount = foldersByAccount,
-                            unread = kanbanColumnUnreadCount(column, state.unreadCount, state.threads),
-                            onRestore = { minimizedColumns = minimizedColumns - key },
-                        )
-                    } else {
-                        KanbanColumn(
-                            column = column,
-                            state = columns[key] ?: KanbanColumnState(),
-                            accounts = accounts,
-                            foldersByAccount = foldersByAccount,
-                            filter = filter,
-                            attachmentsOnly = attachmentsOnly,
-                            search = search,
-                            searchScope = searchScope,
-                            onOpen = onOpen,
-                            selectedThreadIds = selectedThreadIds,
-                            selectionActive = selectionActive,
-                            onToggleSelected = onToggleSelected,
-                            onLongPress = onLongPress,
-                            onToggleStar = onToggleStar,
-                            onRefresh = { onRefreshColumn(column) },
-                            onLoadMore = { onLoadMoreColumn(column) },
-                            onMarkAllRead = { onMarkColumnAllRead(column) },
-                            markingRead = markingRead,
-                            onEmptyFolder = { folder -> onEmptyColumnFolder(column, folder) },
-                            onDeleteFolder = { folder -> onDeleteColumnFolder(column, folder) },
-                            onRemove = { onRemoveColumn(column) },
-                            onMoveLeft = { onMoveColumn(column, -1) },
-                            onMoveRight = { onMoveColumn(column, 1) },
-                            onMinimize = { minimizedColumns = minimizedColumns + key },
-                            onSearch = { onSearchColumn(column) },
-                            otherColumnFolderIds =
-                                boardColumns
-                                    .filter { it.accountId == column.accountId && it.folderId != column.folderId }
-                                    .map { it.folderId }
-                                    .toSet(),
-                            onRequestFolders = { onRequestColumnFolders(column) },
-                            onSwitchFolder = { folderId -> onSwitchColumnFolder(column, folderId) },
-                            showSenderImages = showSenderImages,
-                            kanbanColumnWidth = kanbanColumnWidth,
-                        )
+        }
+        Column(Modifier.fillMaxSize()) {
+            if (boardColumns.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Filled.ViewKanban,
+                    title = tr("empty.noColumns"),
+                    text = tr("empty.noColumnsText"),
+                    actionLabel = tr("kanban.actions.addColumn"),
+                    onAction = onAddColumn,
+                )
+            } else {
+                val boardRowState = rememberLazyListState()
+                LazyRow(
+                    Modifier.fillMaxSize().appScrollbar(boardRowState, Orientation.Horizontal),
+                    state = boardRowState,
+                    contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(boardColumns, key = { kanbanColumnKey(it) }) { column ->
+                        val key = kanbanColumnKey(column)
+                        if (key in minimizedColumns) {
+                            val state = columns[key] ?: KanbanColumnState()
+                            KanbanMinimizedColumn(
+                                column = column,
+                                accounts = accounts,
+                                foldersByAccount = foldersByAccount,
+                                unread = kanbanColumnUnreadCount(column, state.unreadCount, state.threads),
+                                onRestore = { minimizedColumns = minimizedColumns - key },
+                            )
+                        } else {
+                            KanbanColumn(
+                                column = column,
+                                state = columns[key] ?: KanbanColumnState(),
+                                accounts = accounts,
+                                foldersByAccount = foldersByAccount,
+                                filter = filter,
+                                attachmentsOnly = attachmentsOnly,
+                                search = search,
+                                searchScope = searchScope,
+                                onOpen = onOpen,
+                                selectedThreadIds = selectedThreadIds,
+                                selectionActive = selectionActive,
+                                onToggleSelected = onToggleSelected,
+                                onLongPress = onLongPress,
+                                onToggleStar = onToggleStar,
+                                onRefresh = { onRefreshColumn(column) },
+                                onLoadMore = { onLoadMoreColumn(column) },
+                                onMarkAllRead = { onMarkColumnAllRead(column) },
+                                markingRead = markingRead,
+                                onEmptyFolder = { folder -> onEmptyColumnFolder(column, folder) },
+                                onDeleteFolder = { folder -> onDeleteColumnFolder(column, folder) },
+                                onRemove = { onRemoveColumn(column) },
+                                onMoveLeft = { onMoveColumn(column, -1) },
+                                onMoveRight = { onMoveColumn(column, 1) },
+                                onMinimize = { minimizedColumns = minimizedColumns + key },
+                                onSearch = { onSearchColumn(column) },
+                                otherColumnFolderIds =
+                                    boardColumns
+                                        .filter { it.accountId == column.accountId && it.folderId != column.folderId }
+                                        .map { it.folderId }
+                                        .toSet(),
+                                onRequestFolders = { onRequestColumnFolders(column) },
+                                onSwitchFolder = { folderId -> onSwitchColumnFolder(column, folderId) },
+                                showSenderImages = showSenderImages,
+                                kanbanColumnWidth = kanbanColumnWidth,
+                            )
+                        }
                     }
-                }
-                item(key = "kanban-add-column") {
-                    KanbanAddColumnRail(onClick = onAddColumn)
+                    item(key = "kanban-add-column") {
+                        KanbanAddColumnRail(onClick = onAddColumn)
+                    }
                 }
             }
         }

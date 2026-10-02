@@ -417,7 +417,7 @@ internal fun MeronMobileState.updateKanbanBoard(
                 board.copy(
                     name = trimmedName,
                     avatarUrl = avatarUrl.trim(),
-                    wallpaperPresetId = wallpaperPresetId.trim(),
+                    wallpaperPresetId = boardWallpaperPresetId(wallpaperPresetId),
                     wallpaperUrl = wallpaperUrl.trim(),
                 )
             } else {

@@ -17,6 +17,7 @@ import {
   removeKanbanBoard,
   removeKanbanColumnsForFolder,
   selectKanbanBoard,
+  setKanbanBoardWallpaper,
   switchKanbanColumnFolder,
 } from './kanban'
 import { mail$ } from './mail'
@@ -681,6 +682,18 @@ describe('closeCurrentConversation', () => {
     expect(kanban$.paneThreadId.get()).toBe('')
     expect(compose$.activeTab.get()).toBe('thread-t-tab')
     expect(ui$.selectedThread.get()).toBe('t-tab')
+  })
+})
+
+describe('setKanbanBoardWallpaper', () => {
+  it('clears the background when Plain is picked', () => {
+    settings$.kanbanBoards.set([
+      { id: 'b1', name: 'Board', columns: [], wallpaper: { kind: 'preset', presetId: 'dots' } },
+    ])
+
+    setKanbanBoardWallpaper('b1', { kind: 'preset', presetId: 'plain' })
+
+    expect(settings$.kanbanBoards.get()[0]).not.toHaveProperty('wallpaper')
   })
 })
 

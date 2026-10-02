@@ -33,7 +33,7 @@ import { useTitleBar } from '../titlebar/TitleBar'
 import { expandSearchScope, KanbanSearch } from './KanbanSearch'
 import { BoardMenu, FilterSwitch } from './KanbanBoardMenu'
 import { isRSSAccount, loadKanbanColumn, resolveKanbanMove, useFoldersByAccount } from '../../lib/kanbanData'
-import { wallpaperCss } from '../../lib/wallpapers'
+import { boardWallpaper, wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
 
 export function KanbanView({ boardId }: { boardId: string }) {
@@ -49,7 +49,8 @@ export function KanbanView({ boardId }: { boardId: string }) {
   const titleBar = useTitleBar()
   const board = boards.find((item) => item.id === boardId)
   // No layer at all when unset, so the default board keeps the plain theme surface.
-  const boardWallpaper = board?.wallpaper ? wallpaperCss(board.wallpaper) : null
+  const wallpaper = boardWallpaper(board?.wallpaper)
+  const boardWallpaperCss = wallpaper ? wallpaperCss(wallpaper) : null
   const [dialogOpen, setDialogOpen] = useState(false)
   const hasSendableAccount = accounts.some(isSendableAccount)
   const visibleColumns = useMemo(() => getKanbanColumns(boardId), [boards, boardId])
@@ -237,8 +238,8 @@ export function KanbanView({ boardId }: { boardId: string }) {
         onDragCancel={() => setDragPreview(null)}
       >
         <div className="relative flex flex-1 min-h-0">
-          {boardWallpaper && (
-            <div className={`absolute inset-0 ${boardWallpaper.className}`} style={boardWallpaper.style} />
+          {boardWallpaperCss && (
+            <div className={`absolute inset-0 ${boardWallpaperCss.className}`} style={boardWallpaperCss.style} />
           )}
           <div className="relative flex flex-1 min-h-0 gap-2 overflow-x-auto p-2">
             {visibleColumns.length === 0 ? (

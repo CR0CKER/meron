@@ -319,18 +319,6 @@ internal fun KanbanBoardTile(
     }
 }
 
-@Composable
-internal fun boardBackgroundBrush(board: KanbanBoardSpec?): Brush? {
-    if (board == null || !board.hasBoardStyle()) return null
-    return Brush.verticalGradient(
-        listOf(
-            MaterialTheme.colorScheme.background,
-            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
-            MaterialTheme.colorScheme.background,
-        ),
-    )
-}
-
 @OptIn(ExperimentalUuidApi::class)
 internal fun defaultKanbanBoard(accounts: List<AccountSummary>): KanbanBoardSpec {
     val columns = mutableListOf(KanbanColumnSpec(UNIFIED_ACCOUNT_ID, INBOX_FOLDER))

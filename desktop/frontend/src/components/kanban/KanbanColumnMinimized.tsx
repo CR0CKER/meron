@@ -22,6 +22,7 @@ import {
 import { isRssAccount } from '../../lib/threadActions'
 import { Avatar } from '../avatar/Avatar'
 import type { ColumnWrapper } from './KanbanBoardColumn'
+import { boardWallpaper } from '../../lib/wallpapers'
 
 // Collapsed column: a vertical strip showing the account avatar, folder name and
 // unread badge. Clicking it (or any unminimize) expands back to the full column.
@@ -50,7 +51,9 @@ export function KanbanColumnMinimized({
 
   const labelFolders = useMemo(() => mergeLabelFolders(folders, foldersByAccount), [folders, foldersByAccount])
   const searchActive = columnSearchActive(key, searchQuery, searchScope)
-  const overWallpaper = !!useValue(settings$.kanbanBoards).find((board) => board.id === boardId)?.wallpaper
+  const overWallpaper = !!boardWallpaper(
+    useValue(settings$.kanbanBoards).find((board) => board.id === boardId)?.wallpaper,
+  )
   const columnUnreadCount = kanbanColumnUnreadCount(column, unreadCount, rawThreads)
   const columnAccount = column.accountId !== 'unified' ? accounts.find((a) => a.id === column.accountId) : undefined
   const columnAccountLabel = columnAccount ? columnAccount.display_name || columnAccount.email || columnAccount.id : ''

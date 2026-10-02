@@ -20,6 +20,7 @@ import { hasStoredKanbanBoards, settings$, type KanbanBoard } from './settings'
 import { invoke } from '../lib/bridge'
 import { thread$ } from './thread'
 import { t } from '../lib/i18n'
+import { boardWallpaper } from '../lib/wallpapers'
 
 export type KanbanColumn = {
   accountId: string
@@ -244,13 +245,14 @@ export function setKanbanBoardAvatar(boardId: string, avatarUrl: string) {
   )
 }
 
-/** Set or clear (null clears) the background shown behind a board's columns. */
+/** Set or clear (null or Plain clears) the background shown behind a board's columns. */
 export function setKanbanBoardWallpaper(boardId: string, wallpaper: ChatWallpaper | null) {
+  const next = boardWallpaper(wallpaper)
   settings$.kanbanBoards.set(
     settings$.kanbanBoards.get().map((board) => {
       if (board.id !== boardId) return board
       const { wallpaper: _, ...rest } = board
-      return wallpaper ? { ...rest, wallpaper } : rest
+      return next ? { ...rest, wallpaper: next } : rest
     }),
   )
 }

@@ -16,6 +16,14 @@ private val kanbanJson = Json { ignoreUnknownKeys = true }
 
 private fun String.orFallback(fallback: String) = ifBlank { fallback }
 
+/**
+ * A board's stored preset, blank for none. Plain is the board's unset state, not
+ * a style of its own: the picker shows it selected when nothing is set, and any
+ * preset makes the board styled, so a stored Plain would leave no way back to
+ * the default board. Desktop's boardWallpaper() makes the same call.
+ */
+internal fun boardWallpaperPresetId(presetId: String): String = presetId.trim().takeUnless { it == "plain" }.orEmpty()
+
 @OptIn(ExperimentalUuidApi::class)
 internal fun parseKanbanBoards(raw: String): List<KanbanBoardSpec> {
     if (raw.isBlank()) return emptyList()
@@ -27,7 +35,7 @@ internal fun parseKanbanBoards(raw: String): List<KanbanBoardSpec> {
             val name = (obj["name"]?.asStringOrEmpty()).orEmpty().orFallback("Kanban board")
             val avatarUrl = obj["avatarUrl"]?.asStringOrEmpty().orEmpty()
             val wallpaper = obj["wallpaper"]?.let { runCatching { it.jsonObject }.getOrNull() }
-            val wallpaperPresetId = wallpaper?.get("presetId")?.asStringOrEmpty().orEmpty()
+            val wallpaperPresetId = boardWallpaperPresetId(wallpaper?.get("presetId")?.asStringOrEmpty().orEmpty())
             val wallpaperUrl = wallpaper?.get("url")?.asStringOrEmpty().orEmpty()
             val columns =
                 (obj["columns"]?.let { runCatching { it.jsonArray }.getOrNull() } ?: JsonArray(emptyList()))

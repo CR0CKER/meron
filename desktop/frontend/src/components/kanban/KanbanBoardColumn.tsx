@@ -55,6 +55,7 @@ import { FolderSwitcher } from '../menu/FolderSwitcher'
 import { KanbanThreadCard } from './KanbanThreadCard'
 import { KanbanColumnMinimized } from './KanbanColumnMinimized'
 import { BulkActionBar } from '../threads/BulkActionBar'
+import { boardWallpaper } from '../../lib/wallpapers'
 
 // A board column is both a dnd-kit sortable item and a drop target; this bundles
 // the wiring the column renderers need from those hooks.
@@ -107,7 +108,7 @@ function KanbanColumnContent({
   const width = useValue(settings$.kanbanColumnWidth)
   const minimizedColumns = useValue(settings$.kanbanMinimizedColumns)
   const board = useValue(settings$.kanbanBoards).find((item) => item.id === boardId)
-  const overWallpaper = !!board?.wallpaper
+  const overWallpaper = !!boardWallpaper(board?.wallpaper)
   const boardColumns = board?.columns ?? []
   const readThreads = useValue(mail$.readThreads)
   const labelFolders = useMemo(() => mergeLabelFolders(folders, foldersByAccount), [folders, foldersByAccount])

@@ -9,7 +9,7 @@ import {
   setKanbanBoardWallpaper,
 } from '../../states/kanban'
 import { confirmAction, showToast, ui$ } from '../../states/ui'
-import { WALLPAPER_PRESETS, sanitizeChatWallpaper, wallpaperCss } from '../../lib/wallpapers'
+import { WALLPAPER_PRESETS, boardWallpaper, wallpaperCss } from '../../lib/wallpapers'
 import { readFileData } from '../../lib/readFileData'
 import { pickImageFile } from '../../lib/nativeFilePicker'
 import { writeBoardAvatarFile, writeBoardWallpaperFile } from '../../lib/boardMedia'
@@ -95,7 +95,7 @@ function BoardNameRow({ board }: { board: KanbanBoard }) {
 function BoardWallpaperCard({ board }: { board: KanbanBoard }) {
   const { t } = useTranslation()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const wallpaper = sanitizeChatWallpaper(board.wallpaper)
+  const wallpaper = boardWallpaper(board.wallpaper)
 
   const presetName =
     wallpaper?.kind === 'preset'

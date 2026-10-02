@@ -76,6 +76,26 @@ class KanbanBoardPersistenceTest {
         assertEquals("", state.activeKanbanBoardId)
     }
 
+    @Test
+    fun pickingPlainClearsTheBoardBackground() {
+        val prefs = FakePreferences()
+        saveKanbanBoards(prefs, listOf(defaultKanbanBoard(emptyList<AccountSummary>()).copy(wallpaperPresetId = "dots")))
+        val state = testState(prefs)
+        val board = state.kanbanBoards.single()
+
+        state.updateKanbanBoard(board.id, board.name, board.avatarUrl, "plain", "")
+
+        assertEquals("", state.kanbanBoards.single().wallpaperPresetId)
+        assertEquals(false, state.kanbanBoards.single().hasBoardStyle())
+    }
+
+    @Test
+    fun aStoredPlainBackgroundReadsAsNone() {
+        val raw = """[{"id":"kb-1","name":"Board","columns":[],"wallpaper":{"kind":"preset","presetId":"plain"}}]"""
+
+        assertEquals("", parseKanbanBoards(raw).single().wallpaperPresetId)
+    }
+
     private fun testState(kanbanPrefs: AppPreferences): MeronMobileState {
         val core = FakeCore()
         return MeronMobileState(
