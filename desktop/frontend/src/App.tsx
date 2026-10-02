@@ -86,26 +86,30 @@ export default function App() {
         <div className={frame ? 'app-frame-content' : 'contents'}>
           <ErrorBoundary label="thread list">
             {activeBoardId ? (
-              <KanbanView boardId={activeBoardId} />
+              <KanbanView
+                boardId={activeBoardId}
+                aside={
+                  <KanbanConversationPane
+                    open={showKanbanMessagePane}
+                    widthPercent={kanbanPaneWidth}
+                    resizeTitle={t('layout.resizeConversation')}
+                    onResizeStart={(event) => startKanbanResize(event, mainRef.current)}
+                  >
+                    <ErrorBoundary label="conversation">
+                      <MessagePane />
+                    </ErrorBoundary>
+                  </KanbanConversationPane>
+                }
+              />
             ) : (
               <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
             )}
           </ErrorBoundary>
-          {!activeBoardId ? (
+          {/* On a board the conversation opens inside KanbanView, under its header. */}
+          {!activeBoardId && (
             <ErrorBoundary label="conversation">
               <MessagePane />
             </ErrorBoundary>
-          ) : (
-            <KanbanConversationPane
-              open={showKanbanMessagePane}
-              widthPercent={kanbanPaneWidth}
-              resizeTitle={t('layout.resizeConversation')}
-              onResizeStart={(event) => startKanbanResize(event, mainRef.current)}
-            >
-              <ErrorBoundary label="conversation">
-                <MessagePane />
-              </ErrorBoundary>
-            </KanbanConversationPane>
           )}
 
           {/* Tasks is a panel, not a view: it sits to the right of whatever is
