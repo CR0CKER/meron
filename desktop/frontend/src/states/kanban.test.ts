@@ -16,6 +16,7 @@ import {
   openCorrespondentMail,
   removeKanbanBoard,
   removeKanbanColumnsForFolder,
+  selectKanbanBoard,
   switchKanbanColumnFolder,
 } from './kanban'
 import { mail$ } from './mail'
@@ -679,6 +680,52 @@ describe('closeCurrentConversation', () => {
 
     expect(kanban$.paneThreadId.get()).toBe('')
     expect(compose$.activeTab.get()).toBe('thread-t-tab')
+    expect(ui$.selectedThread.get()).toBe('t-tab')
+  })
+})
+
+describe('selectKanbanBoard', () => {
+  const tab = (threadId: string): MessageTab => ({
+    id: `thread-${threadId}`,
+    kind: 'thread',
+    messageId: '',
+    threadId,
+    subject: threadId,
+    from: 'sender@example.com',
+    body: '',
+    viewMode: 'plain',
+  })
+
+  beforeEach(() => {
+    settings$.kanbanBoards.set([{ id: 'b1', name: 'Board', columns: [{ accountId: 'acc1', folderId: 'INBOX' }] }])
+    kanban$.activeBoardId.set('')
+    compose$.tabs.set([])
+    compose$.activeTab.set('')
+  })
+
+  afterEach(() => {
+    kanban$.activeBoardId.set('')
+    compose$.tabs.set([])
+    compose$.activeTab.set('')
+  })
+
+  it('clears the mail view selection when no tab is on screen', () => {
+    ui$.selectedThread.set('t-mail')
+
+    selectKanbanBoard('b1')
+
+    expect(kanban$.activeBoardId.get()).toBe('b1')
+    expect(ui$.selectedThread.get()).toBe('')
+  })
+
+  it('keeps the active thread tab rendering when switching from the mail view', () => {
+    compose$.tabs.set([tab('t-tab')])
+    compose$.activeTab.set('thread-t-tab')
+    ui$.selectedThread.set('t-tab')
+
+    selectKanbanBoard('b1')
+
+    expect(kanban$.activeBoardId.get()).toBe('b1')
     expect(ui$.selectedThread.get()).toBe('t-tab')
   })
 })

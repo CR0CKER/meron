@@ -15,6 +15,11 @@ import { MenuItem } from '../menu/MenuItem'
 // units (deltaMode 1 and 2) rather than pixels.
 const WHEEL_LINE_PX = 40
 
+// The underline carries the accent; the label stays in the text colour so the
+// active tab doesn't compete with the subject heading below it.
+const ACTIVE_TAB = 'border-accent font-semibold text-primary'
+const INACTIVE_TAB = 'border-transparent font-medium text-secondary hover:text-primary'
+
 // Scrolls the strip, and only the strip, just enough to show the tab.
 function revealTab(strip: HTMLElement, tabId: string) {
   const tab = strip.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tabId)}"]`)
@@ -101,14 +106,14 @@ export function ConversationTabs() {
   if (!hasTabs) return null
 
   return (
-    <div className="relative shrink-0 border-b border-border/60 bg-chat">
+    <div className="relative shrink-0 border-b border-border/60 bg-header">
       {overflow.left && (
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-chat to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-header to-transparent" />
       )}
       {overflow.right && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-chat to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-header to-transparent" />
       )}
-      <div ref={stripRef} className="flex h-10 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
+      <div ref={stripRef} className="flex h-9 items-stretch gap-1 no-scrollbar overflow-x-auto px-2 select-none">
         {hasCurrentConversation && (
           <button
             data-tab-id=""
@@ -117,8 +122,8 @@ export function ConversationTabs() {
               event.preventDefault()
               setMenu({ x: event.clientX, y: event.clientY, tabId: '' })
             }}
-            className={`flex items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
-              activeTab === '' ? 'border-accent text-accent' : 'border-transparent text-secondary hover:text-primary'
+            className={`flex items-center gap-1.5 px-3 text-xs border-b-2 transition-colors cursor-pointer ${
+              activeTab === '' ? ACTIVE_TAB : INACTIVE_TAB
             }`}
             title={t('chat.currentConversation')}
           >
@@ -136,10 +141,8 @@ export function ConversationTabs() {
               compose$.activeTab.set(tab.id)
               if (tab.kind === 'thread') ui$.selectedThread.set(tab.threadId)
             }}
-            className={`group flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-accent text-accent'
-                : 'border-transparent text-secondary hover:text-primary'
+            className={`group flex max-w-[200px] cursor-pointer items-center gap-1.5 px-3 text-xs border-b-2 transition-colors ${
+              activeTab === tab.id ? ACTIVE_TAB : INACTIVE_TAB
             }`}
             onContextMenu={(event) => {
               event.preventDefault()
@@ -163,7 +166,11 @@ export function ConversationTabs() {
                 event.stopPropagation()
                 void closeMessageTab(tab.id)
               }}
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-active hover:text-primary"
+              // Only the active or hovered tab shows its ×, so a row of tabs doesn't
+              // read as a row of close buttons.
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-active hover:text-primary focus-visible:opacity-100 ${
+                activeTab === tab.id ? '' : 'opacity-0 group-hover:opacity-100'
+              }`}
               title={t('chat.closeTab')}
             >
               <X size={11} />

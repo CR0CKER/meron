@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Folder, Message } from '../types'
 import { accounts$ } from './accounts'
+import { compose$ } from './composeState'
 import { kanban$ } from './kanban'
 import {
   loadMoreThreads,
@@ -466,6 +467,33 @@ describe('thread selection on load', () => {
     await loadThreads()
 
     expect(ui$.selectedThread.get()).toBe('')
+  })
+
+  it("keeps an active thread tab's selection the new view does not contain", async () => {
+    // Leaving a kanban board restores the mail view's folder; a tab opened from
+    // a card in another folder still owns the pane and must keep rendering.
+    compose$.tabs.set([
+      {
+        id: 'thread-tab',
+        kind: 'thread',
+        messageId: '',
+        threadId: 'acc:other:thread:9',
+        subject: 'Tab',
+        from: 'sender@example.com',
+        body: '',
+        viewMode: 'plain',
+      },
+    ])
+    compose$.activeTab.set('thread-tab')
+    ui$.selectedThread.set('acc:other:thread:9')
+
+    try {
+      await loadThreads()
+      expect(ui$.selectedThread.get()).toBe('acc:other:thread:9')
+    } finally {
+      compose$.tabs.set([])
+      compose$.activeTab.set('')
+    }
   })
 
   it('keeps a selection whose conversation is still loading', async () => {

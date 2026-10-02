@@ -119,7 +119,7 @@ export function ConversationHeader({
 
   return (
     <>
-      <header className="relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-chat px-2 select-none">
+      <header className="relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-header px-2 select-none">
         {printing && (
           <LoaderCircle
             size={16}

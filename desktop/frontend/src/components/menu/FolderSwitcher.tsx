@@ -21,12 +21,15 @@ function FolderNodeRow({
   depth,
   currentFolderId,
   takenFolderIds,
+  nested,
   onPick,
 }: {
   node: TreeNode
   depth: number
   currentFolderId: string
   takenFolderIds?: string[]
+  /** Whether any row in the tree has children; a flat list drops the expander gutter. */
+  nested: boolean
   onPick: (folderId: string) => void
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -39,17 +42,19 @@ function FolderNodeRow({
   return (
     <div>
       <div className="flex items-center" style={{ paddingLeft: depth * 14 }}>
-        <button
-          type="button"
-          className={clsx(
-            'flex h-8 w-5 shrink-0 items-center justify-center rounded text-secondary',
-            hasChildren ? 'cursor-pointer hover:text-primary' : 'invisible',
-          )}
-          tabIndex={hasChildren ? 0 : -1}
-          onClick={() => setExpanded((open) => !open)}
-        >
-          <ChevronRight size={13} className={clsx('transition-transform', expanded && 'rotate-90')} />
-        </button>
+        {nested && (
+          <button
+            type="button"
+            className={clsx(
+              'flex h-8 w-5 shrink-0 items-center justify-center rounded text-secondary',
+              hasChildren ? 'cursor-pointer hover:text-primary' : 'invisible',
+            )}
+            tabIndex={hasChildren ? 0 : -1}
+            onClick={() => setExpanded((open) => !open)}
+          >
+            <ChevronRight size={13} className={clsx('transition-transform', expanded && 'rotate-90')} />
+          </button>
+        )}
         <button
           type="button"
           disabled={!selectable}
@@ -80,6 +85,7 @@ function FolderNodeRow({
               depth={depth + 1}
               currentFolderId={currentFolderId}
               takenFolderIds={takenFolderIds}
+              nested={nested}
               onPick={onPick}
             />
           ))}
@@ -165,6 +171,7 @@ export function FolderSwitcher({
     () => buildFolderTree(folders.filter((folder) => !needle || folder.name.toLowerCase().includes(needle))),
     [folders, needle],
   )
+  const nested = tree.some((node) => node.children.length > 0)
   const showFilter = folders.length > FILTER_THRESHOLD
 
   return (
@@ -223,6 +230,7 @@ export function FolderSwitcher({
                   depth={0}
                   currentFolderId={folderId}
                   takenFolderIds={takenFolderIds}
+                  nested={nested}
                   onPick={(picked) => {
                     close()
                     onSelect(picked)

@@ -91,7 +91,11 @@ export function activeKanbanBoard(): KanbanBoard | null {
 
 export function selectKanbanBoard(boardId: string) {
   if (!settings$.kanbanBoards.get().some((board) => board.id === boardId)) return
-  ui$.selectedThread.set('')
+  // An open tab carries over to the board's pane, and an active thread tab owns
+  // selectedThread (it renders only while the two match), so clearing it would
+  // blank the tab's conversation. Only the card conversation behind it resets.
+  const activeTab = compose$.activeTab.peek()
+  if (!compose$.tabs.peek().some((tab) => tab.id === activeTab)) ui$.selectedThread.set('')
   kanban$.paneThreadId.set('')
   kanban$.paneColumnKey.set('')
   kanban$.activeBoardId.set(boardId)

@@ -23,7 +23,7 @@ export function ThreadSearchBarMobile({
   const normalizedThreadSearch = threadSearch.trim().toLowerCase()
 
   return (
-    <div className="min-[900px]:hidden flex h-11 shrink-0 items-center gap-1 border-b border-border/60 bg-chat px-3 z-10">
+    <div className="min-[900px]:hidden flex h-11 shrink-0 items-center gap-1 border-b border-border/60 bg-header px-3 z-10">
       <div className="flex flex-1 items-center gap-2 rounded-xl bg-hover px-2 py-1.5 border border-transparent focus-within:border-accent/40 focus-within:bg-chats">
         <Search size={14} className="text-secondary shrink-0" />
         <input

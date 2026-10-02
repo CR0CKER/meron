@@ -12,6 +12,7 @@ import { CONVERSATION_PAGE_SIZE } from '../lib/pagination'
 import { bareAddr, splitAddressList } from '../lib/address'
 import { decrementFolderUnread, isDraftFolder, updateCachedFolderUnread } from './mailFolders'
 import { mail$ } from './mailState'
+import { compose$ } from './composeState'
 
 export { mail$ }
 
@@ -649,12 +650,21 @@ export async function loadThreads(refresh = true, searchStage: ThreadSearchStage
     // A selection whose conversation is still being fetched — a notification or
     // starred jump that set account, folder and thread together — isn't missing,
     // it just hasn't landed. Only close one that has settled.
-    !mail$.threadLoading.get()
+    !mail$.threadLoading.get() &&
+    // A thread tab on screen owns the selection (it renders only while the two
+    // match) and needn't be in this folder's list: it was opened from elsewhere,
+    // e.g. a kanban card in another folder, and closing it is the tab's call.
+    !activeThreadTabOwns(currentSelected)
   ) {
     // The thread the user was reading is not in this view: close the pane rather
     // than opening an unrelated one for them.
     ui$.selectedThread.set('')
   }
+}
+
+function activeThreadTabOwns(threadId: string): boolean {
+  const activeTab = compose$.activeTab.peek()
+  return compose$.tabs.peek().some((tab) => tab.id === activeTab && tab.kind === 'thread' && tab.threadId === threadId)
 }
 
 export async function loadMoreThreads() {
