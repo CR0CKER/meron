@@ -11,7 +11,6 @@ import {
   Search,
   SquarePen,
   Users,
-  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
@@ -93,7 +92,7 @@ export function ConversationDetailsPanel({
     setView('overview')
   }, [scopeTitle])
 
-  // Close the overlay drawer on Escape (matches the gallery/search behavior).
+  // Close the details pane on Escape (matches the gallery/search behavior).
   useEscapeKey(onClose)
 
   return (
@@ -110,11 +109,7 @@ export function ConversationDetailsPanel({
         "
       >
         {/* Header */}
-        {view === 'overview' ? (
-          <div className="flex h-12 shrink-0 items-center justify-end border-b border-border px-4">
-            <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
-          </div>
-        ) : (
+        {view !== 'overview' && (
           <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div className="min-w-0">
               <h3 className="truncate text-sm font-bold text-primary">
@@ -136,7 +131,6 @@ export function ConversationDetailsPanel({
                 label={t('buttons.back')}
                 onClick={() => setView('overview')}
               />
-              <IconButton icon={X} iconSize={18} label={t('chat.closeEsc')} onClick={onClose} />
             </div>
           </div>
         )}

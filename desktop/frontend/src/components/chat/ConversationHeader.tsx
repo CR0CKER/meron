@@ -254,6 +254,7 @@ export function ConversationHeader({
             icon={PanelRight}
             label={isRSS ? t('chat.feedDetails') : t('chat.conversationDetails')}
             active={mediaOpen}
+            aria-expanded={mediaOpen}
             onClick={() => thread$.mediaOpen.set(!mediaOpen)}
           />
           <div ref={actionsMenuRef} className="relative">

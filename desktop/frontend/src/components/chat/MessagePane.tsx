@@ -243,17 +243,6 @@ export function MessagePane() {
 
   const conversationContent = activeThread ? (
     <>
-      <ConversationHeader
-        activeThread={activeThread}
-        isRSS={isRSS}
-        conversationMode={conversationMode}
-        setQuickConversationMode={setQuickConversationMode}
-        matchCount={matchCount}
-        activeSearchIndex={activeSearchIndex}
-        goToSearchMatch={goToSearchMatch}
-        desktopSearchInputRef={desktopThreadSearchInputRef}
-      />
-
       {activeThread.original_thread_id && (
         <div className="flex shrink-0 items-center justify-between bg-accent/10 dark:bg-accent/15 px-4 py-2.5 text-xs border-b border-border select-none transition-colors">
           <span className="text-secondary/90 font-medium">{t('chat.branchNotice')}</span>
@@ -318,6 +307,18 @@ export function MessagePane() {
       }`}
     >
       <ConversationTabs />
+      {activeThread && !activeDocumentTab && (
+        <ConversationHeader
+          activeThread={activeThread}
+          isRSS={isRSS}
+          conversationMode={conversationMode}
+          setQuickConversationMode={setQuickConversationMode}
+          matchCount={matchCount}
+          activeSearchIndex={activeSearchIndex}
+          goToSearchMatch={goToSearchMatch}
+          desktopSearchInputRef={desktopThreadSearchInputRef}
+        />
+      )}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
           <div
