@@ -4611,3 +4611,227 @@ fn card_attachments_prefer_the_cached_copy_of_a_folded_message() {
         1
     );
 }
+
+#[test]
+fn attachments_filter_finds_unopened_messages_from_header_metadata() {
+    let conn = test_conn();
+    let file = CardFile {
+        filename: "report.pdf".into(),
+        mime: "application/pdf".into(),
+    };
+    let mut header = MessageHeader {
+        uid: 1,
+        subject: "Report".into(),
+        thread_key: "uid:1".into(),
+        files: Some(vec![file.clone()]),
+        ..Default::default()
+    };
+    upsert_messages(&conn, "acct", "INBOX", &[header.clone()]).unwrap();
+    let (page, _) = get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS).unwrap();
+    assert_eq!(page.len(), 1);
+    assert!(
+        get_cached_message(&conn, "acct", "INBOX", 1)
+            .unwrap()
+            .is_none()
+    );
+    let files = card_attachments(&conn, "acct", "INBOX", &["uid:1".into()]).unwrap();
+    assert_eq!(files["uid:1"], vec![file]);
+
+    // A header/flag update that lacks BODYSTRUCTURE must preserve metadata.
+    header.files = None;
+    upsert_messages(&conn, "acct", "INBOX", &[header.clone()]).unwrap();
+    assert_eq!(
+        get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS)
+            .unwrap()
+            .0
+            .len(),
+        1
+    );
+    // A known empty structure clears the provisional names.
+    header.files = Some(vec![]);
+    upsert_messages(&conn, "acct", "INBOX", &[header.clone()]).unwrap();
+    assert!(
+        get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS)
+            .unwrap()
+            .0
+            .is_empty()
+    );
+    // Cached bodies take precedence over provisional metadata on later syncs.
+    save_body_with_attachments(&conn, 1, &[], None);
+    header.files = Some(vec![CardFile {
+        filename: "logo.png".into(),
+        mime: "image/png".into(),
+    }]);
+    upsert_messages(&conn, "acct", "INBOX", &[header]).unwrap();
+    assert!(
+        get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS)
+            .unwrap()
+            .0
+            .is_empty()
+    );
+}
+
+#[test]
+fn attachment_metadata_catchup_is_bounded_and_skips_completed_rows() {
+    let conn = test_conn();
+    for uid in 1..=4 {
+        insert_message(&conn, uid, "Hi", "Aki", "aki@example.com", None);
+    }
+    save_body_with_attachments(&conn, 4, &[], None);
+    assert_eq!(
+        missing_attachment_metadata_uids(&conn, "acct", "INBOX", 2).unwrap(),
+        vec![3, 2]
+    );
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[MessageHeader {
+            uid: 3,
+            files: Some(vec![]),
+            ..Default::default()
+        }],
+    )
+    .unwrap();
+    assert_eq!(
+        missing_attachment_metadata_uids(&conn, "acct", "INBOX", 2).unwrap(),
+        vec![2, 1]
+    );
+    assert!(
+        missing_attachment_metadata_uids(&conn, "other", "INBOX", 2)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        missing_attachment_metadata_uids(&conn, "acct", "Sent", 2)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn attachment_metadata_attempts_advance_past_missing_and_poison_rows() {
+    let conn = test_conn();
+    for uid in 1..=4 {
+        insert_message(&conn, uid, "Hi", "Aki", "aki@example.com", None);
+    }
+    let attempted = missing_attachment_metadata_uids(&conn, "acct", "INBOX", 2).unwrap();
+    assert_eq!(attempted, vec![4, 3]);
+    mark_attachment_metadata_attempted(&conn, "other", "INBOX", &attempted).unwrap();
+    assert_eq!(
+        missing_attachment_metadata_uids(&conn, "acct", "INBOX", 2).unwrap(),
+        attempted
+    );
+    // A malformed UID and a UID whose reply had no BODYSTRUCTURE both advance.
+    mark_attachment_metadata_attempted(&conn, "acct", "INBOX", &attempted).unwrap();
+    assert_eq!(
+        missing_attachment_metadata_uids(&conn, "acct", "INBOX", 2).unwrap(),
+        vec![2, 1]
+    );
+    // Attempted metadata remains unknown, rather than claiming no attachments.
+    let known: Option<bool> = conn
+        .query_row(
+            "SELECT json_extract(json, '$.attachment_metadata') FROM messages WHERE uid = 4",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(known, None);
+    // A future regular header refresh can still discover files for that UID.
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[MessageHeader {
+            uid: 4,
+            files: Some(vec![CardFile {
+                filename: "later.pdf".into(),
+                mime: "application/pdf".into(),
+            }]),
+            ..Default::default()
+        }],
+    )
+    .unwrap();
+    assert_eq!(
+        get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS)
+            .unwrap()
+            .0
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn folded_attachment_metadata_prefers_cached_bodies_including_empty_lists() {
+    for cached_folder in ["INBOX", "Sent"] {
+        for real_files in [vec![], vec!["real.pdf"]] {
+            let conn = test_conn();
+            for folder in ["INBOX", "Sent"] {
+                upsert_messages(
+                    &conn,
+                    "acct",
+                    folder,
+                    &[MessageHeader {
+                        uid: 1,
+                        subject: "Hi".into(),
+                        thread_key: "root@example.com".into(),
+                        message_id: "root@example.com".into(),
+                        files: Some(vec![CardFile {
+                            filename: "provisional.png".into(),
+                            mime: "image/png".into(),
+                        }]),
+                        ..Default::default()
+                    }],
+                )
+                .unwrap();
+            }
+            let message = crate::parse::Message {
+                subject: "Hi".into(),
+                message_id: "root@example.com".into(),
+                body: "Hello".into(),
+                attachments: real_files
+                    .iter()
+                    .map(|name| crate::parse::Attachment {
+                        filename: (*name).into(),
+                        mime: "application/pdf".into(),
+                        size: 1,
+                        key: None,
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            save_cached_message(&conn, "acct", cached_folder, 1, &message).unwrap();
+            let key = card_thread_key(&MessageHeader {
+                subject: "Hi".into(),
+                thread_key: "root@example.com".into(),
+                ..Default::default()
+            });
+            let files = card_attachments(&conn, "acct", "INBOX", &[key.clone()]).unwrap();
+            let names: Vec<_> = files
+                .get(&key)
+                .into_iter()
+                .flatten()
+                .map(|file| file.filename.as_str())
+                .collect();
+            assert_eq!(names, real_files, "cached copy in {cached_folder} must win");
+            let (headers, cursor) =
+                get_recent_page(&conn, "acct", "INBOX", 50, None, ATTACHMENTS).unwrap();
+            let mut page =
+                crate::thread_list::mail_page(&conn, "acct", "INBOX", headers, cursor, true)
+                    .unwrap();
+            crate::thread_list::ThreadListQuery::from_params(
+                &json!({"attachments": true}),
+                "folder",
+            )
+            .retain_attachment_threads(&mut page);
+            assert_eq!(
+                page["threads"].as_array().unwrap().len(),
+                usize::from(!real_files.is_empty())
+            );
+            assert_eq!(
+                card_message_counts(&conn, "acct", "INBOX", &[key.clone()]).unwrap()[&key],
+                1
+            );
+        }
+    }
+}

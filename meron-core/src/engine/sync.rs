@@ -442,6 +442,18 @@ pub(super) async fn fetch_headers_isolating_unparseable(
     folder: &str,
     uids: Vec<u32>,
 ) -> anyhow::Result<(Vec<imap::MessageHeader>, Vec<u32>)> {
+    fetch_headers_isolating_until(engine, account, folder, uids, None).await
+}
+
+/// A catch-up deadline returns completed headers and isolated poison UIDs;
+/// cancelled or unread chunks remain eligible for the next sync.
+async fn fetch_headers_isolating_until(
+    engine: &Arc<Engine>,
+    account: &str,
+    folder: &str,
+    uids: Vec<u32>,
+    deadline: Option<tokio::time::Instant>,
+) -> anyhow::Result<(Vec<imap::MessageHeader>, Vec<u32>)> {
     let mut pending = vec![uids];
     let mut out: Vec<imap::MessageHeader> = Vec::new();
     let mut skipped: Vec<u32> = Vec::new();
@@ -462,13 +474,19 @@ pub(super) async fn fetch_headers_isolating_unparseable(
             break;
         }
         attempts += 1;
-        let result = engine
-            .with_read_session(account, |session| {
-                let folder = folder.to_string();
-                let chunk = chunk.clone();
-                Box::pin(async move { imap::fetch_headers_by_uid(session, &folder, &chunk).await })
-            })
-            .await;
+        let operation = engine.with_read_session(account, |session| {
+            let folder = folder.to_string();
+            let chunk = chunk.clone();
+            Box::pin(async move { imap::fetch_headers_by_uid(session, &folder, &chunk).await })
+        });
+        let result = if let Some(deadline) = deadline {
+            match tokio::time::timeout_at(deadline, operation).await {
+                Ok(result) => result,
+                Err(_) => break,
+            }
+        } else {
+            operation.await
+        };
         match result {
             Ok(headers) => out.extend(headers),
             Err(err) if !imap::is_unparseable_response(&err) => return Err(err),
@@ -501,7 +519,15 @@ pub async fn sync_messages(
     folder: &str,
     limit: u32,
 ) -> anyhow::Result<SyncMessagesResult> {
-    sync_messages_with_policy(engine, account, folder, limit, false).await
+    sync_messages_with_policy(
+        engine,
+        account,
+        folder,
+        limit,
+        false,
+        ATTACHMENT_CATCHUP_BUDGET,
+    )
+    .await
 }
 
 /// Automatic desktop refresh: bounded network work, respecting pause state.
@@ -512,7 +538,15 @@ pub async fn sync_background_messages(
     folder: &str,
     limit: u32,
 ) -> anyhow::Result<SyncMessagesResult> {
-    sync_messages_with_policy(engine, account, folder, limit, true).await
+    sync_messages_with_policy(
+        engine,
+        account,
+        folder,
+        limit,
+        true,
+        ATTACHMENT_CATCHUP_BUDGET,
+    )
+    .await
 }
 
 /// A cache refresh after a successful server write. Keep the guard until the
@@ -584,12 +618,15 @@ impl Drop for MessageSyncGuard {
     }
 }
 
+const ATTACHMENT_CATCHUP_BUDGET: Duration = Duration::from_secs(5);
+
 async fn sync_messages_with_policy(
     engine: &Arc<Engine>,
     account: &str,
     folder: &str,
     limit: u32,
     background: bool,
+    catchup_budget: Duration,
 ) -> anyhow::Result<SyncMessagesResult> {
     // Read the prior sync position before any network I/O so we can ask the
     // server for only the flag changes since then (CONDSTORE CHANGEDSINCE).
@@ -598,7 +635,7 @@ async fn sync_messages_with_policy(
     let prepare_engine = engine.clone();
     let prepare_account = account.to_string();
     let prepare_folder = folder.to_string();
-    let (prior_modseq, prior_validity, removed_epoch, removal_guard) =
+    let (prior_modseq, prior_validity, removed_epoch, removal_guard, missing_files) =
         tokio::task::spawn_blocking(move || {
             let engine = prepare_engine;
             let account = prepare_account.as_str();
@@ -614,12 +651,14 @@ async fn sync_messages_with_policy(
             // Removals after this point (an archive that lands while the fetch is
             // still on the wire) get a higher epoch. This snapshot must not write
             // those UIDs back.
+            let missing_files =
+                store::missing_attachment_metadata_uids(&db, account, folder, limit)?;
             let (id, removed_epoch) = store::begin_message_sync(&db)?;
             let guard = MessageSyncGuard {
                 engine: engine.clone(),
                 id,
             };
-            anyhow::Ok((modseq, validity, removed_epoch, guard))
+            anyhow::Ok((modseq, validity, removed_epoch, guard, missing_files))
         })
         .await??;
 
@@ -652,7 +691,7 @@ async fn sync_messages_with_policy(
         // A message whose FETCH response we cannot parse takes the whole batch down
         // with it, and does so again on every later sync. Re-read the window a
         // narrower range at a time so the rest of the folder still syncs.
-        match attempt {
+        let state = match attempt {
             Ok(state) => Ok(state),
             Err(err) if imap::is_unparseable_response(&err) => {
                 crate::mlog!(
@@ -672,13 +711,31 @@ async fn sync_messages_with_policy(
                 .await
             }
             Err(err) => Err(err),
-        }
+        }?;
+        Ok(state)
     };
     let (batch, flag_sync, server_uids, server_unseen) = if background {
         retry_background_sync(&format!("sync {folder} for {account}"), || true, fetch).await?
     } else {
         fetch().await?
     };
+    let synced_validity = batch.uidvalidity;
+    let catchup_uids: Vec<_> = if prior_validity != 0 && prior_validity == synced_validity {
+        missing_files
+            .iter()
+            .copied()
+            .filter(|uid| !batch.messages.iter().any(|header| header.uid == *uid))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let attempted: Vec<_> = missing_files
+        .into_iter()
+        .filter(|uid| batch.messages.iter().any(|header| header.uid == *uid))
+        .collect();
+    let catchup_engine = engine.clone();
+    let catchup_account = account.to_string();
+    let catchup_folder = folder.to_string();
 
     let synced_messages = batch.messages.clone();
     let count = synced_messages.len();
@@ -695,8 +752,7 @@ async fn sync_messages_with_policy(
     let account = account.to_string();
     let folder = folder.to_string();
     // Outside the network timeout: always observe the committed result.
-    tokio::task::spawn_blocking(move || {
-    let _removal_guard = removal_guard;
+    let (result, removal_guard) = tokio::task::spawn_blocking(move || {
     let account = account.as_str();
     let folder = folder.as_str();
     let db = crate::log::timed_db_lock(&engine.db, "sync_messages.persist");
@@ -714,6 +770,7 @@ async fn sync_messages_with_policy(
     let fetched_uids: Vec<u32> = batch.messages.iter().map(|message| message.uid).collect();
     store::release_removed_messages(&db, account, folder, &fetched_uids, removed_epoch)?;
     store::upsert_messages(&db, account, folder, &batch.messages)?;
+    store::mark_attachment_metadata_attempted(&db, account, folder, &attempted)?;
     let upsert_time = phase_started.elapsed();
     // Make sure the folder is represented in the folders table so its unread
     // count surfaces (tray dot / badges) even before a full folder LIST sync —
@@ -778,12 +835,68 @@ async fn sync_messages_with_policy(
             total.as_millis()
         );
     }
-    Ok(SyncMessagesResult {
-        count,
-        messages: synced_messages,
-        arrivals,
-    })
-    }).await?
+    Ok::<_, anyhow::Error>((SyncMessagesResult {
+        count, messages: synced_messages, arrivals,
+    }, removal_guard))
+    }).await??;
+
+    // The main sync is already committed. Catch-up gets its own small budget;
+    // an exhausted deadline cannot discard new mail, flags, or sync markers.
+    if !catchup_uids.is_empty() {
+        let deadline = tokio::time::Instant::now() + catchup_budget;
+        match fetch_headers_isolating_until(
+            &catchup_engine,
+            &catchup_account,
+            &catchup_folder,
+            catchup_uids,
+            Some(deadline),
+        )
+        .await
+        {
+            Ok((headers, skipped)) => {
+                let persist = tokio::task::spawn_blocking(move || {
+                    let _removal_guard = removal_guard;
+                    let db = catchup_engine.db.lock().unwrap();
+                    if store::get_folder_state(&db, &catchup_account, &catchup_folder)?
+                        .map(|(validity, _)| validity)
+                        != Some(synced_validity)
+                    {
+                        return anyhow::Ok(());
+                    }
+                    let attempted: Vec<_> = headers
+                        .iter()
+                        .map(|header| header.uid)
+                        .chain(skipped)
+                        .collect();
+                    store::upsert_messages(&db, &catchup_account, &catchup_folder, &headers)?;
+                    store::mark_attachment_metadata_attempted(
+                        &db,
+                        &catchup_account,
+                        &catchup_folder,
+                        &attempted,
+                    )?;
+                    anyhow::Ok(())
+                })
+                .await;
+                if let Err(err) = persist
+                    .map_err(anyhow::Error::from)
+                    .and_then(|result| result)
+                {
+                    crate::mlog!(
+                        crate::log::Level::Warn,
+                        "mail.sync",
+                        "attachment metadata persistence skipped: {err:#}"
+                    );
+                }
+            }
+            Err(err) => crate::mlog!(
+                crate::log::Level::Warn,
+                "mail.sync",
+                "attachment metadata catch-up skipped: {err:#}"
+            ),
+        }
+    }
+    Ok(result)
 }
 
 pub(super) const DEFAULT_BACKGROUND_SYNC_TIMEOUT_SECS: u64 = 30;
@@ -888,6 +1001,328 @@ mod removal_guard_tests {
         ) -> anyhow::Result<()> {
             Ok(())
         }
+    }
+
+    async fn metadata_test_server(
+        total: u32,
+        poison_uids: Vec<u32>,
+    ) -> (
+        Arc<Engine>,
+        tokio::task::JoinHandle<()>,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        metadata_test_server_with_stall(total, poison_uids, None).await
+    }
+
+    async fn metadata_test_server_with_stall(
+        total: u32,
+        poison_uids: Vec<u32>,
+        stalled_uid: Option<u32>,
+    ) -> (
+        Arc<Engine>,
+        tokio::task::JoinHandle<()>,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::AtomicUsize;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let commands_after_poison = Arc::new(AtomicUsize::new(0));
+        let server_counter = commands_after_poison.clone();
+        let server = tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let counter = server_counter.clone();
+                let poison_uids = poison_uids.clone();
+                tokio::spawn(async move {
+                    let (reader, mut writer) = socket.into_split();
+                    writer.write_all(b"* OK IMAP4rev1 ready\r\n").await.unwrap();
+                    let mut lines = tokio::io::BufReader::new(reader).lines();
+                    let mut poisoned = false;
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        if poisoned {
+                            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        let (tag, command) = line.split_once(' ').unwrap();
+                        let mut reply = if command.starts_with("SELECT") {
+                            format!(
+                                "* {total} EXISTS\r\n* OK [UIDVALIDITY 42] valid\r\n* OK [UIDNEXT {}] next\r\n",
+                                total + 1
+                            )
+                        } else if command.starts_with("CAPABILITY") {
+                            "* CAPABILITY IMAP4rev1\r\n".to_string()
+                        } else if command.starts_with("UID SEARCH") {
+                            if command.contains("UNSEEN") {
+                                "* SEARCH\r\n".to_string()
+                            } else {
+                                format!(
+                                    "* SEARCH {}\r\n",
+                                    (1..=total)
+                                        .map(|uid| uid.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                )
+                            }
+                        } else if command.starts_with("UID FETCH") {
+                            let set = command.split_whitespace().nth(2).unwrap();
+                            let mut uids = Vec::new();
+                            for segment in set.split(',') {
+                                if let Some((lo, hi)) = segment.split_once(':') {
+                                    uids.extend(
+                                        lo.parse::<u32>().unwrap()..=hi.parse::<u32>().unwrap(),
+                                    );
+                                } else {
+                                    uids.push(segment.parse::<u32>().unwrap());
+                                }
+                            }
+                            if let Some(uid) = uids.iter().find(|uid| poison_uids.contains(uid)) {
+                                poisoned = true;
+                                format!(
+                                    "* {uid} FETCH (UID {uid} BODYSTRUCTURE (\"APPLICATION\" \"café\" NIL NIL NIL \"7BIT\" 1))\r\n"
+                                )
+                            } else if stalled_uid.is_some_and(|uid| uids.contains(&uid)) {
+                                // Hold a partial FETCH open until cancellation drops
+                                // the connection. No later command may reuse it.
+                                writer.write_all(b"* 1 FETCH (UID 1 ").await.unwrap();
+                                if let Ok(Some(_)) = lines.next_line().await {
+                                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                break;
+                            } else {
+                                uids.iter().map(|uid| {
+                                    if *uid == 2 { format!("* 2 FETCH (UID 2 FLAGS (\\Seen) BODYSTRUCTURE (\"APPLICATION\" \"PDF\" (\"NAME\" \"older.pdf\") NIL NIL \"BASE64\" 4))\r\n") }
+                                    else { format!("* {uid} FETCH (UID {uid} FLAGS (\\Seen))\r\n") }
+                                }).collect()
+                            }
+                        } else if command.starts_with("FETCH") {
+                            format!(
+                                "* {total} FETCH (UID {total} FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 4 1))\r\n"
+                            )
+                        } else {
+                            String::new()
+                        };
+                        reply.push_str(&format!("{tag} OK done\r\n"));
+                        if writer.write_all(reply.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+        let engine = Arc::new(Engine::new(Box::new(TestHost)).unwrap());
+        let mut creds = {
+            let db = engine.db.lock().unwrap();
+            let config = serde_json::json!({"host":"127.0.0.1", "port":port, "tls":false, "user":"u", "proxy":{"mode":"direct"}}).to_string();
+            db.execute(
+                "INSERT INTO accounts(id, config) VALUES('acct', ?1)",
+                [&config],
+            )
+            .unwrap();
+            store::set_folder_state(&db, "acct", "INBOX", 42, total + 1).unwrap();
+            let headers: Vec<_> = (1..=total)
+                .map(|uid| imap::MessageHeader {
+                    uid,
+                    date: uid as i64,
+                    seen: true,
+                    files: (uid == total).then(Vec::new),
+                    ..Default::default()
+                })
+                .collect();
+            store::upsert_messages(&db, "acct", "INBOX", &headers).unwrap();
+            store::load_account(&db, "acct").unwrap().unwrap()
+        };
+        creds.password = "p".into();
+        engine.accounts.lock().await.insert("acct".into(), creds);
+        (engine, server, commands_after_poison)
+    }
+
+    /// UID 4 poisons every FETCH containing it, UID 3 omits BODYSTRUCTURE,
+    /// and UID 2 carries a file. Catch-up must reach UID 2 on the next sync.
+    #[tokio::test]
+    async fn catchup_discards_poison_sessions_advances_and_preserves_sync_count() {
+        use std::sync::atomic::Ordering;
+        let (engine, server, commands_after_poison) = metadata_test_server(5, vec![4]).await;
+        for expected_missing in [vec![2, 1], vec![]] {
+            let result = tokio::time::timeout(
+                Duration::from_secs(10),
+                sync_messages(&engine, "acct", "INBOX", 2),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(result.count, 1);
+            assert_eq!(result.messages.len(), 1);
+            let db = engine.db.lock().unwrap();
+            assert_eq!(
+                store::missing_attachment_metadata_uids(&db, "acct", "INBOX", 10).unwrap(),
+                expected_missing
+            );
+            let count: i64 = db
+                .query_row("SELECT count(*) FROM messages", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(count, 5, "pruning must retain all live cached rows");
+        }
+        assert_eq!(commands_after_poison.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            store::get_recent_page(
+                &engine.db.lock().unwrap(),
+                "acct",
+                "INBOX",
+                50,
+                None,
+                store::RecentFilter {
+                    unread_only: false,
+                    attachments_only: true
+                }
+            )
+            .unwrap()
+            .0[0]
+                .uid,
+            2
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn catchup_leaves_unread_chunks_eligible_at_isolation_limit() {
+        let (engine, server, commands_after_poison) =
+            metadata_test_server(51, (26..=50).collect()).await;
+        let sync = || {
+            tokio::time::timeout(
+                Duration::from_secs(15),
+                sync_messages(&engine, "acct", "INBOX", 50),
+            )
+        };
+        assert_eq!(sync().await.unwrap().unwrap().count, 1);
+        let missing = store::missing_attachment_metadata_uids(
+            &engine.db.lock().unwrap(),
+            "acct",
+            "INBOX",
+            100,
+        )
+        .unwrap();
+        assert!(
+            missing.contains(&1),
+            "healthy UID in an unread chunk must stay eligible"
+        );
+        assert!(
+            missing.len() < 50,
+            "isolated poison UIDs should advance progress"
+        );
+        // Further bounded syncs finish the poison range and reach the healthy file.
+        for _ in 0..5 {
+            if store::missing_attachment_metadata_uids(
+                &engine.db.lock().unwrap(),
+                "acct",
+                "INBOX",
+                100,
+            )
+            .unwrap()
+            .is_empty()
+            {
+                break;
+            }
+            sync().await.unwrap().unwrap();
+        }
+        let db = engine.db.lock().unwrap();
+        assert!(
+            store::missing_attachment_metadata_uids(&db, "acct", "INBOX", 100)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store::get_recent_page(
+                &db,
+                "acct",
+                "INBOX",
+                50,
+                None,
+                store::RecentFilter {
+                    unread_only: false,
+                    attachments_only: true
+                }
+            )
+            .unwrap()
+            .0[0]
+                .uid,
+            2
+        );
+        assert_eq!(
+            commands_after_poison.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn catchup_timeout_preserves_main_sync_and_completed_progress() {
+        let (engine, server, commands_after_failure) =
+            metadata_test_server_with_stall(5, vec![4], Some(1)).await;
+        // The poison UID is isolated and UID 3 completes before the healthy
+        // [1,2] chunk stalls. Both completed rows must survive the deadline.
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            sync_messages_with_policy(&engine, "acct", "INBOX", 4, true, Duration::from_secs(2)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(result.count, 1);
+        assert_eq!(
+            store::missing_attachment_metadata_uids(
+                &engine.db.lock().unwrap(),
+                "acct",
+                "INBOX",
+                10
+            )
+            .unwrap(),
+            vec![2, 1]
+        );
+        for _ in 0..2 {
+            {
+                let db = engine.db.lock().unwrap();
+                db.execute("DELETE FROM messages WHERE uid = 5", [])
+                    .unwrap();
+                store::set_folder_state(&db, "acct", "INBOX", 42, 5).unwrap();
+            }
+            // Repeated catch-up timeouts must not hold new mail or sync state
+            // hostage, nor mark cancelled UIDs as attempted.
+            let result = tokio::time::timeout(
+                Duration::from_secs(5),
+                sync_messages_with_policy(
+                    &engine,
+                    "acct",
+                    "INBOX",
+                    4,
+                    true,
+                    Duration::from_millis(150),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(result.count, 1);
+            let db = engine.db.lock().unwrap();
+            assert_eq!(
+                store::get_folder_state(&db, "acct", "INBOX").unwrap(),
+                Some((42, 6))
+            );
+            let seen: bool = db
+                .query_row("SELECT seen FROM messages WHERE uid = 5", [], |r| r.get(0))
+                .unwrap();
+            assert!(
+                seen,
+                "new recent headers must be persisted despite catch-up timeout"
+            );
+            assert_eq!(
+                store::missing_attachment_metadata_uids(&db, "acct", "INBOX", 10).unwrap(),
+                vec![2, 1]
+            );
+        }
+        assert_eq!(
+            commands_after_failure.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        server.abort();
     }
 
     #[tokio::test]

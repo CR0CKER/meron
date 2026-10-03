@@ -48,6 +48,9 @@ pub fn upsert_messages(
         if !m.in_reply_to.is_empty() {
             extra.insert("in_reply_to".to_string(), json!(m.in_reply_to));
         }
+        if m.files.is_some() {
+            extra.insert("attachment_metadata".to_string(), json!(true));
+        }
         let extra_json = Value::Object(extra).to_string();
         let thread_key = resolve_message_thread_key(&tx, account, &m.thread_key)?;
         let message_id = m.message_id.trim().to_lowercase();
@@ -55,8 +58,8 @@ pub fn upsert_messages(
             upserted_ids.insert(message_id);
         }
         tx.execute(
-            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, starred, thread_key, json, recipients)
-             VALUES(?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, starred, thread_key, json, recipients, files)
+             VALUES(?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(account, folder, msg_id) DO UPDATE SET
                subject    = excluded.subject,
                from_name  = excluded.from_name,
@@ -68,7 +71,10 @@ pub fn upsert_messages(
                json       = json_patch(messages.json, excluded.json),
                -- Same rule as the recipient lists in `json`: a flag-only resync
                -- carries no envelope, so it must not blank what we already indexed.
-               recipients = COALESCE(excluded.recipients, messages.recipients)",
+               recipients = COALESCE(excluded.recipients, messages.recipients),
+               -- A fetched body is authoritative, especially for inline images.
+               files = CASE WHEN messages.body IS NOT NULL OR ?14 = 0
+                            THEN messages.files ELSE excluded.files END",
             params![
                 account,
                 folder,
@@ -81,7 +87,9 @@ pub fn upsert_messages(
                 m.starred as i64,
                 thread_key,
                 extra_json,
-                recipients_index_text(&m.to, &m.cc)
+                recipients_index_text(&m.to, &m.cc),
+                m.files.as_ref().filter(|files| !files.is_empty()).map(|files| json!(files).to_string()),
+                m.files.is_some() as i64
             ],
         )?;
     }
@@ -187,6 +195,44 @@ pub(super) fn reconcile_thread_keys_from(
     Ok(())
 }
 
+/// Older header-only rows from before BODYSTRUCTURE was indexed. Bound each
+/// sync's catch-up work; later syncs continue after the rows marked complete.
+pub fn missing_attachment_metadata_uids(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    limit: u32,
+) -> Result<Vec<u32>> {
+    let mut stmt = conn.prepare(
+        "SELECT uid FROM messages WHERE account = ?1 AND folder = ?2 AND body IS NULL
+         AND COALESCE(json_extract(json, '$.attachment_metadata'), 0) = 0
+         AND COALESCE(json_extract(json, '$.attachment_metadata_attempted'), 0) = 0
+         ORDER BY date DESC, uid DESC LIMIT ?3",
+    )?;
+    let rows = stmt.query_map(params![account, folder, limit], |row| row.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Mark bounded catch-up work even when a server omitted BODYSTRUCTURE or a
+/// malformed response was isolated. Fresh header sync can still supply metadata.
+pub fn mark_attachment_metadata_attempted(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    uids: &[u32],
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for uid in uids {
+        tx.execute(
+            "UPDATE messages SET json = json_set(json, '$.attachment_metadata_attempted', 1)
+                    WHERE account = ?1 AND folder = ?2 AND uid = ?3",
+            params![account, folder, uid],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 /// Which cached rows a newest-first page keeps. The two narrowings combine.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RecentFilter {
@@ -197,7 +243,7 @@ pub struct RecentFilter {
     /// "unread with attachments". A subject-branched thread shares one key, so
     /// this is a superset; the card-level narrowing
     /// (`ThreadListQuery::retain_attachment_threads`) trims it to the branch.
-    /// Only cached bodies are known.
+    /// Header sync supplies BODYSTRUCTURE metadata even before a body is cached.
     pub attachments_only: bool,
 }
 

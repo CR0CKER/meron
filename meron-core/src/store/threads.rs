@@ -399,8 +399,8 @@ pub struct CardFile {
 /// The real attachments behind each of `card_keys`, in thread order, keyed by
 /// card key; cards with none are absent. Scoped and deduplicated exactly like
 /// [`card_message_counts`], so the chips speak for the same messages the reader
-/// opens. Only messages whose body is cached are known, so an older thread may
-/// carry an attachment its card does not show yet.
+/// opens. Header sync supplies names from BODYSTRUCTURE; a cached body refines
+/// them using the HTML references to exclude inline images.
 pub fn card_attachments(
     conn: &Connection,
     account: &str,
@@ -595,6 +595,7 @@ pub(super) struct CardRow {
     from_addr: String,
     date: i64,
     files: Vec<CardFile>,
+    files_authoritative: bool,
 }
 
 /// Visit every cached message behind `roots` once, with the card key it belongs
@@ -602,10 +603,8 @@ pub(super) struct CardRow {
 /// folders are folded, so a self-sent message cached in Inbox and Sent is one
 /// visit.
 ///
-/// The first copy read stands for the message, except for `files`: only a copy
-/// whose body is cached knows its attachments, so a folded copy that has them
-/// hands them to the one kept — an uncached Inbox copy read before the cached
-/// Sent copy must not hide the thread's paperclip.
+/// The first copy supplies identity. Attachment metadata prefers a cached body
+/// over header-only copies, even when its refined list is empty.
 fn for_each_card_row(
     conn: &Connection,
     account: &str,
@@ -637,7 +636,7 @@ fn for_each_card_row(
         let mut stmt = conn.prepare(&format!(
             "SELECT COALESCE(NULLIF(thread_key, ''), 'uid:' || uid), subject,
                     COALESCE(json_extract(json, '$.message_id'), ''),
-                    folder, COALESCE(from_name, ''), COALESCE(from_addr, ''), date, files
+                    folder, COALESCE(from_name, ''), COALESCE(from_addr, ''), date, files, body IS NOT NULL
              FROM messages
              WHERE account = ?1 AND {folder_clause}uid <> 0
                AND COALESCE(NULLIF(thread_key, ''), 'uid:' || uid) IN ({placeholders})"
@@ -655,6 +654,7 @@ fn for_each_card_row(
                     from_name: row.get(4)?,
                     from_addr: row.get(5)?,
                     date: row.get(6)?,
+                    files_authoritative: row.get(8)?,
                     files: row
                         .get::<_, Option<String>>(7)?
                         .and_then(|files| serde_json::from_str(&files).ok())
@@ -675,8 +675,11 @@ fn for_each_card_row(
                 match seen_ids.entry((key.clone(), message_id)) {
                     Entry::Occupied(kept) => {
                         let kept = &mut visits[*kept.get()].1;
-                        if kept.files.is_empty() {
+                        if (card_row.files_authoritative && !kept.files_authoritative)
+                            || (!kept.files_authoritative && kept.files.is_empty())
+                        {
                             kept.files = card_row.files;
+                            kept.files_authoritative = card_row.files_authoritative;
                         }
                         continue;
                     }

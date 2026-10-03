@@ -250,6 +250,9 @@ pub struct MessageHeader {
     /// number of *additional* recipients beyond the one shown, for a "+N" hint.
     #[serde(default)]
     pub recipient_overflow: u32,
+    /// Attachment names from BODYSTRUCTURE; None means metadata was not fetched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<crate::store::CardFile>>,
 }
 
 /// A batch of recent messages plus the folder's UID sync markers, so the caller
@@ -930,6 +933,7 @@ pub async fn fetch_recent(session: &mut Session, folder: &str, limit: u32) -> Re
             to: ef.to,
             cc: ef.cc,
             recipient_overflow: 0,
+            files: fetch.bodystructure().map(attachment_files),
         });
     }
     drop(stream);
@@ -1140,6 +1144,7 @@ pub async fn fetch_by_message_ids(
                     to: ef.to,
                     cc: ef.cc,
                     recipient_overflow: 0,
+                    files: fetch.bodystructure().map(attachment_files),
                 },
                 message,
             });
@@ -1213,6 +1218,7 @@ pub async fn fetch_headers_by_uid(
                 to: ef.to,
                 cc: ef.cc,
                 recipient_overflow: 0,
+                files: fetch.bodystructure().map(attachment_files),
             });
         }
     }
@@ -2071,14 +2077,76 @@ fn message_date(header_date: i64, fetch: &async_imap::types::Fetch) -> i64 {
         .unwrap_or_default()
 }
 
+/// Attachment metadata without downloading the MIME payload. Inline CID images
+/// are left to the cached body's more precise HTML-reference check.
+fn attachment_files(
+    body: &async_imap::imap_proto::types::BodyStructure<'_>,
+) -> Vec<crate::store::CardFile> {
+    use async_imap::imap_proto::types::BodyStructure;
+    let (common, other) = match body {
+        BodyStructure::Multipart { bodies, .. } => {
+            return bodies.iter().flat_map(attachment_files).collect();
+        }
+        BodyStructure::Basic { common, other, .. }
+        | BodyStructure::Text { common, other, .. }
+        | BodyStructure::Message { common, other, .. } => (common, other),
+    };
+    let disposition = common.disposition.as_ref();
+    let explicit_attachment = disposition.is_some_and(|d| d.ty.eq_ignore_ascii_case("attachment"));
+    let filename = disposition
+        .and_then(|d| body_parameter(&d.params, "filename"))
+        .or_else(|| body_parameter(&common.ty.params, "name"));
+    if !explicit_attachment && common.ty.ty.eq_ignore_ascii_case("image") && other.id.is_some() {
+        return Vec::new();
+    }
+    let mime = format!("{}/{}", common.ty.ty, common.ty.subtype).to_ascii_lowercase();
+    if !parse::is_attachment_part(&mime, explicit_attachment, filename.is_some()) {
+        return Vec::new();
+    }
+    vec![crate::store::CardFile {
+        filename: filename.unwrap_or_else(|| "attachment".to_string()),
+        mime,
+    }]
+}
+
+/// Reuse the MIME parser's RFC 2231 charset/continuation handling, and decode
+/// the RFC 2047 words some servers return in otherwise ordinary name params.
+fn body_parameter(
+    params: &async_imap::imap_proto::types::BodyParams<'_>,
+    name: &str,
+) -> Option<String> {
+    let params = params.as_ref()?;
+    if let Some((_, value)) = params
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+    {
+        return Some(parse::decode_words(&format!(" {value}")));
+    }
+    let prefix = format!("{name}*");
+    let mut header = String::from("attachment");
+    for (key, value) in params {
+        if key.to_ascii_lowercase().starts_with(&prefix) {
+            header.push_str(&format!("; {key}=\"{value}\""));
+        }
+    }
+    mailparse::parse_content_disposition(&header)
+        .params
+        .get(name)
+        .map(|value| parse::decode_words(&format!(" {value}")))
+}
+
 /// FETCH item list. Adds `X-GM-THRID` on Gmail so messages thread by Gmail's
 /// server-side thread id, and `BODY.PEEK[]` when the full message is wanted.
 fn fetch_items(gmail: bool, body: bool) -> &'static str {
     match (gmail, body) {
-        (true, true) => "(UID FLAGS INTERNALDATE RFC822.HEADER X-GM-MSGID X-GM-THRID BODY.PEEK[])",
-        (true, false) => "(UID FLAGS INTERNALDATE RFC822.HEADER X-GM-MSGID X-GM-THRID)",
-        (false, true) => "(UID FLAGS INTERNALDATE RFC822.HEADER BODY.PEEK[])",
-        (false, false) => "(UID FLAGS INTERNALDATE RFC822.HEADER)",
+        (true, true) => {
+            "(UID FLAGS INTERNALDATE RFC822.HEADER BODYSTRUCTURE X-GM-MSGID X-GM-THRID BODY.PEEK[])"
+        }
+        (true, false) => {
+            "(UID FLAGS INTERNALDATE RFC822.HEADER BODYSTRUCTURE X-GM-MSGID X-GM-THRID)"
+        }
+        (false, true) => "(UID FLAGS INTERNALDATE RFC822.HEADER BODYSTRUCTURE BODY.PEEK[])",
+        (false, false) => "(UID FLAGS INTERNALDATE RFC822.HEADER BODYSTRUCTURE)",
     }
 }
 
@@ -2192,10 +2260,159 @@ mod tests {
     }
 
     use super::{
-        MIN_PROTOCOL_TIMEOUT, civil_from_days, first_message_id, header_fields, imap_quote,
-        interleave_address_families, looks_like_drafts, message_id_search_criteria,
-        normalize_message_id, protocol_timeout_for, search_criteria, thread_key, uid_set_chunks,
+        MIN_PROTOCOL_TIMEOUT, attachment_files, civil_from_days, fetch_items, first_message_id,
+        header_fields, imap_quote, interleave_address_families, looks_like_drafts,
+        message_id_search_criteria, normalize_message_id, protocol_timeout_for, search_criteria,
+        thread_key, uid_set_chunks,
     };
+
+    #[test]
+    fn bodystructure_attachments_include_unopened_nested_files() {
+        use async_imap::imap_proto::{
+            parser::parse_response,
+            types::{AttributeValue, Response},
+        };
+        let response = br#"* 1 FETCH (BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 10 1)(("IMAGE" "PNG" ("NAME" "logo.png") "<logo>" NIL "BASE64" 10 NIL ("INLINE" ("FILENAME" "logo.png")))("APPLICATION" "PDF" ("NAME" "report.pdf") NIL NIL "BASE64" 20 NIL ("ATTACHMENT" ("FILENAME" "report.pdf"))) "RELATED")("TEXT" "PLAIN" ("NAME" "notes.txt") NIL NIL "7BIT" 10 1 NIL ("ATTACHMENT" ("FILENAME" "notes.txt"))) "MIXED"))
+"#;
+        // IMAP responses use CRLF, including the mock response here.
+        let response = String::from_utf8_lossy(response).replace('\n', "\r\n");
+        let (_, Response::Fetch(_, attributes)) = parse_response(response.as_bytes()).unwrap()
+        else {
+            panic!("expected FETCH")
+        };
+        let body = attributes
+            .iter()
+            .find_map(|attr| match attr {
+                AttributeValue::BodyStructure(body) => Some(body),
+                _ => None,
+            })
+            .unwrap();
+        let files = attachment_files(body);
+        assert_eq!(
+            files,
+            vec![
+                crate::store::CardFile {
+                    filename: "report.pdf".into(),
+                    mime: "application/pdf".into()
+                },
+                crate::store::CardFile {
+                    filename: "notes.txt".into(),
+                    mime: "text/plain".into()
+                },
+            ]
+        );
+        assert!(fetch_items(false, false).contains("BODYSTRUCTURE"));
+        assert!(fetch_items(true, false).contains("BODYSTRUCTURE"));
+    }
+
+    #[test]
+    fn bodystructure_filenames_decode_words_and_extended_parameters() {
+        use std::borrow::Cow;
+        let check = |pairs: &[(&str, &str)], name, expected| {
+            let params = Some(
+                pairs
+                    .iter()
+                    .map(|(key, value)| (Cow::Borrowed(*key), Cow::Borrowed(*value)))
+                    .collect(),
+            );
+            assert_eq!(
+                super::body_parameter(&params, name).as_deref(),
+                Some(expected)
+            );
+        };
+        check(
+            &[("FILENAME", "=?UTF-8?B?6KuL5rGC5pu4LnBkZg==?=")],
+            "filename",
+            "請求書.pdf",
+        );
+        check(
+            &[("filename*", "UTF-8'ja'%E8%AB%8B%E6%B1%82%E6%9B%B8.pdf")],
+            "filename",
+            "請求書.pdf",
+        );
+        check(
+            &[
+                ("name*1*", "%E6%9B%B8.pdf"),
+                ("name*0*", "UTF-8''%E8%AB%8B%E6%B1%82"),
+            ],
+            "name",
+            "請求書.pdf",
+        );
+        check(
+            &[("filename*", "iso-8859-1''caf%E9.pdf")],
+            "filename",
+            "café.pdf",
+        );
+        check(
+            &[("filename", "quote\";literal.pdf")],
+            "filename",
+            "quote\";literal.pdf",
+        );
+    }
+
+    #[test]
+    fn provisional_files_match_mime_reader_for_named_and_unnamed_parts() {
+        use async_imap::imap_proto::{
+            parser::parse_response,
+            types::{AttributeValue, Response},
+        };
+        for (structure, mime_headers, file_count) in [
+            (
+                r#"("APPLICATION" "PDF" ("NAME*" "utf-8''caf%C3%A9.pdf") NIL NIL "BASE64" 4)"#,
+                "Content-Type: application/pdf; name*=utf-8''caf%C3%A9.pdf\r\nContent-Transfer-Encoding: base64\r\n",
+                1,
+            ),
+            (
+                r#"("TEXT" "PLAIN" ("NAME" "notes.txt") NIL NIL "7BIT" 4 1)"#,
+                "Content-Type: text/plain; name=notes.txt\r\n",
+                0,
+            ),
+            (
+                r#"("TEXT" "HTML" ("NAME" "body.html") NIL NIL "7BIT" 4 1 NIL ("INLINE" ("FILENAME" "body.html")))"#,
+                "Content-Type: text/html; name=body.html\r\nContent-Disposition: inline; filename=body.html\r\n",
+                0,
+            ),
+            (
+                r#"("IMAGE" "PNG" NIL NIL NIL "BASE64" 4)"#,
+                "Content-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n",
+                1,
+            ),
+            (
+                r#"("TEXT" "CALENDAR" ("NAME" "invite.ics") NIL NIL "7BIT" 4 1 NIL ("INLINE" ("FILENAME" "invite.ics")))"#,
+                "Content-Type: text/calendar; name=invite.ics\r\nContent-Disposition: inline; filename=invite.ics\r\n",
+                0,
+            ),
+            (
+                r#"("TEXT" "CALENDAR" ("NAME" "invite.ics") NIL NIL "7BIT" 4 1 NIL ("ATTACHMENT" ("FILENAME" "invite.ics")))"#,
+                "Content-Type: text/calendar; name=invite.ics\r\nContent-Disposition: attachment; filename=invite.ics\r\n",
+                1,
+            ),
+        ] {
+            let response = format!("* 1 FETCH (BODYSTRUCTURE {structure})\r\n");
+            let (_, Response::Fetch(_, attributes)) = parse_response(response.as_bytes()).unwrap()
+            else {
+                panic!("expected FETCH")
+            };
+            let body = attributes
+                .iter()
+                .find_map(|attr| match attr {
+                    AttributeValue::BodyStructure(body) => Some(body),
+                    _ => None,
+                })
+                .unwrap();
+            let raw = format!("{mime_headers}\r\nYQ==");
+            let message = crate::parse::parse_message(raw.as_bytes(), None);
+            let expected: Vec<_> = message
+                .file_attachments()
+                .map(|file| crate::store::CardFile {
+                    filename: file.filename.clone(),
+                    mime: file.mime.clone(),
+                })
+                .collect();
+            assert_eq!(expected.len(), file_count, "{structure}");
+            assert_eq!(attachment_files(body), expected, "{structure}");
+        }
+    }
 
     #[test]
     fn uid_set_chunks_compacts_runs_and_splits_long_sets() {

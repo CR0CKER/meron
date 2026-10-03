@@ -710,8 +710,7 @@ fn migrate_v10(conn: &Connection) -> Result<()> {
 /// `messages.files`: the cached body's real attachments as a JSON array of
 /// `{filename, mime}`, NULL when it has none, so list cards can name them and
 /// the attachments filter can page without parsing every row's `json`. Written
-/// with the body (see `save_cached_message`), so it stays NULL for rows whose
-/// body is not cached.
+/// with header BODYSTRUCTURE metadata and refined by `save_cached_message`.
 ///
 /// Rows cached before this are filled by [`super::backfill_files_batch`] after
 /// startup, not here: deriving them parses every row's `json` (HTML bodies

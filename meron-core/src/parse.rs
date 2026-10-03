@@ -1040,7 +1040,14 @@ pub fn render_body(html: &str) -> String {
     html_to_text(html)
 }
 
-/// Walk the MIME tree collecting non-text leaf parts (images and attachments).
+/// Shared by BODYSTRUCTURE metadata and the full MIME reader. Text parts need
+/// an attachment disposition: a name alone can describe the body or an inline
+/// calendar alternative. Named non-text parts and images can be files.
+pub(crate) fn is_attachment_part(mime: &str, explicit: bool, named: bool) -> bool {
+    explicit || (!mime.starts_with("text/") && (named || mime.starts_with("image/")))
+}
+
+/// Walk the MIME tree collecting file and image leaf parts.
 /// Image bytes are written to disk under `media` and referenced by key so they
 /// never round-trip through the JSON bridge; non-images stay metadata-only.
 fn collect_attachments(
@@ -1059,13 +1066,11 @@ fn collect_attachments(
     let mime = part.ctype.mimetype.to_ascii_lowercase();
     let disposition = part.get_content_disposition();
     let is_attachment = disposition.disposition == DispositionType::Attachment;
-    let is_image = mime.starts_with("image/");
-
-    // Skip the text/html/plain body parts unless explicitly an attachment.
-    if mime.starts_with("text/") && !is_attachment {
-        return;
-    }
-    if !is_attachment && !is_image {
+    let filename = disposition
+        .params
+        .get("filename")
+        .or_else(|| part.ctype.params.get("name"));
+    if !is_attachment_part(&mime, is_attachment, filename.is_some()) {
         return;
     }
 
@@ -1074,11 +1079,8 @@ fn collect_attachments(
         Err(_) => return,
     };
     let size = bytes.len();
-    let filename = disposition
-        .params
-        .get("filename")
-        .cloned()
-        .or_else(|| part.ctype.params.get("name").cloned())
+    let filename = filename
+        .map(|name| decode_words(&format!(" {name}")))
         .unwrap_or_else(|| "attachment".to_string());
 
     let index = out.len();
@@ -2483,6 +2485,40 @@ AQID\r\n\
         let mut plain = Message::default();
         plain.attachments.push(attachment("acct/inbox/2/0.png"));
         assert!(plain.has_attachments());
+    }
+
+    #[test]
+    fn named_calendar_alternative_is_not_a_duplicate_attachment() {
+        let raw = "Content-Type: multipart/mixed; boundary=outer
+
+--outer
+Content-Type: multipart/alternative; boundary=inner
+
+--inner
+Content-Type: text/plain; name=body.txt
+
+Invitation
+--inner
+Content-Type: text/calendar; name=invite.ics
+Content-Disposition: inline; filename=invite.ics
+
+BEGIN:VCALENDAR
+END:VCALENDAR
+--inner--
+--outer
+Content-Type: text/calendar; name=invite.ics
+Content-Disposition: attachment; filename=invite.ics
+
+BEGIN:VCALENDAR
+END:VCALENDAR
+--outer--
+"
+        .replace('\n', "\r\n");
+        let message = parse_message(raw.as_bytes(), None);
+        let files: Vec<_> = message.file_attachments().collect();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].filename, "invite.ics");
+        assert_eq!(files[0].mime, "text/calendar");
     }
 
     #[test]
