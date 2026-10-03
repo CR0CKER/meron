@@ -43,6 +43,10 @@ expect fun MailWebView(
      *  shrink its bubble to it; zero or less for a document that lays out against
      *  the width it is given (tables, pictures) and should fill it. */
     onNaturalWidth: (Dp) -> Unit = {},
+    /** The measurement script's overflow floor, in layout CSS px, whenever it
+     *  grows, with the CSS width it was measured at: content escaping the body
+     *  that the caller hands back to the next document for the same mail. */
+    onOverflowExtent: (extent: Int, width: Int) -> Unit = { _, _ -> },
 )
 
 /**

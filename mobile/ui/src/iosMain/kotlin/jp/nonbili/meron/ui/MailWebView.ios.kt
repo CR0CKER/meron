@@ -36,7 +36,9 @@ actual fun MailWebView(
     @Suppress("UNUSED_PARAMETER") transparentBackground: Boolean,
     onQuoteToggle: (Boolean) -> Unit,
     onNaturalWidth: (Dp) -> Unit,
+    onOverflowExtent: (Int, Int) -> Unit,
 ) {
+    val latestOnOverflowExtent = rememberUpdatedState(onOverflowExtent)
     val latestOnNaturalWidth = rememberUpdatedState(onNaturalWidth)
     val latestOnHeight = rememberUpdatedState(onContentHeight)
     val latestOnOpenUrl = rememberUpdatedState(onOpenUrl)
@@ -60,6 +62,10 @@ actual fun MailWebView(
             config.userContentController.addScriptMessageHandler(
                 scriptMessageHandler = HeightMessageHandler { cssPx -> latestOnNaturalWidth.value(cssPx.dp) },
                 name = "meronWidth",
+            )
+            config.userContentController.addScriptMessageHandler(
+                scriptMessageHandler = OverflowMessageHandler { extent, width -> latestOnOverflowExtent.value(extent, width) },
+                name = "meronOverflow",
             )
             config.userContentController.addScriptMessageHandler(
                 scriptMessageHandler = LinkMessageHandler { url -> latestOnOpenUrl.value(url) },
@@ -115,6 +121,22 @@ private class HeightMessageHandler(
         didReceiveScriptMessage: WKScriptMessage,
     ) {
         (didReceiveScriptMessage.body as? NSNumber)?.let { onHeight(it.intValue) }
+    }
+}
+
+/** Receives `[extent, width]`. */
+private class OverflowMessageHandler(
+    private val onOverflow: (Int, Int) -> Unit,
+) : NSObject(),
+    WKScriptMessageHandlerProtocol {
+    override fun userContentController(
+        userContentController: WKUserContentController,
+        didReceiveScriptMessage: WKScriptMessage,
+    ) {
+        val values = (didReceiveScriptMessage.body as? List<*>)?.map { (it as? NSNumber)?.intValue } ?: return
+        val extent = values.getOrNull(0) ?: return
+        val width = values.getOrNull(1) ?: return
+        onOverflow(extent, width)
     }
 }
 

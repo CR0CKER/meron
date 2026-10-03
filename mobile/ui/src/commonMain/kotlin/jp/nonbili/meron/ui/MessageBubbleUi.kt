@@ -35,8 +35,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -937,7 +940,11 @@ internal fun HtmlMessageBody(
     // reports document height through a platform bridge and we size the view to
     // it. The bubble caps the height (desktop uses 360px) and the WebView scrolls
     // past that; the full-screen reader passes no cap and shows the whole email.
-    var contentHeight by remember(html) { mutableStateOf(0.dp) }
+    // Saveable so a message the conversation list scrolled out and back in
+    // returns at its measured height: its web view is a fresh one, and growing
+    // from the placeholder while on screen would move the list under the reader.
+    var contentHeightDp by rememberSaveable(html) { mutableFloatStateOf(0f) }
+    val contentHeight = contentHeightDp.dp
     // A WebView reaches neither the app's text sizes nor the system font-size
     // setting, so the reading typography is baked into the stylesheet below.
     // Sizing the text rather than zooming the page is what the overrides here
@@ -949,6 +956,21 @@ internal fun HtmlMessageBody(
     // fold it in here so an HTML mail and a text one stay the same size.
     val systemFontScale = if (MailWebViewFollowsSystemFontScale) 1f else LocalDensity.current.fontScale
     val bodyFontSize = scaledCssPx(MESSAGE_HTML_BASE_PX * systemFontScale, LocalMessageFontScale.current)
+    // The script's overflow floor (see contentHeight in the script), saved with
+    // the height it produced, along with what laid it out: the typography and
+    // fitting here, and the width, which only the document knows and checks
+    // itself. A floor from another layout would hold text that now runs
+    // shorter at its old height, so it is handed back only to the same one.
+    // Read once into the document: a later report must not rebuild the page
+    // it came from.
+    val overflowLayout = "$bodyFontSize|${LocalDensity.current.fontScale}|$fitWideContent"
+    var savedOverflowLayout by rememberSaveable(html) { mutableStateOf("") }
+    var savedOverflowExtent by rememberSaveable(html) { mutableIntStateOf(0) }
+    var savedOverflowWidth by rememberSaveable(html) { mutableIntStateOf(0) }
+    val initialOverflow =
+        remember(html, overflowLayout) {
+            if (savedOverflowLayout == overflowLayout) savedOverflowExtent to savedOverflowWidth else 0 to 0
+        }
     // A fresh nonce per document admits the measurement script below and nothing
     // else: the mail is spliced into this page, so a script of its own that
     // survived the core's sanitiser would still have no way to name the token.
@@ -957,7 +979,18 @@ internal fun HtmlMessageBody(
     val hideQuotedLabel = tr("chat.hideQuotedText")
     val darkBody = LocalDarkMailBodies.current
     val mobileHtml =
-        remember(html, quoteKey, allowRemote, scriptNonce, fitWideContent, darkBody, bodyFontSize, showQuotedLabel, hideQuotedLabel) {
+        remember(
+            html,
+            quoteKey,
+            allowRemote,
+            scriptNonce,
+            fitWideContent,
+            darkBody,
+            bodyFontSize,
+            showQuotedLabel,
+            hideQuotedLabel,
+            initialOverflow,
+        ) {
             val body = applyRemoteContentPolicy(html, allowRemote)
             // The state the reader left the quote in, read once per document:
             // toggles inside the page don't rebuild (and so reload) it, they
@@ -1281,7 +1314,19 @@ internal fun HtmlMessageBody(
                   //
                   // The desktop frame applies the same rules; its arithmetic
                   // (and the tests pinning it) lives in chat/frameHeight.ts.
+                  //
+                  // A list item that scrolled out and back in gets a fresh
+                  // document in a view already sized to the saved height, where
+                  // the overflow fits and so never shows: the floor it had found
+                  // is handed back, or the escaping content reads as the empty
+                  // box and the item collapses before growing back. Only at the
+                  // width it was found at, checked on the first measurement:
+                  // narrower or wider, the content runs to a different length.
                   var overflowExtent = 0;
+                  var seededOverflowExtent = ${initialOverflow.first};
+                  var seededOverflowWidth = ${initialOverflow.second};
+                  var layoutWidth = 0;
+                  var reportedOverflowExtent = 0;
                   function contentHeight() {
                     var root = document.documentElement;
                     var body = document.body;
@@ -1321,6 +1366,19 @@ internal fun HtmlMessageBody(
                     return natural > 0 ? Math.ceil(natural * fitScale) : -1;
                   }
                   function report() {
+                    // A lazy list can attach a fresh web view and load it before
+                    // the view is laid out. At zero width every word wraps onto a
+                    // line of its own, and a mail that needs 8000px reads as
+                    // hundreds of thousands: reported, that sizes the list item
+                    // off into the distance and the list jumps. The resize
+                    // observer reports again once the view has its width.
+                    if (!visibleWidth()) return;
+                    if (!layoutWidth) {
+                      // Before the fit pass, which widens the viewport.
+                      layoutWidth = Math.round(visibleWidth());
+                      if (seededOverflowWidth === layoutWidth) overflowExtent = seededOverflowExtent;
+                      reportedOverflowExtent = overflowExtent;
+                    }
                     applyWidthFit();
                     var nw = naturalWidth();
                     if (window.MeronWidth && window.MeronWidth.report) {
@@ -1336,6 +1394,18 @@ internal fun HtmlMessageBody(
                     // viewport's CSS pixels; the view renders it at fitScale, so
                     // scale it back to dp or the view gets sized to a phantom tail.
                     var h = Math.ceil(contentHeight() * fitScale);
+                    if (overflowExtent !== reportedOverflowExtent) {
+                      reportedOverflowExtent = overflowExtent;
+                      if (window.MeronOverflow && window.MeronOverflow.report) {
+                        window.MeronOverflow.report(overflowExtent, layoutWidth);
+                      } else if (
+                        window.webkit &&
+                        window.webkit.messageHandlers &&
+                        window.webkit.messageHandlers.meronOverflow
+                      ) {
+                        window.webkit.messageHandlers.meronOverflow.postMessage([overflowExtent, layoutWidth]);
+                      }
+                    }
                     if (window.MeronHeight && window.MeronHeight.report) {
                       window.MeronHeight.report(h);
                     } else if (
@@ -1548,7 +1618,11 @@ internal fun HtmlMessageBody(
                 if (measured) {
                     Modifier.height(contentHeight)
                 } else {
-                    Modifier.heightIn(min = 80.dp)
+                    // Fixed, not a minimum: in a lazy list the height is otherwise
+                    // unbounded and the web view sizes itself to its own layout,
+                    // which before the view has a width is hundreds of thousands
+                    // of pixels of one-word lines.
+                    Modifier.height(80.dp)
                 },
             )
 
@@ -1573,7 +1647,12 @@ internal fun HtmlMessageBody(
     ) {
         MailWebViewWithLinkMenu(
             html = mobileHtml,
-            onContentHeight = { contentHeight = clampMailBodyHeight(it) },
+            onContentHeight = { contentHeightDp = clampMailBodyHeight(it).value },
+            onOverflowExtent = { extent, width ->
+                savedOverflowLayout = overflowLayout
+                savedOverflowExtent = extent
+                savedOverflowWidth = width
+            },
             onOpenUrl = onOpenUrl,
             onOpenImage = onOpenImage,
             onQuoteToggle = { open -> QuoteFoldMemory.setOpen(quoteKey, open) },
@@ -1591,6 +1670,7 @@ internal fun HtmlMessageBody(
 private fun MailWebViewWithLinkMenu(
     html: String,
     onContentHeight: (Dp) -> Unit,
+    onOverflowExtent: (Int, Int) -> Unit,
     onOpenUrl: (String) -> Unit,
     onOpenImage: (String) -> Unit,
     onQuoteToggle: (Boolean) -> Unit,
@@ -1604,6 +1684,7 @@ private fun MailWebViewWithLinkMenu(
         MailWebView(
             html = html,
             onContentHeight = onContentHeight,
+            onOverflowExtent = onOverflowExtent,
             onOpenUrl = onOpenUrl,
             onOpenImage = onOpenImage,
             onLinkLongPress = { url, offset -> menuTarget = MessageLinkMenuTarget(url, offset) },

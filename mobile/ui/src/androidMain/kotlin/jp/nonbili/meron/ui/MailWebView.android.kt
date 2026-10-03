@@ -46,7 +46,9 @@ actual fun MailWebView(
     transparentBackground: Boolean,
     onQuoteToggle: (Boolean) -> Unit,
     onNaturalWidth: (Dp) -> Unit,
+    onOverflowExtent: (Int, Int) -> Unit,
 ) {
+    val latestOnOverflowExtent = rememberUpdatedState(onOverflowExtent)
     val latestOnNaturalWidth = rememberUpdatedState(onNaturalWidth)
     val latestOnQuoteToggle = rememberUpdatedState(onQuoteToggle)
     val latestOnHeight = rememberUpdatedState(onContentHeight)
@@ -153,6 +155,18 @@ actual fun MailWebView(
                         }
                     },
                     "MeronWidth",
+                )
+                addJavascriptInterface(
+                    object {
+                        @JavascriptInterface
+                        fun report(
+                            cssPx: Int,
+                            widthCssPx: Int,
+                        ) {
+                            post { latestOnOverflowExtent.value(cssPx, widthCssPx) }
+                        }
+                    },
+                    "MeronOverflow",
                 )
                 addJavascriptInterface(
                     object {
