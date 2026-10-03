@@ -92,9 +92,9 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
           }}
           placeholder={t('kanban.searchBoard')}
           className={clsx(
-            'h-full w-full border-0 bg-transparent pr-8 text-xs outline-none transition-all',
+            'block h-full w-full appearance-none border-0 bg-transparent pr-8 text-xs outline-none transition-all',
             compact
-              ? 'pl-8 text-sidenav-ink placeholder-sidenav-ink/60 group-focus-within:text-primary group-focus-within:placeholder-secondary'
+              ? 'py-0 pl-8 text-sidenav-ink placeholder-sidenav-ink/60 group-focus-within:text-primary group-focus-within:placeholder-secondary'
               : 'py-1.5 pl-9.5 text-primary placeholder-secondary',
           )}
         />

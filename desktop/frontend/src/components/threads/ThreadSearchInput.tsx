@@ -52,9 +52,9 @@ export function ThreadSearchInput({ compact = false, onFocusChange }: ThreadSear
         }}
         placeholder={rss ? t('threads.searchFeeds') : t('threads.searchMessages')}
         className={clsx(
-          'peer w-full border border-transparent transition-all duration-150 focus:border-transparent focus:ring-1 focus:ring-accent',
+          'peer block w-full appearance-none border border-transparent transition-all duration-150 focus:border-transparent focus:ring-1 focus:ring-accent',
           compact
-            ? 'h-full rounded-lg bg-sidenav-ink/10 pl-8 text-xs text-sidenav-ink placeholder-sidenav-ink/60 focus:bg-chats focus:text-primary focus:placeholder-secondary'
+            ? 'h-full rounded-lg bg-sidenav-ink/10 py-0 pl-8 text-xs text-sidenav-ink placeholder-sidenav-ink/60 focus:bg-chats focus:text-primary focus:placeholder-secondary'
             : 'rounded-xl bg-hover py-2 pl-8 text-[0.8125rem] text-primary placeholder-secondary focus:bg-chats',
           // The right padding only has to clear the clear button while there is one.
           query ? 'pr-8' : 'pr-3',

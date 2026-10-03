@@ -34,8 +34,8 @@ type MenuPosition = { x: number; y: number } | null
  * one frame. It moves the window ([data-titlebar] in index.css) and holds the
  * search box of the thread list or kanban board, the app-wide Tasks and quick-settings buttons, plus
  * the window controls on Linux and Windows.
- * On macOS it stays at the hidden title bar's height so the traffic lights,
- * which float over its left end, stay centred in it.
+ * On macOS the native traffic lights float over its left end; the row leaves
+ * a little extra room for the search field and app buttons.
  */
 export function TitleBar({ tools = true }: { tools?: boolean }) {
   const { t } = useTranslation()
@@ -46,10 +46,10 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
   const kanbanBoard = useValue(kanban$.activeBoardId)
   const startControls = useValue(windowChrome$.layout.start)
   if (!shown) return null
-  // macOS: the hidden title bar's height. Windows: the caption's 32px, the
+  // macOS: a little breathing room around the compact search. Windows: the caption's 32px, the
   // caption buttons flush with the right edge. Linux: room for GNOME's 34px
   // window controls.
-  const layout = isMac ? 'h-7 px-2' : windows ? 'h-8 pl-1.5' : 'h-10 px-1.5'
+  const layout = isMac ? 'h-8 px-2' : windows ? 'h-8 pl-1.5' : 'h-10 px-1.5'
   return (
     <div
       data-titlebar
@@ -82,7 +82,7 @@ export function TitleBar({ tools = true }: { tools?: boolean }) {
       </div>
       {/* The search of whatever is open: the thread list, or a kanban board.
         Most of the row's height, a little off it on each side. */}
-      <div className={`flex min-w-0 px-2 ${isMac ? 'h-6' : windows ? 'h-6.5' : 'h-8'}`}>
+      <div className={`flex min-w-0 px-2 ${isMac || windows ? 'h-6.5' : 'h-8'}`}>
         {tools && (kanbanBoard ? <KanbanSearch boardId={kanbanBoard} compact /> : <ThreadSearchInput compact />)}
       </div>
       <div className="flex h-full items-center justify-end">
