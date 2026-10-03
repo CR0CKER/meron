@@ -63,6 +63,20 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.4.1" date="2026-10-03">
+      <description>
+        <ul>
+          <li>Move thread and kanban search into the title bar</li>
+          <li>Keep thread tabs across kanban switches and restyle tab bar</li>
+          <li>Render reader videos and add active conversation tab close button</li>
+          <li>Copy text via native clipboard from message iframes</li>
+          <li>Keep conversation controls above details pane</li>
+          <li>Keep archived threads in place and the open conversation selected</li>
+          <li>Keep thread hover highlight while context menu is open</li>
+          <li>Fix single-instance launch on Linux snap packages</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-10-01">
       <description>
         <ul>
