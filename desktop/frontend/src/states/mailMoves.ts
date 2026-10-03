@@ -14,8 +14,10 @@ import {
   normalizeMessageId,
   reloadThreadCards,
   removeKanbanThread,
+  completeRemovedThread,
+  releaseRemovedThread,
+  suppressRemovedThread,
   requestThreadReselect,
-  restoreKanbanColumns,
   uniqueThreadItems,
   updateKanbanThread,
 } from './mail'
@@ -94,6 +96,13 @@ function threadIdInFolder(threadId: string, accountId: string | undefined, folde
 // Neighbour of a thread inside the kanban column that holds it (next, or
 // previous if it was last). The chat-view getFilteredThreads list doesn't apply
 // in kanban, where cards live in per-column lists.
+function threadsInPaneColumn(): Message[] {
+  const paneKey = kanban$.paneColumnKey.get()
+  const split = paneKey.indexOf('\n')
+  if (split === -1) return []
+  return kanban$.threads[paneKey.slice(split + 1)].get() ?? []
+}
+
 function kanbanNeighbourThreadId(threadId: string): string {
   for (const threads of Object.values(kanban$.threads.get())) {
     const index = threads.findIndex((thread) => thread.thread_id === threadId)
@@ -101,7 +110,20 @@ function kanbanNeighbourThreadId(threadId: string): string {
     const neighbour = threads[index + 1] ?? threads[index - 1]
     return neighbour?.thread_id ?? ''
   }
-  return ''
+  // The open card is already off the board (a column reload dropped it). Stay
+  // on a card still in that column instead of closing the conversation.
+  return threadsInPaneColumn().find((thread) => thread.thread_id !== threadId)?.thread_id ?? ''
+}
+
+function restoreRemovedThread(current: Message[], previous: Message[], threadId: string): Message[] {
+  const thread = previous.find((item) => item.thread_id === threadId)
+  if (!thread || current.some((item) => item.thread_id === threadId)) return current
+  const positions = new Map(previous.map((item, index) => [item.thread_id, index]))
+  return [...current, thread].sort(
+    (a, b) =>
+      b.date - a.date ||
+      (positions.get(a.thread_id) ?? previous.length) - (positions.get(b.thread_id) ?? previous.length),
+  )
 }
 
 function removeThreadLocally(threadId: string) {
@@ -122,10 +144,12 @@ function removeThreadLocally(threadId: string) {
       const visible = getFilteredThreads()
       const index = visible.findIndex((thread) => thread.thread_id === threadId)
       // Skip over rows of the deleted thread itself — the unified starred folder
-      // can list the same thread once per folder it is starred in.
+      // can list the same thread once per folder it is starred in. When the
+      // open row is already gone (a refresh dropped it mid-burst), stay on the
+      // first row still on screen instead of clearing the conversation.
       const neighbour =
         index === -1
-          ? undefined
+          ? visible.find((item) => item.thread_id !== threadId)
           : (visible.slice(index + 1).find((item) => item.thread_id !== threadId) ??
             visible
               .slice(0, index)
@@ -135,6 +159,7 @@ function removeThreadLocally(threadId: string) {
     }
   }
   const nextThreads = previousThreads.filter((thread) => thread.thread_id !== threadId)
+  const unsuppress = suppressRemovedThread(threadId)
 
   mail$.threads.set(nextThreads)
   mail$.messages.set(previousMessages.filter((message) => message.thread_id !== threadId))
@@ -151,20 +176,63 @@ function removeThreadLocally(threadId: string) {
   }
 
   return {
+    complete: () => completeRemovedThread(threadId),
     rollback: () => {
-      mail$.threads.set(previousThreads)
-      mail$.messages.set(previousMessages)
-      restoreKanbanColumns(previousKanbanThreads)
-      ui$.selectedThread.set(previousSelected)
-      if (previousPaneThreadId === threadId) {
+      unsuppress()
+      // Put this thread back only. Restoring the whole list would resurrect
+      // threads archived after this one started, which is what a fast burst
+      // looks like when an earlier move fails.
+      mail$.threads.set(restoreRemovedThread(mail$.threads.get(), previousThreads, threadId))
+      const currentMessages = mail$.messages.get()
+      const seenMessages = new Set(currentMessages.map((message) => message.id))
+      const missingMessages = previousMessages.filter(
+        (message) => message.thread_id === threadId && !seenMessages.has(message.id),
+      )
+      if (missingMessages.length > 0) mail$.messages.set([...currentMessages, ...missingMessages])
+      for (const [key, columnThreads] of previousKanbanThreads) {
+        if (!columnThreads) continue
+        kanban$.threads[key].set(restoreRemovedThread(kanban$.threads[key].get() ?? [], columnThreads, threadId))
+      }
+      // The reader may already have archived the neighbour. Only come back
+      // here when the selection is still the one this removal chose.
+      if (ui$.selectedThread.get() === nextSelected) ui$.selectedThread.set(previousSelected)
+      if (previousPaneThreadId === threadId && kanban$.paneThreadId.get() === nextSelected) {
         kanban$.paneThreadId.set(previousPaneThreadId)
       }
     },
   }
 }
 
+// One list rewrite for a burst of archives. Each move waits on IMAP for a few
+// seconds and then reloads; letting every one of those land repaints the list
+// out from under the selection the reader has already moved past.
+let backgroundListRefresh: Promise<void> | null = null
+let backgroundListRefreshAgain = false
+
+function coalescedBackgroundListRefresh(): Promise<void> {
+  if (!backgroundListRefresh) backgroundListRefresh = drainBackgroundListRefresh()
+  else backgroundListRefreshAgain = true
+  return backgroundListRefresh
+}
+
+async function drainBackgroundListRefresh() {
+  try {
+    do {
+      backgroundListRefreshAgain = false
+      await loadThreads(false)
+    } while (backgroundListRefreshAgain)
+  } finally {
+    backgroundListRefresh = null
+    if (backgroundListRefreshAgain) {
+      backgroundListRefreshAgain = false
+      void coalescedBackgroundListRefresh()
+    }
+  }
+}
+
 async function refreshThreadLocation(accountId?: string, refresh = false) {
-  await loadThreads(refresh)
+  if (refresh) await loadThreads(true)
+  else await coalescedBackgroundListRefresh()
   const selectedAcc = ui$.selectedAccount.get()
   if (selectedAcc) {
     void loadFolders(selectedAcc, false)
@@ -185,7 +253,7 @@ export async function moveThreadToFolder(
   if (sourceFolder === targetFolderId) return
   const targetThreadId = threadIdInFolder(threadId, sourceThread?.account_id, targetFolderId)
 
-  const { rollback } = removeThreadLocally(threadId)
+  const { rollback, complete } = removeThreadLocally(threadId)
   try {
     const res = await invoke<MovedCopiesResult & MutationResult>('mail.move', {
       thread_id: threadId,
@@ -193,16 +261,20 @@ export async function moveThreadToFolder(
       ...(options.messageIds ? { message_ids: options.messageIds } : {}),
     })
     assertMoveAffected(res)
+    complete()
     applyMutationFolderUnreads(res)
     const copyIds = movedCopyIds(res)
-    await refreshThreadLocation(sourceThread?.account_id, true)
+    // The move already updated the cache. Reloading the first page in place
+    // keeps the threads the reader had scrolled to; replacing the whole list
+    // would drop them and can close the conversation that just became selected.
+    await refreshThreadLocation(sourceThread?.account_id, false)
     if (threadStillListed(threadId)) {
       showToast(t('mail.toast.moveFailedInSameFolder'), 'error')
     } else if (options.undo !== false && sourceFolder && copyIds) {
-      showUndoToast(
-        t('mail.toast.threadMoved'),
-        () => void moveThreadToFolder(targetThreadId, sourceFolder, { undo: false, messageIds: copyIds }),
-      )
+      showUndoToast(t('mail.toast.threadMoved'), () => {
+        releaseRemovedThread(threadId)
+        void moveThreadToFolder(targetThreadId, sourceFolder, { undo: false, messageIds: copyIds })
+      })
     } else {
       showToast(t('mail.toast.threadMoved'))
     }
@@ -239,13 +311,15 @@ export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
   try {
     for (const item of targets) {
       const sourceThread = findLocalThread(item.threadId)
-      rollbacks.push(removeThreadLocally(item.threadId).rollback)
+      const removal = removeThreadLocally(item.threadId)
+      rollbacks.push(removal.rollback)
       const res = await invoke('mail.archive', { thread_id: item.threadId })
       assertMoveAffected(res, 'Archive')
+      removal.complete()
       applyMutationFolderUnreads(res as MutationResult)
       if (sourceThread?.account_id) void refreshAccountFoldersCache(sourceThread.account_id, false)
     }
-    await refreshThreadLocation(undefined, true)
+    await refreshThreadLocation(undefined, false)
     clearBulkSelection()
     showToast(t('mail.toast.archivedCount', { count: targets.length }))
   } catch (error) {
@@ -260,12 +334,14 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
   const rollbacks: Array<() => void> = []
   try {
     for (const item of targets) {
-      rollbacks.push(removeThreadLocally(item.threadId).rollback)
+      const removal = removeThreadLocally(item.threadId)
+      rollbacks.push(removal.rollback)
       const res = await invoke('mail.move', { thread_id: item.threadId, target_folder_id: targetFolderId })
       assertMoveAffected(res)
+      removal.complete()
       applyMutationFolderUnreads(res as MutationResult)
     }
-    await refreshThreadLocation(targets[0]?.accountId, true)
+    await refreshThreadLocation(targets[0]?.accountId, false)
     clearBulkSelection()
     showToast(t('mail.toast.movedCount', { count: targets.length }))
   } catch (error) {
@@ -321,15 +397,17 @@ export async function bulkDeleteSelected(items: BulkSelectionItem[]) {
   const rollbacks: Array<() => void> = []
   try {
     for (const item of targets) {
-      rollbacks.push(removeThreadLocally(item.threadId).rollback)
+      const removal = removeThreadLocally(item.threadId)
+      rollbacks.push(removal.rollback)
       const res = await invoke('mail.delete', {
         thread_id: item.threadId,
         ...(item.folderId ? { folder: item.folderId } : {}),
       })
       assertDeleteAffected(res)
+      removal.complete()
       applyMutationFolderUnreads(res as MutationResult)
     }
-    await refreshThreadLocation(undefined, true)
+    await refreshThreadLocation(undefined, false)
     clearBulkSelection()
     showToast(t('mail.toast.deletedCount', { count: targets.length }))
   } catch (error) {
@@ -342,7 +420,7 @@ export async function archiveThread(threadId: string) {
   if (!threadId) return
   const sourceThread = findLocalThread(threadId)
   const sourceFolder = sourceThread?.folder_id ?? ''
-  const { rollback } = removeThreadLocally(threadId)
+  const { rollback, complete } = removeThreadLocally(threadId)
   try {
     const res = await invoke<{ folder?: string; thread_id?: string } & MovedCopiesResult & MutationResult>(
       'mail.archive',
@@ -351,20 +429,21 @@ export async function archiveThread(threadId: string) {
       },
     )
     assertMoveAffected(res, 'Archive')
+    complete()
     applyMutationFolderUnreads(res)
     const archivedThreadId = res.thread_id ?? threadIdInFolder(threadId, sourceThread?.account_id, res.folder)
     const copyIds = movedCopyIds(res)
-    await refreshThreadLocation(sourceThread?.account_id, true)
+    await refreshThreadLocation(sourceThread?.account_id, false)
     if (threadStillListed(threadId)) {
       showToast(t('mail.toast.archiveFailedInSameFolder'), 'error')
     } else if (sourceFolder && copyIds) {
       // Offer to move it back where it came from. Falls back to a plain toast
       // when the origin folder or the archived copies are unknown (nothing
       // reliable to restore to, or from).
-      showUndoToast(
-        t('mail.toast.archivedCount', { count: 1 }),
-        () => void moveThreadToFolder(archivedThreadId, sourceFolder, { undo: false, messageIds: copyIds }),
-      )
+      showUndoToast(t('mail.toast.archivedCount', { count: 1 }), () => {
+        releaseRemovedThread(threadId)
+        void moveThreadToFolder(archivedThreadId, sourceFolder, { undo: false, messageIds: copyIds })
+      })
     } else {
       showToast(t('mail.toast.archivedCount', { count: 1 }))
     }
@@ -402,7 +481,7 @@ export async function deleteThread(threadId: string, options: { permanent?: bool
     }
   }
 
-  const { rollback } = removeThreadLocally(threadId)
+  const { rollback, complete } = removeThreadLocally(threadId)
 
   try {
     const res = await invoke<
@@ -412,18 +491,19 @@ export async function deleteThread(threadId: string, options: { permanent?: bool
       ...(sourceFolder ? { folder: sourceFolder } : {}),
     })
     assertDeleteAffected(res)
+    complete()
     applyMutationFolderUnreads(res)
     const trashedThreadId = res.thread_id ?? threadIdInFolder(threadId, sourceThread?.account_id, res.trash)
     const copyIds = movedCopyIds(res)
     const canUndoTrashMove = !!(res.thread_id || res.trash) && !!copyIds
-    await refreshThreadLocation(undefined, true)
+    await refreshThreadLocation(undefined, false)
     if (threadStillListed(threadId)) {
       showToast(t('mail.toast.deleteFailedInSameFolder'), 'error')
     } else if (!isDraft && !permanent && !res.permanent && sourceFolder && canUndoTrashMove) {
-      showUndoToast(
-        t('mail.toast.threadMovedToTrash'),
-        () => void moveThreadToFolder(trashedThreadId, sourceFolder, { undo: false, messageIds: copyIds }),
-      )
+      showUndoToast(t('mail.toast.threadMovedToTrash'), () => {
+        releaseRemovedThread(threadId)
+        void moveThreadToFolder(trashedThreadId, sourceFolder, { undo: false, messageIds: copyIds })
+      })
     } else {
       showToast(
         isDraft
