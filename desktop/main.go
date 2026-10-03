@@ -48,6 +48,7 @@ func main() {
 		Width:                    app.window.Width,
 		Height:                   app.window.Height,
 		WindowStartState:         startWindowState(startMaximised),
+		StartHidden:              startWindowHidden,
 		HideWindowOnClose:        hideOnCloseNatively,
 		Frameless:                framelessTitlebar && integrated,
 		EnableDefaultContextMenu: true,
