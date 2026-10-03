@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { CalendarDays, X } from 'lucide-react'
 
 import { Button } from '../button/Button'
@@ -8,16 +9,42 @@ import { useTranslation } from '../../lib/i18n'
 import { fromDateInputValue, toDateInputValue } from '../../lib/date'
 import { tasks$, updateTask, type Task, type TaskList } from '../../states/tasks'
 
+function measureNotes(textarea: HTMLTextAreaElement) {
+  // Reset first so deleting text lets the field shrink to its one-row minimum.
+  textarea.style.height = 'auto'
+  textarea.style.height = `${textarea.scrollHeight}px`
+}
+
 /**
- * The detail pane for one task. Edits save on blur rather than behind a Save
+ * Inline fields for one task. Edits save on blur rather than behind a Save
  * button: a task is a scrap of text, and asking the user to confirm each scrap
  * is more ceremony than the content deserves.
  */
-export function TaskEditor({ task, lists }: { task: Task; lists: TaskList[] }) {
+export function TaskEditor({ task, lists, actions }: { task: Task; lists: TaskList[]; actions?: ReactNode }) {
   const { t } = useTranslation()
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
   const [addingDueDate, setAddingDueDate] = useState(false)
+
+  useLayoutEffect(() => {
+    const textarea = notesRef.current
+    if (textarea) measureNotes(textarea)
+  }, [notes])
+
+  useLayoutEffect(() => {
+    const textarea = notesRef.current
+    if (!textarea) return
+    let width = textarea.clientWidth
+    const observer = new ResizeObserver(() => {
+      // Height changes come from measuring; only width changes need another pass.
+      if (textarea.clientWidth === width) return
+      width = textarea.clientWidth
+      measureNotes(textarea)
+    })
+    observer.observe(textarea)
+    return () => observer.disconnect()
+  }, [])
 
   // Re-seed when the pane switches to a different task, so the fields don't
   // keep showing the previous one's text.
@@ -27,37 +54,49 @@ export function TaskEditor({ task, lists }: { task: Task; lists: TaskList[] }) {
     setAddingDueDate(false)
   }, [task.id])
 
+  function finishEditing() {
+    // Save the focused field before removing it from the row.
+    const active = document.activeElement
+    if (active instanceof HTMLElement) active.blur()
+    tasks$.editingId.set('')
+  }
+
   return (
     <div
-      className="flex flex-col gap-2 border-t border-border px-3 pb-3 pt-2"
+      className="flex min-w-0 flex-col gap-1 py-0.5"
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return
         event.stopPropagation()
-        // Flush the focused field's blur save before unmounting the editor.
-        if (event.target instanceof HTMLElement) event.target.blur()
-        tasks$.editingId.set('')
+        finishEditing()
       }}
     >
-      <input
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        onBlur={() => {
-          if (title.trim() && title !== task.title) void updateTask(task.id, { title })
-          else setTitle(task.title)
-        }}
-        placeholder={t('tasks.titlePlaceholder')}
-        className="w-full rounded-lg bg-app px-2 py-1.5 text-sm text-primary outline-none ring-1 ring-border focus:ring-accent"
-      />
+      <div className="flex min-w-0 items-start gap-1.5">
+        <input
+          autoFocus
+          aria-label={t('tasks.titlePlaceholder')}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={() => {
+            if (title.trim() && title !== task.title) void updateTask(task.id, { title })
+            else setTitle(task.title)
+          }}
+          placeholder={t('tasks.titlePlaceholder')}
+          className="min-w-0 flex-1 bg-transparent text-sm leading-5 text-primary outline-none"
+        />
+        {actions}
+      </div>
 
       <textarea
+        ref={notesRef}
+        aria-label={t('tasks.notesPlaceholder')}
         value={notes}
         onChange={(event) => setNotes(event.target.value)}
         onBlur={() => {
           if (notes !== task.notes) void updateTask(task.id, { notes })
         }}
         placeholder={t('tasks.notesPlaceholder')}
-        rows={2}
-        className="w-full resize-none rounded-lg bg-app px-2 py-1.5 text-sm text-primary outline-none ring-1 ring-border focus:ring-accent"
+        rows={1}
+        className="max-h-32 w-full resize-none overflow-y-auto bg-transparent text-xs leading-4 text-secondary outline-none"
       />
 
       {lists.length > 1 ? (
@@ -108,7 +147,14 @@ export function TaskEditor({ task, lists }: { task: Task; lists: TaskList[] }) {
         ) : (
           <IconButton label={t('tasks.dueDate')} icon={CalendarDays} size="md" onClick={() => setAddingDueDate(true)} />
         )}
-        <Button variant="secondary" size="sm" onClick={() => tasks$.editingId.set('')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          // Keep focus in the field until click: a blur can shrink the notes
+          // textarea and move this button away before the pointer is released.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={finishEditing}
+        >
           {t('buttons.done')}
         </Button>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, closestCenter } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useValue } from '@legendapp/state/react'
@@ -37,6 +37,7 @@ import {
 } from '../../states/tasks'
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
+import { useTaskDragSensors } from './taskDrag'
 
 /**
  * Fixed, like the panel it is modelled on. The thread list and conversation
@@ -68,7 +69,7 @@ export function TasksPanel({ listId }: { listId: string }) {
   const [completedOpen, setCompletedOpen] = useState(false)
   const listButtonRef = useRef<HTMLButtonElement | null>(null)
   const actionsButtonRef = useRef<HTMLButtonElement | null>(null)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const sensors = useTaskDragSensors()
 
   const activeList = lists.find((list) => list.id === listId)
   const open = useMemo(() => items.filter((task) => !task.done), [items])
@@ -180,12 +181,11 @@ export function TasksPanel({ listId }: { listId: string }) {
                   sortable
                   expanded={editingId === task.id}
                   onToggle={(done) => void setTaskDone(task.id, done)}
-                  onOpen={() => tasks$.editingId.set(editingId === task.id ? '' : task.id)}
+                  onOpen={() => tasks$.editingId.set(task.id)}
                   onDelete={() => void deleteTask(task.id)}
                   onOpenMessage={task.thread_id ? () => void openTaskMail(task.thread_id) : undefined}
-                >
-                  <TaskEditor task={task} lists={lists} />
-                </TaskRow>
+                  renderEditor={(actions) => <TaskEditor task={task} lists={lists} actions={actions} />}
+                />
               ))}
             </SortableContext>
           </DndContext>
@@ -215,12 +215,11 @@ export function TasksPanel({ listId }: { listId: string }) {
                   sortable={false}
                   expanded={editingId === task.id}
                   onToggle={(done) => void setTaskDone(task.id, done)}
-                  onOpen={() => tasks$.editingId.set(editingId === task.id ? '' : task.id)}
+                  onOpen={() => tasks$.editingId.set(task.id)}
                   onDelete={() => void deleteTask(task.id)}
                   onOpenMessage={task.thread_id ? () => void openTaskMail(task.thread_id) : undefined}
-                >
-                  <TaskEditor task={task} lists={lists} />
-                </TaskRow>
+                  renderEditor={(actions) => <TaskEditor task={task} lists={lists} actions={actions} />}
+                />
               ))}
             </div>
           ) : null}
