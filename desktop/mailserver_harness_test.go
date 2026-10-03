@@ -2,7 +2,7 @@
 
 package main
 
-// Test harness that runs a real mail server (maddy, via Docker) and the Rust
+// Test harness that runs a real Postfix/Dovecot mail server via Docker and the Rust
 // sidecar so the integration tests can exercise the full IMAP/SMTP/store path.
 // Build the sidecar first: `cargo build --manifest-path ../meron-core/Cargo.toml`,
 // then run with `go test -tags integration .`.
@@ -21,46 +21,25 @@ import (
 )
 
 const (
-	maddyImage    = "foxcpp/maddy:0.8"
-	testPassword  = "testpass"
-	maddyHostname = "maddy.test"
+	mailServerImage = "ghcr.io/docker-mailserver/docker-mailserver:16.0.1"
+	testPassword    = "testpass"
+	mailHostname    = "mail.test"
 )
 
-// Minimal maddy config: IMAP + submission on fixed container ports, TLS off
-// (the sidecar connects with tls:false), local sqlite auth and storage.
-const maddyConf = `hostname maddy.test
-state_dir /data
-runtime_dir /tmp/maddy-run
-
-tls off
-
-auth.pass_table local_authdb {
-    table sql_table {
-        driver sqlite3
-        dsn credentials.db
-        table_name passwords
+// Loopback-only test fixture: plaintext IMAP and authenticated SMTP submission.
+// DMS pre-creates Drafts, Sent, Trash and Junk; add Archive for the same roles
+// used by the app. Filtering is disabled so synthetic messages stay unchanged.
+const dovecotConf = `auth_allow_cleartext = yes
+ssl = no
+namespace inbox {
+    mailbox Archive {
+        auto = subscribe
+        special_use = \Archive
     }
-}
-
-storage.imapsql local_mailboxes {
-    driver sqlite3
-    dsn imapsql.db
-}
-
-imap tcp://0.0.0.0:143 {
-    insecure_auth yes
-    auth &local_authdb
-    storage &local_mailboxes
-}
-
-submission tcp://0.0.0.0:587 {
-    insecure_auth yes
-    auth &local_authdb
-    deliver_to &local_mailboxes
 }
 `
 
-type maddyServer struct {
+type mailServer struct {
 	container string
 	imapPort  int
 	smtpPort  int
@@ -80,7 +59,7 @@ func dockerBin(t *testing.T) string {
 	t.Helper()
 	bin, err := exec.LookPath("docker")
 	if err != nil {
-		t.Skip("docker not found on PATH; skipping maddy integration tests")
+		t.Skip("docker not found on PATH; skipping mail server integration tests")
 	}
 	return bin
 }
@@ -99,78 +78,109 @@ func runCmd(t *testing.T, name string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// startMaddy launches a throwaway maddy container with two test accounts
-// (alice@maddy.test, bob@maddy.test) and waits for the IMAP greeting.
-func startMaddy(t *testing.T) *maddyServer {
+// startMailServer launches a throwaway Postfix/Dovecot container with two
+// accounts (alice@mail.test, bob@mail.test). Each test owns its config and mail.
+func startMailServer(t *testing.T) *mailServer {
+	t.Helper()
+	return startMailServerWithConfig(t, "")
+}
+
+func startMailServerWithConfig(t *testing.T, extraDovecot string) *mailServer {
 	t.Helper()
 	docker := dockerBin(t)
-
-	confPath := filepath.Join(t.TempDir(), "maddy.conf")
-	if err := os.WriteFile(confPath, []byte(maddyConf), 0o644); err != nil {
-		t.Fatalf("write maddy.conf: %v", err)
+	config := t.TempDir()
+	for name, contents := range map[string]string{
+		"postfix-accounts.cf": "alice@" + mailHostname + "|{PLAIN}" + testPassword + "\n" +
+			"bob@" + mailHostname + "|{PLAIN}" + testPassword + "\n",
+		"dovecot.cf": dovecotConf + extraDovecot,
+		"postfix-master.cf": "submission/inet/smtpd_tls_security_level=none\n" +
+			"submission/inet/smtpd_tls_auth_only=no\n",
+	} {
+		if err := os.WriteFile(filepath.Join(config, name), []byte(contents), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
 	}
-
-	server := &maddyServer{imapPort: freePort(t), smtpPort: freePort(t)}
+	server := &mailServer{imapPort: freePort(t), smtpPort: freePort(t)}
 	// The OS can hand back the same ephemeral port after it is released.
 	for server.smtpPort == server.imapPort {
 		server.smtpPort = freePort(t)
 	}
-	// ":Z" relabels the bind mount for SELinux hosts (Fedora etc.); harmless elsewhere.
+	// :Z relabels the bind mount for SELinux hosts; harmless elsewhere.
 	server.container = runCmd(t, docker, "run", "-d", "--rm",
-		"-v", confPath+":/data/maddy.conf:ro,Z",
+		"--hostname", "mail."+mailHostname,
+		"-v", config+":/tmp/docker-mailserver:Z",
 		"-p", fmt.Sprintf("127.0.0.1:%d:143", server.imapPort),
 		"-p", fmt.Sprintf("127.0.0.1:%d:587", server.smtpPort),
-		maddyImage, "run")
+		"-e", "SSL_TYPE=",
+		"-e", "ENABLE_AMAVIS=0",
+		"-e", "ENABLE_SPAMASSASSIN=0",
+		"-e", "ENABLE_CLAMAV=0",
+		"-e", "ENABLE_RSPAMD=0",
+		"-e", "ENABLE_OPENDKIM=0",
+		"-e", "ENABLE_OPENDMARC=0",
+		"-e", "ENABLE_POLICYD_SPF=0",
+		"-e", "ENABLE_FAIL2BAN=0",
+		"-e", "ENABLE_DNSBL=0",
+		"-e", "ENABLE_MTA_STS=0",
+		"-e", "ENABLE_UPDATE_CHECK=0",
+		"-e", "LOG_LEVEL=warn",
+		mailServerImage)
 	t.Cleanup(func() {
 		logs, err := exec.Command(docker, "logs", server.container).CombinedOutput()
 		if err == nil {
-			t.Logf("--- MADDY CONTAINER LOGS ---\n%s\n--- END MADDY LOGS ---", string(logs))
+			t.Logf("mail server logs:\n%s", logs)
 		} else {
-			t.Logf("failed to get maddy logs: %v", err)
+			t.Logf("failed to get mail server logs: %v", err)
 		}
-		out, err := exec.Command(docker, "stop", server.container).CombinedOutput()
+		out, err := exec.Command(docker, "stop", "-t", "1", server.container).CombinedOutput()
 		if err != nil {
 			t.Logf("docker stop %s: %v\n%s", server.container, err, out)
 		}
 	})
-
 	waitForIMAPGreeting(t, server.imapPort, docker, server.container)
-
-	for _, user := range []string{"alice@" + maddyHostname, "bob@" + maddyHostname} {
-		runCmd(t, docker, "exec", server.container, "maddy", "creds", "create", "--password", testPassword, user)
-		runCmd(t, docker, "exec", server.container, "maddy", "imap-acct", "create", user)
-	}
+	waitForSMTPGreeting(t, server.smtpPort, docker, server.container)
 	return server
+}
+
+func waitForSMTPGreeting(t *testing.T, port int, docker, container string) {
+	t.Helper()
+	waitForServerGreeting(t, port, "220 ", docker, container)
 }
 
 func waitForIMAPGreeting(t *testing.T, port int, docker, container string) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	waitForServerGreeting(t, port, "* OK", docker, container)
+}
+
+func waitForServerGreeting(t *testing.T, port int, prefix, docker, container string) {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		if err == nil {
 			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-			buf := make([]byte, 64)
+			buf := make([]byte, 256)
 			n, _ := conn.Read(buf)
 			conn.Close()
-			if strings.HasPrefix(string(buf[:n]), "* OK") {
+			if strings.HasPrefix(string(buf[:n]), prefix) {
 				return
 			}
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
 	logs, _ := exec.Command(docker, "logs", container).CombinedOutput()
-	t.Fatalf("maddy did not become ready on port %d\ncontainer logs:\n%s", port, logs)
+	t.Fatalf("mail server did not become ready on port %d\ncontainer logs:\n%s", port, logs)
 }
 
-// restartMaddy stops and starts the server container, standing in for a mail
+// restartMailServer stops and starts the server container, standing in for a mail
 // server that goes away mid-session (restart, deploy, transient outage). The
 // mailbox state lives in the container filesystem, so it survives.
-func restartMaddy(t *testing.T, server *maddyServer) {
+func restartMailServer(t *testing.T, server *mailServer) {
 	t.Helper()
 	docker := dockerBin(t)
 	runCmd(t, docker, "restart", "-t", "3", server.container)
 	waitForIMAPGreeting(t, server.imapPort, docker, server.container)
+	waitForSMTPGreeting(t, server.smtpPort, docker, server.container)
 }
 
 // startSidecar launches the Rust core against a throwaway profile dir, and
@@ -245,8 +255,8 @@ func (l *eventLog) count(predicate func(sidecarEvent) bool) int {
 	return len(l.match(predicate))
 }
 
-// connectAccount registers an account on the sidecar against the local maddy.
-func connectAccount(t *testing.T, sidecar *Sidecar, server *maddyServer, id, user string) {
+// connectAccount registers an account on the sidecar against the local mail server.
+func connectAccount(t *testing.T, sidecar *Sidecar, server *mailServer, id, user string) {
 	t.Helper()
 	_, err := sidecar.Call("account.connect", map[string]any{
 		"account":   id,
@@ -280,7 +290,7 @@ func callMap(t *testing.T, sidecar *Sidecar, method string, params map[string]an
 	return object
 }
 
-// imapProxy forwards IMAP connections to the maddy container so a test can cut
+// imapProxy forwards IMAP connections to the mail server container so a test can cut
 // the client's live sockets on demand, standing in for a pooled connection the
 // server dropped without telling the client. Cutting it here rather than by
 // restarting or unplugging the container keeps the server itself reachable —

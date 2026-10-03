@@ -17,11 +17,11 @@ import (
 // independent IMAP connection, not the core cache — and then that the undo
 // put back exactly those messages.
 func TestIntegrationUndo(t *testing.T) {
-	server := startMaddy(t)
+	server := startMailServer(t)
 	sidecar, _ := startSidecar(t)
-	connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+	connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 	app := &App{sidecar: sidecar}
-	const user = "bob@maddy.test"
+	const user = "bob@mail.test"
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	// deliver appends a message to bob's INBOX and waits for its cached row.
@@ -88,7 +88,7 @@ func TestIntegrationUndo(t *testing.T) {
 	}
 
 	t.Run("trash then undo restores the message", func(t *testing.T) {
-		messageID := "undo-trash-" + nonce + "@maddy.test"
+		messageID := "undo-trash-" + nonce + "@mail.test"
 		row := deliver(t, "Undo trash "+nonce, messageID)
 
 		res := call(t, "mail.delete", app.mailDelete, map[string]any{"thread_id": threadID(t, row)})
@@ -112,7 +112,7 @@ func TestIntegrationUndo(t *testing.T) {
 		// Moving a conversation out of Trash by its thread key resolves the
 		// cached Trash rows, which the delete must have filled — nothing else
 		// refreshes Trash between the two.
-		messageID := "undo-trash-key-" + nonce + "@maddy.test"
+		messageID := "undo-trash-key-" + nonce + "@mail.test"
 		row := deliver(t, "Undo trash by key "+nonce, messageID)
 
 		res := call(t, "mail.delete", app.mailDelete, map[string]any{"thread_id": threadID(t, row)})
@@ -129,8 +129,8 @@ func TestIntegrationUndo(t *testing.T) {
 	})
 
 	t.Run("undo leaves older conversation mail in trash", func(t *testing.T) {
-		rootID := "undo-root-" + nonce + "@maddy.test"
-		replyID := "undo-reply-" + nonce + "@maddy.test"
+		rootID := "undo-root-" + nonce + "@mail.test"
+		replyID := "undo-reply-" + nonce + "@mail.test"
 		subject := "Undo conversation " + nonce
 		root := deliver(t, subject, rootID)
 		reply := deliver(t, "Re: "+subject, replyID,
@@ -191,7 +191,7 @@ func TestIntegrationUndo(t *testing.T) {
 
 	t.Run("move then undo", func(t *testing.T) {
 		callMap(t, sidecar, "folders.create", map[string]any{"account": "bob", "name": "ITestUndo"})
-		messageID := "undo-move-" + nonce + "@maddy.test"
+		messageID := "undo-move-" + nonce + "@mail.test"
 		row := deliver(t, "Undo move "+nonce, messageID)
 
 		res := call(t, "mail.move", app.mailMove, map[string]any{
@@ -221,7 +221,7 @@ func TestIntegrationUndo(t *testing.T) {
 				"From: Carol <carol@example.net>",
 				"To: " + user,
 				fmt.Sprintf("Subject: %s #%d", subject, i),
-				fmt.Sprintf("Message-ID: <undo-bulk-%d-%s@maddy.test>", i, nonce),
+				fmt.Sprintf("Message-ID: <undo-bulk-%d-%s@mail.test>", i, nonce),
 			}, "bulk"))
 		}
 		callMap(t, sidecar, "messages.recent", map[string]any{"account": "bob", "folder": "INBOX", "refresh": true, "limit": 200})
@@ -255,7 +255,7 @@ func TestIntegrationUndo(t *testing.T) {
 	})
 
 	t.Run("archive then undo", func(t *testing.T) {
-		messageID := "undo-archive-" + nonce + "@maddy.test"
+		messageID := "undo-archive-" + nonce + "@mail.test"
 		row := deliver(t, "Undo archive "+nonce, messageID)
 
 		res := call(t, "mail.archive", app.mailArchive, map[string]any{"thread_id": threadID(t, row)})

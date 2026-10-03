@@ -2,8 +2,8 @@
 
 package main
 
-// End-to-end tests over the real stack: sidecar → SMTP submission → maddy →
-// IMAP fetch → SQLite store. See maddy_harness_test.go for the setup.
+// End-to-end tests over the real stack: sidecar → SMTP submission → mail server →
+// IMAP fetch → SQLite store. See mailserver_harness_test.go for the setup.
 
 import (
 	"bufio"
@@ -163,11 +163,11 @@ func TestIMAPResponseParsing(t *testing.T) {
 }
 
 func TestIntegrationMailFlow(t *testing.T) {
-	server := startMaddy(t)
+	server := startMailServer(t)
 	sidecar, events := startSidecar(t)
 
-	connectAccount(t, sidecar, server, "alice", "alice@maddy.test")
-	connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+	connectAccount(t, sidecar, server, "alice", "alice@mail.test")
+	connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 
 	t.Run("folders", func(t *testing.T) {
 		// folders.list serves the store cache and refreshes in the background,
@@ -184,7 +184,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 			time.Sleep(300 * time.Millisecond)
 		}
 
-		// Not "Archive"/"Sent"/etc — maddy pre-creates the special folders.
+		// Not "Archive"/"Sent"/etc — the mail server pre-creates the special folders.
 		result := callMap(t, sidecar, "folders.create", map[string]any{"account": "alice", "name": "ITestFolder"})
 		if !foldersContain(result, "ITestFolder") {
 			t.Fatalf("folders.create did not return ITestFolder: %v", result)
@@ -212,7 +212,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// mailbox that disappeared so clients can clear nested views.
 		delimiter := folderDelimiter(result, "INBOX")
 		if delimiter == "" {
-			t.Fatal("maddy reported no hierarchy delimiter for INBOX")
+			t.Fatal("mail server reported no hierarchy delimiter for INBOX")
 		}
 		parent := "ITestDeleteTree"
 		child := parent + delimiter + "Child"
@@ -245,12 +245,12 @@ func TestIntegrationMailFlow(t *testing.T) {
 	subject := "Meron integration " + nonce
 	// Bare id (no angle brackets) — the app convention: the frontend mints bare
 	// ids and the backend wraps them when emitting headers.
-	messageID := fmt.Sprintf("itest-%s@maddy.test", nonce)
+	messageID := fmt.Sprintf("itest-%s@mail.test", nonce)
 
 	t.Run("send and receive", func(t *testing.T) {
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    subject,
 			"body":       "hello from the integration test",
 			"message_id": messageID,
@@ -261,8 +261,8 @@ func TestIntegrationMailFlow(t *testing.T) {
 		message := pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
 			return str(m, "subject") == subject
 		})
-		if from := str(message, "from_addr"); from != "alice@maddy.test" {
-			t.Errorf("from_addr = %q, want alice@maddy.test", from)
+		if from := str(message, "from_addr"); from != "alice@mail.test" {
+			t.Errorf("from_addr = %q, want alice@mail.test", from)
 		}
 		if str(message, "thread_key") == "" {
 			t.Error("delivered message has empty thread_key")
@@ -274,7 +274,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// land in the same thread as the original in bob's mailbox.
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":     "alice",
-			"to":          "bob@maddy.test",
+			"to":          "bob@mail.test",
 			"subject":     "Re: " + subject,
 			"body":        "follow-up",
 			"in_reply_to": messageID,
@@ -308,10 +308,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		moveSubject := "Meron integration move " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    moveSubject,
 			"body":       "move me to the integration folder",
-			"message_id": fmt.Sprintf("itest-move-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-move-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send move fixture: %v", err)
 		}
@@ -346,7 +346,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// The rows above came out of the same store the flag write updated, so
 		// check the server too: a STORE that never left the client would look
 		// identical locally.
-		if flags := imapFlags(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", uid); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
+		if flags := imapFlags(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", uid); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
 			t.Fatalf("server flags for INBOX uid %d = %q, want \\Seen and \\Flagged", uid, flags)
 		}
 
@@ -375,7 +375,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		if movedUID == 0 {
 			t.Fatalf("moved message has no uid: %v", moved)
 		}
-		if flags := imapFlags(t, server.imapPort, "bob@maddy.test", testPassword, "ITestFolder", movedUID); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
+		if flags := imapFlags(t, server.imapPort, "bob@mail.test", testPassword, "ITestFolder", movedUID); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
 			t.Fatalf("server flags for ITestFolder uid %d = %q, want \\Seen and \\Flagged", movedUID, flags)
 		}
 	})
@@ -388,10 +388,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		flagFailSubject := "Meron integration flagfail " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    flagFailSubject,
 			"body":       "should stay unread after a failed write",
-			"message_id": fmt.Sprintf("itest-flagfail-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-flagfail-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send flagfail fixture: %v", err)
 		}
@@ -469,10 +469,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		searchBody := "unique-search-token-" + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    searchSubject,
 			"body":       searchBody,
-			"message_id": fmt.Sprintf("itest-search-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-search-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send search fixture: %v", err)
 		}
@@ -509,11 +509,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 	})
 
 	t.Run("draft lifecycle", func(t *testing.T) {
-		draftID := fmt.Sprintf("itest-draft-%s@maddy.test", nonce)
+		draftID := fmt.Sprintf("itest-draft-%s@mail.test", nonce)
 		draftSubject := "Meron integration draft " + nonce
 		if _, err := sidecar.Call("save_draft", map[string]any{
 			"account":  "alice",
-			"to":       "bob@maddy.test",
+			"to":       "bob@mail.test",
 			"subject":  draftSubject,
 			"body":     "draft body",
 			"draft_id": draftID,
@@ -545,10 +545,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// from), and discard_draft with a thread_key must scrub it from the
 		// thread so a cleared reply cannot resurface on the next thread open.
 		quickSubject := "Meron integration quick reply " + nonce
-		quickMessageID := fmt.Sprintf("itest-qr-%s@maddy.test", nonce)
+		quickMessageID := fmt.Sprintf("itest-qr-%s@mail.test", nonce)
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    quickSubject,
 			"body":       "please reply inline",
 			"message_id": quickMessageID,
@@ -569,7 +569,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		draftSubject := "Re: " + quickSubject
 		if _, err := sidecar.Call("save_draft", map[string]any{
 			"account":     "bob",
-			"to":          "alice@maddy.test",
+			"to":          "alice@mail.test",
 			"subject":     draftSubject,
 			"body":        "quick reply draft body",
 			"in_reply_to": quickMessageID,
@@ -623,10 +623,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		attachmentBytes := []byte("hello attachment " + nonce)
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    attachmentSubject,
 			"body":       attachmentBody,
-			"message_id": fmt.Sprintf("itest-attachment-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-attachment-%s@mail.test", nonce),
 			"attachments": []map[string]any{{
 				"filename":  "itest-note.txt",
 				"mime":      "text/plain",
@@ -640,6 +640,31 @@ func TestIntegrationMailFlow(t *testing.T) {
 		header := pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
 			return str(m, "subject") == attachmentSubject
 		})
+		// BODYSTRUCTURE must index the file before the thread is opened.
+		page := callMap(t, sidecar, "messages.recent", map[string]any{
+			"account": "bob", "folder": "INBOX", "refresh": false,
+			"group": true, "attachments": true, "limit": 50,
+		})
+		cards, _ := page["threads"].([]any)
+		found := false
+		for _, row := range cards {
+			card, ok := row.(map[string]any)
+			if !ok || str(card, "subject") != attachmentSubject {
+				continue
+			}
+			files, _ := card["files"].([]any)
+			if len(files) != 1 {
+				t.Fatalf("unopened attachment card files = %v, want one file", files)
+			}
+			file, ok := files[0].(map[string]any)
+			if !ok || str(file, "filename") != "itest-note.txt" || str(file, "mime") != "text/plain" {
+				t.Fatalf("unopened attachment metadata = %v", files)
+			}
+			found = true
+		}
+		if !found {
+			t.Fatalf("attachment filter omitted the unopened thread: %v", page)
+		}
 		threadKey := str(header, "thread_key")
 		if threadKey == "" {
 			t.Fatalf("attachment fixture has empty thread_key: %v", header)
@@ -684,10 +709,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		deleteSubject := "Meron integration delete " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    deleteSubject,
 			"body":       "delete me",
-			"message_id": fmt.Sprintf("itest-delete-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-delete-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send delete fixture: %v", err)
 		}
@@ -723,10 +748,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		emptySubject := "Meron integration empty " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    emptySubject,
 			"body":       "empty me",
-			"message_id": fmt.Sprintf("itest-empty-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-empty-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send empty fixture: %v", err)
 		}
@@ -766,10 +791,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		copySubject := "Meron integration copy " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    copySubject,
 			"body":       "copy me",
-			"message_id": fmt.Sprintf("itest-copy-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-copy-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send copy fixture: %v", err)
 		}
@@ -813,10 +838,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		for i, subj := range []string{readSubjectA, readSubjectB} {
 			if _, err := sidecar.Call("send", map[string]any{
 				"account":    "alice",
-				"to":         "bob@maddy.test",
+				"to":         "bob@mail.test",
 				"subject":    subj,
 				"body":       "unread fixture",
-				"message_id": fmt.Sprintf("itest-markall-%d-%s@maddy.test", i, nonce),
+				"message_id": fmt.Sprintf("itest-markall-%d-%s@mail.test", i, nonce),
 			}); err != nil {
 				t.Fatalf("send markall fixture %d: %v", i, err)
 			}
@@ -852,7 +877,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		found := false
 		for _, item := range contacts {
 			contact, ok := item.(map[string]any)
-			if ok && strings.Contains(str(contact, "addr"), "alice@maddy.test") {
+			if ok && strings.Contains(str(contact, "addr"), "alice@mail.test") {
 				found = true
 				break
 			}
@@ -902,10 +927,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		expungeSubject := "Meron integration expunge " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    expungeSubject,
 			"body":       "delete me from another client",
-			"message_id": fmt.Sprintf("itest-expunge-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-expunge-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send expunge fixture: %v", err)
 		}
@@ -917,17 +942,17 @@ func TestIntegrationMailFlow(t *testing.T) {
 			t.Fatalf("expunge fixture has no uid: %v", message)
 		}
 
-		imapExpunge(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", uid)
+		imapExpunge(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", uid)
 		assertNoMessageInFolder(t, sidecar, "bob", "INBOX", func(m map[string]any) bool {
 			return str(m, "subject") == expungeSubject
 		})
 	})
 
 	t.Run("external flag changes reconcile locally", func(t *testing.T) {
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, _ := startSidecar(t)
-		connectAccount(t, sidecar, server, "alice", "alice@maddy.test")
-		connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, server, "alice", "alice@mail.test")
+		connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		// The reverse direction of the server-truth checks above: another client
@@ -936,10 +961,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		flagSubject := "Meron integration external flags " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    flagSubject,
 			"body":       "change my flags from another client",
-			"message_id": fmt.Sprintf("itest-external-flags-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-external-flags-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send external-flags fixture: %v", err)
 		}
@@ -964,7 +989,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 			t.Fatalf("folder_unread before external flag change = %v, want 1: %v", unreadBefore, page)
 		}
 
-		imapSetFlags(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", uid, true, true)
+		imapSetFlags(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", uid, true, true)
 		updated := pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
 			return str(m, "subject") == flagSubject && boolValue(m, "seen") && boolValue(m, "starred")
 		})
@@ -981,7 +1006,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 			t.Fatalf("folder_unread after external \\Seen = %v, want 0: %v", unread, page)
 		}
 
-		imapSetFlags(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", uid, false, false)
+		imapSetFlags(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", uid, false, false)
 		updated = pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
 			return str(m, "subject") == flagSubject && !boolValue(m, "seen") && !boolValue(m, "starred")
 		})
@@ -1012,11 +1037,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 		firstSubject := "Meron integration uidv first " + nonce
 		secondSubject := "Meron integration uidv second " + nonce
 		for i, subj := range []string{firstSubject, secondSubject} {
-			imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, folder, rawMessage([]string{
+			imapAppend(t, server.imapPort, "bob@mail.test", testPassword, folder, rawMessage([]string{
 				"From: Carol <carol@example.net>",
-				"To: bob@maddy.test",
+				"To: bob@mail.test",
 				"Subject: " + subj,
-				fmt.Sprintf("Message-ID: <itest-uidv-%d-%s@maddy.test>", i, nonce),
+				fmt.Sprintf("Message-ID: <itest-uidv-%d-%s@mail.test>", i, nonce),
 				"Date: " + time.Now().Format(time.RFC1123Z),
 			}, "before the mailbox was recreated"))
 		}
@@ -1025,19 +1050,19 @@ func TestIntegrationMailFlow(t *testing.T) {
 				return str(m, "subject") == subj
 			})
 		}
-		before := imapUIDValidity(t, server.imapPort, "bob@maddy.test", testPassword, folder)
+		before := imapUIDValidity(t, server.imapPort, "bob@mail.test", testPassword, folder)
 
-		imapRecreateFolder(t, server.imapPort, "bob@maddy.test", testPassword, folder)
-		if after := imapUIDValidity(t, server.imapPort, "bob@maddy.test", testPassword, folder); after == before {
-			t.Skipf("maddy reused UIDVALIDITY %d for the recreated folder; nothing to reconcile", after)
+		imapRecreateFolder(t, server.imapPort, "bob@mail.test", testPassword, folder)
+		if after := imapUIDValidity(t, server.imapPort, "bob@mail.test", testPassword, folder); after == before {
+			t.Skipf("mail server reused UIDVALIDITY %d for the recreated folder; nothing to reconcile", after)
 		}
 
 		freshSubject := "Meron integration uidv fresh " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, folder, rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, folder, rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + freshSubject,
-			fmt.Sprintf("Message-ID: <itest-uidv-fresh-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-uidv-fresh-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "after the mailbox was recreated"))
 
@@ -1072,11 +1097,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 
 		baseline := synced()
 		pushedSubject := "Meron integration idle pushed " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, folder, rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, folder, rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + pushedSubject,
-			fmt.Sprintf("Message-ID: <itest-idle-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-idle-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "pushed over IDLE"))
 
@@ -1137,11 +1162,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 		}
 		baseline = synced()
 		quietSubject := "Meron integration idle quiet " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, folder, rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, folder, rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + quietSubject,
-			fmt.Sprintf("Message-ID: <itest-idle-quiet-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-idle-quiet-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "appended after the watch stopped"))
 		if synced() != baseline {
@@ -1191,10 +1216,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		unifiedSubject := "Meron integration unified " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "bob",
-			"to":         "alice@maddy.test",
+			"to":         "alice@mail.test",
 			"subject":    unifiedSubject,
 			"body":       "so alice has inbox mail too",
-			"message_id": fmt.Sprintf("itest-unified-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-unified-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send unified fixture: %v", err)
 		}
@@ -1260,10 +1285,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 	})
 
 	t.Run("unified mark-all-read reports a partial failure", func(t *testing.T) {
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, _ := startSidecar(t)
-		connectAccount(t, sidecar, server, "alice", "alice@maddy.test")
-		connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, server, "alice", "alice@mail.test")
+		connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		// Give both healthy accounts a known unread row, and give a third account
@@ -1273,19 +1298,19 @@ func TestIntegrationMailFlow(t *testing.T) {
 		bobSubject := "Meron integration unified partial bob " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "bob",
-			"to":         "alice@maddy.test",
+			"to":         "alice@mail.test",
 			"subject":    aliceSubject,
 			"body":       "healthy alice unread",
-			"message_id": fmt.Sprintf("itest-unified-partial-alice-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-unified-partial-alice-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send alice partial-failure fixture: %v", err)
 		}
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    bobSubject,
 			"body":       "healthy bob unread",
-			"message_id": fmt.Sprintf("itest-unified-partial-bob-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-unified-partial-bob-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send bob partial-failure fixture: %v", err)
 		}
@@ -1297,7 +1322,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		})
 
 		broken := "itest-unified-broken"
-		connectAccount(t, sidecar, server, broken, "bob@maddy.test")
+		connectAccount(t, sidecar, server, broken, "bob@mail.test")
 		t.Cleanup(func() {
 			if _, err := sidecar.Call("account.remove", map[string]any{"account": broken}); err != nil {
 				t.Logf("remove partial-failure account: %v", err)
@@ -1308,14 +1333,14 @@ func TestIntegrationMailFlow(t *testing.T) {
 		})
 		callMap(t, sidecar, "account.connect", map[string]any{
 			"account":   broken,
-			"email":     "bob@maddy.test",
+			"email":     "bob@mail.test",
 			"host":      "127.0.0.1",
 			"port":      server.imapPort,
 			"tls":       false,
 			"smtp_host": "127.0.0.1",
 			"smtp_port": server.smtpPort,
 			"smtp_tls":  false,
-			"user":      "bob@maddy.test",
+			"user":      "bob@mail.test",
 			"password":  "definitely-not-" + testPassword,
 			"validate":  false,
 		})
@@ -1344,8 +1369,8 @@ func TestIntegrationMailFlow(t *testing.T) {
 			user string
 			uid  uint32
 		}{
-			{"alice@maddy.test", num(aliceMessage, "uid")},
-			{"bob@maddy.test", num(bobMessage, "uid")},
+			{"alice@mail.test", num(aliceMessage, "uid")},
+			{"bob@mail.test", num(bobMessage, "uid")},
 		} {
 			if flags := imapFlags(t, server.imapPort, fixture.user, testPassword, "INBOX", fixture.uid); !strings.Contains(flags, `\Seen`) {
 				t.Fatalf("healthy account %s uid %d was not marked read on the server: %q", fixture.user, fixture.uid, flags)
@@ -1354,10 +1379,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 	})
 
 	t.Run("unified cursors advance each account independently", func(t *testing.T) {
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, _ := startSidecar(t)
-		connectAccount(t, sidecar, server, "alice", "alice@maddy.test")
-		connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, server, "alice", "alice@mail.test")
+		connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		aliceSubject := "Meron integration unified cursor alice " + nonce
@@ -1381,12 +1406,12 @@ func TestIntegrationMailFlow(t *testing.T) {
 			})
 		}
 		for _, fixture := range fixtures {
-			user := fixture.account + "@maddy.test"
+			user := fixture.account + "@mail.test"
 			imapAppend(t, server.imapPort, user, testPassword, "INBOX", rawMessage([]string{
 				"From: Carol <carol@example.net>",
 				"To: " + user,
 				"Subject: " + fixture.subject,
-				fmt.Sprintf("Message-ID: <itest-unified-cursor-%s-%s@maddy.test>", fixture.id, nonce),
+				fmt.Sprintf("Message-ID: <itest-unified-cursor-%s-%s@mail.test>", fixture.id, nonce),
 				"Date: " + fixture.date.Format(time.RFC1123Z),
 			}, "unified cursor fixture"))
 		}
@@ -1467,11 +1492,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// append exercises the decode on the way in.
 		want := "Méron héllo " + nonce
 		encoded := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(want)) + "?="
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + encoded,
-			fmt.Sprintf("Message-ID: <itest-encoded-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-encoded-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 			"MIME-Version: 1.0",
 			"Content-Type: text/plain; charset=utf-8",
@@ -1509,11 +1534,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 			"<p>html part " + nonce + "</p>",
 			"--" + boundary + "--",
 		}, "\n")
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + altSubject,
-			fmt.Sprintf("Message-ID: <itest-alt-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-alt-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 			"MIME-Version: 1.0",
 			`Content-Type: multipart/alternative; boundary="` + boundary + `"`,
@@ -1537,9 +1562,9 @@ func TestIntegrationMailFlow(t *testing.T) {
 	})
 
 	t.Run("nested multipart keeps inline and downloadable attachments", func(t *testing.T) {
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, _ := startSidecar(t)
-		connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		nestedSubject := "Meron integration nested MIME " + nonce
@@ -1580,11 +1605,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 			base64.StdEncoding.EncodeToString(attachmentBytes),
 			"--" + outer + "--",
 		}, "\n")
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + nestedSubject,
-			fmt.Sprintf("Message-ID: <itest-nested-mime-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-nested-mime-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 			"MIME-Version: 1.0",
 			`Content-Type: multipart/mixed; boundary="` + outer + `"`,
@@ -1641,9 +1666,9 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// still be readable: it needs a synthesized thread_key, or the row is
 		// unreachable from the thread view even though the list shows it.
 		bareSubject := "Meron integration no message id " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + bareSubject,
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "no Message-ID header at all"))
@@ -1669,7 +1694,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// emptyFolder is role-gated to Trash *and* Junk (the Trash half and the
 		// INBOX refusal are covered above), and the role has to resolve for a
 		// folder the account never had special-use metadata for.
-		// maddy pre-creates Junk; folders.list serves the cache and refreshes in
+		// The mail server pre-creates Junk; folders.list serves the cache and refreshes in
 		// the background, so poll until the role-bearing row is there to empty.
 		deadline := time.Now().Add(30 * time.Second)
 		for {
@@ -1683,11 +1708,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 			time.Sleep(300 * time.Millisecond)
 		}
 		junkSubject := "Meron integration junk " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "Junk", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "Junk", rawMessage([]string{
 			"From: Spammer <spam@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + junkSubject,
-			fmt.Sprintf("Message-ID: <itest-junk-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-junk-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "junk body"))
 		pollFolder(t, sidecar, "bob", "Junk", func(m map[string]any) bool {
@@ -1699,7 +1724,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 			"folder":  "Junk",
 		})
 		assertNoMessageInFolder(t, sidecar, "bob", "Junk", func(map[string]any) bool { return true })
-		if uids := imapSearchSubject(t, server.imapPort, "bob@maddy.test", testPassword, "Junk", junkSubject); len(uids) != 0 {
+		if uids := imapSearchSubject(t, server.imapPort, "bob@mail.test", testPassword, "Junk", junkSubject); len(uids) != 0 {
 			t.Fatalf("emptying Junk left %v on the server", uids)
 		}
 	})
@@ -1760,9 +1785,9 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// Everything above reads back through the same store that performed the
 		// write, so a write that never left the client would still pass. A second
 		// sidecar on a fresh profile has no cached rows at all: whatever it
-		// reports came from maddy.
+		// reports came from the mail server.
 		cold, _ := startSidecar(t)
-		connectAccount(t, cold, server, "bob", "bob@maddy.test")
+		connectAccount(t, cold, server, "bob", "bob@mail.test")
 
 		moveSubject := "Meron integration move " + nonce
 		row := pollFolder(t, cold, "bob", "ITestFolder", func(m map[string]any) bool {
@@ -1794,17 +1819,17 @@ func TestIntegrationMailFlow(t *testing.T) {
 		defaultSubject := "Meron integration sentcopy default " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    defaultSubject,
 			"body":       "should be filed in Sent by us",
-			"message_id": fmt.Sprintf("itest-sentcopy-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-sentcopy-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send sentcopy fixture: %v", err)
 		}
 		pollFolder(t, sidecar, "alice", "Sent", func(m map[string]any) bool {
 			return str(m, "subject") == defaultSubject
 		})
-		if uids := imapSearchSubject(t, server.imapPort, "alice@maddy.test", testPassword, "Sent", defaultSubject); len(uids) != 1 {
+		if uids := imapSearchSubject(t, server.imapPort, "alice@mail.test", testPassword, "Sent", defaultSubject); len(uids) != 1 {
 			t.Fatalf("Sent holds %d copies of the message, want 1: %v", len(uids), uids)
 		}
 
@@ -1815,10 +1840,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 		suppressedSubject := "Meron integration sentcopy off " + nonce
 		if _, err := sidecar.Call("send", map[string]any{
 			"account":    "alice",
-			"to":         "bob@maddy.test",
+			"to":         "bob@mail.test",
 			"subject":    suppressedSubject,
 			"body":       "should not be filed in Sent",
-			"message_id": fmt.Sprintf("itest-sentcopy-off-%s@maddy.test", nonce),
+			"message_id": fmt.Sprintf("itest-sentcopy-off-%s@mail.test", nonce),
 		}); err != nil {
 			t.Fatalf("send suppressed sentcopy fixture: %v", err)
 		}
@@ -1826,7 +1851,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 		pollInbox(t, sidecar, "bob", func(m map[string]any) bool {
 			return str(m, "subject") == suppressedSubject
 		})
-		if uids := imapSearchSubject(t, server.imapPort, "alice@maddy.test", testPassword, "Sent", suppressedSubject); len(uids) != 0 {
+		if uids := imapSearchSubject(t, server.imapPort, "alice@mail.test", testPassword, "Sent", suppressedSubject); len(uids) != 0 {
 			t.Fatalf("override off still uploaded a Sent copy: %v", uids)
 		}
 	})
@@ -1837,14 +1862,14 @@ func TestIntegrationMailFlow(t *testing.T) {
 		id := "itest-badpass"
 		_, err := sidecar.Call("account.connect", map[string]any{
 			"account":   id,
-			"email":     "alice@maddy.test",
+			"email":     "alice@mail.test",
 			"host":      "127.0.0.1",
 			"port":      server.imapPort,
 			"tls":       false,
 			"smtp_host": "127.0.0.1",
 			"smtp_port": server.smtpPort,
 			"smtp_tls":  false,
-			"user":      "alice@maddy.test",
+			"user":      "alice@mail.test",
 			"password":  "definitely-not-" + testPassword,
 			"validate":  true,
 		})
@@ -1861,10 +1886,10 @@ func TestIntegrationMailFlow(t *testing.T) {
 	})
 
 	t.Run("sync recovers after a server restart", func(t *testing.T) {
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, events := startSidecar(t)
-		connectAccount(t, sidecar, server, "alice", "alice@maddy.test")
-		connectAccount(t, sidecar, server, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, server, "alice", "alice@mail.test")
+		connectAccount(t, sidecar, server, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		// A server that goes away must not need a client restart: reads retry a
@@ -1893,14 +1918,14 @@ func TestIntegrationMailFlow(t *testing.T) {
 		})
 		baseline := synced()
 
-		restartMaddy(t, server)
+		restartMailServer(t, server)
 
 		idleRestartSubject := "Meron integration idle restart " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, folder, rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, folder, rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + idleRestartSubject,
-			fmt.Sprintf("Message-ID: <itest-idle-restart-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-idle-restart-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "caught up after the IDLE connection was severed"))
 		deadline = time.Now().Add(60 * time.Second)
@@ -1923,11 +1948,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 		restartSubject := "Meron integration restart " + nonce
 		// Appended rather than sent: SMTP submission is a write path, and writes
 		// deliberately do not retry a pooled connection.
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + restartSubject,
-			fmt.Sprintf("Message-ID: <itest-restart-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-restart-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "delivered after the restart"))
 
@@ -1967,22 +1992,22 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// flag never reached the server and the next sync pulled the message
 		// back as unread. The SELECT now runs as a retryable preflight, ahead
 		// of the STORE that must not be replayed.
-		server := startMaddy(t)
+		server := startMailServer(t)
 		sidecar, _ := startSidecar(t)
-		// The account talks to maddy through a proxy the test can cut, so the
+		// The account talks to the mail server through a proxy the test can cut, so the
 		// pooled socket can be killed without taking the server down with it.
 		proxy := startIMAPProxy(t, server.imapPort)
 		proxied := *server
 		proxied.imapPort = proxy.port()
-		connectAccount(t, sidecar, &proxied, "bob", "bob@maddy.test")
+		connectAccount(t, sidecar, &proxied, "bob", "bob@mail.test")
 		nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 		staleSubject := "Meron integration stale pool " + nonce
-		imapAppend(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", rawMessage([]string{
+		imapAppend(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", rawMessage([]string{
 			"From: Carol <carol@example.net>",
-			"To: bob@maddy.test",
+			"To: bob@mail.test",
 			"Subject: " + staleSubject,
-			fmt.Sprintf("Message-ID: <itest-stale-pool-%s@maddy.test>", nonce),
+			fmt.Sprintf("Message-ID: <itest-stale-pool-%s@mail.test>", nonce),
 			"Date: " + time.Now().Format(time.RFC1123Z),
 		}, "flagged over a pooled connection the server dropped"))
 
@@ -2023,7 +2048,7 @@ func TestIntegrationMailFlow(t *testing.T) {
 
 		// Server truth, not the local store: a STORE that never left the
 		// client would look identical in messages.recent.
-		if flags := imapFlags(t, server.imapPort, "bob@maddy.test", testPassword, "INBOX", uid); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
+		if flags := imapFlags(t, server.imapPort, "bob@mail.test", testPassword, "INBOX", uid); !strings.Contains(flags, `\Seen`) || !strings.Contains(flags, `\Flagged`) {
 			t.Fatalf("server flags for INBOX uid %d = %q, want \\Seen and \\Flagged", uid, flags)
 		}
 	})
@@ -2035,11 +2060,11 @@ func TestIntegrationMailFlow(t *testing.T) {
 		// still classify as outgoing purely from its Sent-folder provenance.
 		externalSubject := "Meron integration external sent " + nonce
 		raw := fmt.Sprintf(
-			"From: Alice Alias <alice-alias@example.net>\r\nTo: bob@maddy.test\r\nSubject: %s\r\n"+
-				"Message-ID: <itest-external-%s@maddy.test>\r\nDate: %s\r\n\r\n"+
+			"From: Alice Alias <alice-alias@example.net>\r\nTo: bob@mail.test\r\nSubject: %s\r\n"+
+				"Message-ID: <itest-external-%s@mail.test>\r\nDate: %s\r\n\r\n"+
 				"sent from another client\r\n",
 			externalSubject, nonce, time.Now().Format(time.RFC1123Z))
-		imapAppend(t, server.imapPort, "alice@maddy.test", testPassword, "Sent", []byte(raw))
+		imapAppend(t, server.imapPort, "alice@mail.test", testPassword, "Sent", []byte(raw))
 
 		// The copy must reach the local store without Sent ever being opened:
 		// an INBOX refresh piggybacks a Sent envelope sync (messages.recent
