@@ -636,6 +636,42 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun threadActionLocationUsesTopLevelFieldsWhenChangeComesFirst() {
+        val location =
+            parseThreadActionLocationResponse(
+                """{"change":{"folder":"INBOX","permanent":true,"thread_id":"a#INBOX#t1"},"folder":"Archive","moved":1,"ok":true,"permanent":false,"thread_id":"a#Archive#t1"}""",
+            )
+
+        assertEquals("a#Archive#t1", location.threadId)
+        assertEquals("Archive", location.folder)
+        assertFalse(location.permanent)
+    }
+
+    @Test
+    fun permanentDeleteHasNoDestinationDespiteTheSourceIdInsideChange() {
+        val location =
+            parseThreadActionLocationResponse(
+                """{"change":{"source_folder":"Trash","thread_id":"a#Trash#t1"},"deleted":1,"ok":true,"permanent":true}""",
+            )
+
+        assertEquals("", location.threadId)
+        assertEquals("", location.folder)
+        assertTrue(location.permanent)
+    }
+
+    @Test
+    fun nestedLocationFieldsAndEscapedStringsAreSkipped() {
+        val location =
+            parseThreadActionLocationResponse(
+                """ {"change":{"nested":[{"trash":"Wrong","thread_id":"a#Wrong#t1"}],"text":"escaped \\\" } , \\\"thread_id\\\": \\\"wrong\\\""},"ok":true,"trash":"Trash"} """,
+            )
+
+        assertEquals("", location.threadId)
+        assertEquals("Trash", location.folder)
+        assertFalse(location.permanent)
+    }
+
+    @Test
     fun parsesThreadActionLocationFromDeleteTrashResponse() {
         val location =
             parseThreadActionLocationResponse(

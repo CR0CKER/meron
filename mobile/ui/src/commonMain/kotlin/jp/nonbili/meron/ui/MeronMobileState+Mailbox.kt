@@ -70,7 +70,7 @@ private fun MeronMobileState.cacheVisibleMailbox() {
                 MailboxLoadResult(
                     folders = coreFolders,
                     folder = folderId,
-                    threads = withLocalDraftFlags(coreThreads),
+                    threads = withLocalDraftFlags(threadRemovalGuard.filter(coreThreads)),
                     nextCursor = mailboxCursor,
                     accountCursors = mailboxAccountCursors,
                     pageDepth = mailboxPageDepth,
@@ -89,7 +89,7 @@ private fun MeronMobileState.restoreCachedMailbox(
         foldersByAccount = foldersByAccount + reconcileFolderUnread(cached.folders, folderReadGuard.version).groupBy { it.accountId }
     }
     selectedCoreFolder = cached.folder
-    coreThreads = withLocalDraftFlags(cached.threads)
+    coreThreads = withLocalDraftFlags(threadRemovalGuard.filter(cached.threads))
     visibleMailboxKey = key
     mailboxCursor = cached.nextCursor
     mailboxAccountCursors = cached.accountCursors
@@ -315,7 +315,7 @@ internal fun MeronMobileState.syncCoreThreads(
         "MailLoad",
         "sync start account=$accountId folder=$requestedFolder accounts=${selectedAccounts.size} syncFirst=$syncFirst limit=$syncLimit listLimit=$listLimit query=${query.isNotBlank()} filter=${filter.protocolValue()}",
     )
-    scope.launch {
+    scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
@@ -396,7 +396,7 @@ internal fun MeronMobileState.syncCoreThreads(
                         result.copy(
                             folders = result.folders,
                             folder = result.folder,
-                            threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(result.threads)),
+                            threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(read.filter(result.threads))),
                             nextCursor = result.nextCursor,
                             accountCursors = result.accountCursors,
                             pageDepth = readDepth,
@@ -421,7 +421,7 @@ internal fun MeronMobileState.syncCoreThreads(
             val folder = result.folder
             selectedCoreFolder = folder
             saveLastMailLocation(prefs, accountId, folder)
-            val parsedThreads = withLocalDraftFlags(withoutLocallyDiscardedThreads(result.threads))
+            val parsedThreads = withLocalDraftFlags(withoutLocallyDiscardedThreads(read.filter(result.threads)))
             coreThreads = parsedThreads
             visibleMailboxKey = resultKey
             mailboxCursor = result.nextCursor
@@ -649,7 +649,7 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
     val selectedAccounts = pageableCoreAccounts()
     if (selectedAccounts.isEmpty()) return
     loadingMoreThreads = true
-    scope.launch {
+    scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
@@ -686,8 +686,8 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
             }
             val existingIds = coreThreads.map { it.id }.toSet()
-            val appended = withLocalDraftFlags(result.threads).filterNot { it.id in existingIds }
-            coreThreads = (coreThreads + appended).sortedByDescending { it.dateEpochSeconds }
+            val appended = withLocalDraftFlags(read.filter(result.threads)).filterNot { it.id in existingIds }
+            coreThreads = read.filter(coreThreads + appended).sortedByDescending { it.dateEpochSeconds }
             mailboxCursor = result.nextCursor
             mailboxAccountCursors = result.accountCursors
             // One more page is on screen, so event-driven reloads have to re-read

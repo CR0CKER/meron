@@ -63,9 +63,9 @@ data class ThreadActionLocation(
 
 fun parseThreadActionLocationResponse(responseJson: String): ThreadActionLocation =
     ThreadActionLocation(
-        threadId = responseJson.findJsonStringProperty("thread_id").orEmpty(),
-        folder = responseJson.findJsonStringProperty("folder") ?: responseJson.findJsonStringProperty("trash").orEmpty(),
-        permanent = responseJson.findJsonBooleanProperty("permanent") ?: false,
+        threadId = responseJson.findJsonStringProperty("thread_id", topLevelOnly = true).orEmpty(),
+        folder = responseJson.findJsonStringProperty("folder", topLevelOnly = true) ?: responseJson.findJsonStringProperty("trash", topLevelOnly = true).orEmpty(),
+        permanent = responseJson.findJsonBooleanProperty("permanent", topLevelOnly = true) ?: false,
     )
 
 fun parseAllocatedMessageId(responseJson: String): String = responseJson.findJsonStringProperty("message_id").orEmpty()
@@ -790,20 +790,45 @@ private fun parseTaskObject(item: String): TaskSummary? {
     )
 }
 
-private fun String.findJsonStringProperty(name: String): String? {
-    val value = findJsonPropertyValue(name) ?: return null
+private fun String.findJsonStringProperty(
+    name: String,
+    topLevelOnly: Boolean = false,
+): String? {
+    val value = (if (topLevelOnly) findTopLevelJsonPropertyValue(name) else findJsonPropertyValue(name)) ?: return null
     if (!value.startsWith('"')) return null
     return value.readJsonString(0).value
 }
 
-private fun String.findJsonBooleanProperty(name: String): Boolean? =
-    when (findJsonPropertyValue(name)) {
+private fun String.findJsonBooleanProperty(
+    name: String,
+    topLevelOnly: Boolean = false,
+): Boolean? =
+    when (if (topLevelOnly) findTopLevelJsonPropertyValue(name) else findJsonPropertyValue(name)) {
         "true" -> true
         "false" -> false
         else -> null
     }
 
 private fun String.findJsonLongProperty(name: String): Long? = findJsonPropertyValue(name)?.toLongOrNull()
+
+// Mutation responses also contain change.thread_id, which identifies the
+// source. The action's location fields belong to the outer object only.
+private fun String.findTopLevelJsonPropertyValue(name: String): String? {
+    var cursor = skipWhitespace(0)
+    if (getOrNull(cursor) != '{') return null
+    cursor = skipWhitespace(cursor + 1)
+    while (cursor < length && this[cursor] != '}') {
+        val key = readJsonString(cursor)
+        cursor = skipWhitespace(key.nextIndex)
+        require(getOrNull(cursor) == ':') { "Expected JSON property value" }
+        val value = readJsonValue(skipWhitespace(cursor + 1))
+        if (key.value == name) return value.value
+        cursor = skipWhitespace(value.nextIndex)
+        if (getOrNull(cursor) != ',') return null
+        cursor = skipWhitespace(cursor + 1)
+    }
+    return null
+}
 
 private fun String.findJsonPropertyValue(name: String): String? {
     val key = name.jsonString()

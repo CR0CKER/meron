@@ -17,6 +17,15 @@ import kotlinx.coroutines.withContext
 
 private fun List<FolderSummary>.hasOnlyBootstrapInbox(): Boolean = size == 1 && first().name.equals(INBOX_FOLDER, ignoreCase = true)
 
+// These moves remove rows on success. A read while the move was pending may
+// already have hidden the source row, so a failure needs a fresh cache read.
+private fun MeronMobileState.reloadFailedMoveSource(thread: ThreadSummary) {
+    if (selectedCoreAccountId == thread.accountId || selectedCoreAccountId == UNIFIED_ACCOUNT_ID) {
+        syncCoreThreads(syncFirst = false)
+    }
+    refreshKanbanColumnsForAccount(thread.accountId)
+}
+
 internal fun MeronMobileState.ensureThreadActionFolders(
     thread: ThreadSummary,
     includeAllMailAccounts: Boolean,
@@ -96,6 +105,7 @@ internal fun MeronMobileState.moveThreadToFolder(
     val kanbanBefore = kanbanColumns
     val selectedBefore = selectedCoreThread
     val messagesBefore = messages
+    val removal = suppressRemovedThread(thread.id)
     // Remove the row optimistically, but keep an open conversation selected
     // until the move succeeds. Clearing it here makes the thread-route fallback
     // pop immediately, then the success callback pops the origin route too.
@@ -114,7 +124,9 @@ internal fun MeronMobileState.moveThreadToFolder(
                     )
                 },
             )
-        }.onSuccess {
+        }.onSuccess { response ->
+            removal.complete()
+            releaseMovedThread(response)
             if (selectedCoreThread?.id == thread.id) {
                 selectedCoreThread = null
                 messages = emptyList()
@@ -122,9 +134,10 @@ internal fun MeronMobileState.moveThreadToFolder(
             status = "Move complete"
             onMoved()
         }.onFailure {
+            removal.rollback()
             Log.w("Mail", "move thread failed", it)
-            coreThreads = threadsBefore
-            kanbanColumns = kanbanBefore
+            coreThreads = removal.filter(threadsBefore)
+            kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal.filter(state.threads)) }
             selectedCoreThread = selectedBefore
             messages = messagesBefore
             status = "Move failed: ${it.message}"
@@ -194,6 +207,7 @@ internal fun MeronMobileState.createFolderAndMoveThread(
         return
     }
     status = "Creating folder..."
+    val removal = suppressRemovedThread(thread.id)
     scope.launch {
         val folderReadVersion = folderReadGuard.version
         runCatching {
@@ -208,12 +222,15 @@ internal fun MeronMobileState.createFolderAndMoveThread(
                 if (created.equals(thread.folder, ignoreCase = true)) {
                     throw IllegalStateException("Already in ${createdFolder?.displayName ?: trimmed}.")
                 }
-                withManagedGoogleAuth(client, thread.accountId) {
-                    client.move(MoveThreadParams(threadId = thread.id, targetFolderId = created))
-                }
-                folders to created
+                val response =
+                    withManagedGoogleAuth(client, thread.accountId) {
+                        requireCoreOk(client.move(MoveThreadParams(threadId = thread.id, targetFolderId = created)))
+                    }
+                folders to response
             }
-        }.onSuccess { (folders, _) ->
+        }.onSuccess { (folders, response) ->
+            removal.complete()
+            releaseMovedThread(response)
             foldersByAccount = foldersByAccount + (account.id to reconcileFolderUnread(folders, folderReadVersion))
             removeThreadEverywhere(thread.id)
             if (selectedCoreThread?.id == thread.id) {
@@ -223,6 +240,8 @@ internal fun MeronMobileState.createFolderAndMoveThread(
             status = "Folder created and move complete"
             onMoved()
         }.onFailure {
+            removal.rollback()
+            reloadFailedMoveSource(thread)
             status = "Create folder failed: ${it.message}"
         }
     }
@@ -246,18 +265,25 @@ internal fun MeronMobileState.moveThreadToColumn(
             status = "RSS feeds can only move to RSS accounts."
             return
         }
+        val removal = suppressRemovedThread(thread.id)
         scope.launch {
             runCatching {
                 withContext(ioDispatcher) {
-                    MobileMailCommandClient(core).moveRssFeed(
-                        MoveRssFeedParams(threadId = thread.id, targetAccountId = target.accountId),
+                    requireCoreOk(
+                        MobileMailCommandClient(core).moveRssFeed(
+                            MoveRssFeedParams(threadId = thread.id, targetAccountId = target.accountId),
+                        ),
                     )
                 }
-            }.onSuccess {
+            }.onSuccess { response ->
+                removal.complete()
+                releaseMovedThread(response)
                 removeThreadEverywhere(thread.id)
                 loadKanbanColumn(target, refresh = false)
                 status = "Move complete"
             }.onFailure {
+                removal.rollback()
+                reloadFailedMoveSource(thread)
                 status = "Move failed: ${it.message}"
             }
         }
@@ -267,18 +293,25 @@ internal fun MeronMobileState.moveThreadToColumn(
         status = "Mail threads can't move into RSS feeds."
         return
     }
+    val removal = suppressRemovedThread(thread.id)
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
-                MobileMailCommandClient(core).move(
-                    MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId),
+                requireCoreOk(
+                    MobileMailCommandClient(core).move(
+                        MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId),
+                    ),
                 )
             }
-        }.onSuccess {
+        }.onSuccess { response ->
+            removal.complete()
+            releaseMovedThread(response)
             removeThreadEverywhere(thread.id)
             loadKanbanColumn(target, refresh = false)
             status = "Move complete"
         }.onFailure {
+            removal.rollback()
+            reloadFailedMoveSource(thread)
             status = "Move failed: ${it.message}"
         }
     }

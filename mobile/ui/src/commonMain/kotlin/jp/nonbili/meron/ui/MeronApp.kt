@@ -612,7 +612,7 @@ private fun MeronMobileScreenContent(
                             status = coreUnavailableMessage
                             return@onSuccess
                         }
-                        scope.launch {
+                        scope.launchThreadListRead(threadRemovalGuard) { read ->
                             runCatching {
                                 withContext(ioDispatcher) {
                                     val client = MobileMailCommandClient(core)
@@ -634,7 +634,7 @@ private fun MeronMobileScreenContent(
                             }.onSuccess { (importJson, foldersJson, threadsJson) ->
                                 val imported = parseOpmlImportCountResponse(importJson)
                                 coreFolders = parseFolderListResponse(foldersJson)
-                                coreThreads = withLocalDraftFlags(parseThreadListResponse(threadsJson))
+                                coreThreads = withLocalDraftFlags(read.filter(parseThreadListResponse(threadsJson)))
                                 selectedCoreFolder = INBOX_FOLDER
                                 visibleMailboxKey =
                                     mailboxCacheKey(accountId, INBOX_FOLDER, mailSearch, mailFilter, mailAttachmentsOnly)

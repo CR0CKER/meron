@@ -6,14 +6,18 @@ import jp.nonbili.meron.shared.CoreEvent
 import jp.nonbili.meron.shared.CoreEventStream
 import jp.nonbili.meron.shared.MeronCore
 import jp.nonbili.meron.shared.MobileCommand
+import jp.nonbili.meron.shared.ThreadSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 
 /**
  * Two reloads of one Kanban column can be out at once — the Sent copy event's
@@ -45,6 +49,302 @@ class KanbanColumnLoadOrderTest {
             assertFalse(card?.hasDraft ?: true)
             assertFalse(state.kanbanColumns[key]?.loading ?: true)
         }
+
+    @Test
+    fun archiveCannotBeRestoredByAnOlderMailboxReload() = removalSurvivesLateRead(kanban = false, loadMore = false)
+
+    @Test
+    fun archiveCannotBeRestoredByAnOlderColumnReload() = removalSurvivesLateRead(kanban = true, loadMore = false)
+
+    @Test
+    fun deleteCannotBeRestoredByOlderMailboxPagination() = removalSurvivesLateRead(kanban = false, loadMore = true)
+
+    @Test
+    fun moveCannotBeRestoredByOlderColumnPagination() = removalSurvivesLateRead(kanban = true, loadMore = true)
+
+    @Test
+    fun failedArchiveRestoresRowsAndReleasesTheOlderRead() = removalSurvivesLateRead(kanban = false, loadMore = false, actionFails = true)
+
+    @Test
+    fun failedColumnMoveReloadsASourceRowHiddenByAPendingRead() =
+        runBlocking {
+            val childScope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+            try {
+                val core = GatedCore(gateActions = true, actionFails = true)
+                val state = state(core, childScope)
+                val thread = ThreadSummary(id = "a:INBOX:t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+                val column = KanbanColumnSpec(accountId = "a", folderId = "INBOX")
+                val key = kanbanColumnKey(column)
+                state.kanbanBoards = listOf(KanbanBoardSpec(id = "board", name = "Board", columns = listOf(column)))
+                state.activeKanbanBoardId = "board"
+                state.kanbanColumns = mapOf(key to KanbanColumnState(threads = listOf(thread)))
+                state.loadKanbanColumn(column)
+                waitUntil { core.threadListCalls == 1 }
+                state.moveThreadToColumn(thread, KanbanColumnSpec(accountId = "a", folderId = "Archive"))
+                waitUntil { core.actionCalls == 1 }
+                core.gate.complete(Unit)
+                waitUntil { state.kanbanColumns[key]?.loading == false }
+                assertEquals(emptyList(), state.kanbanColumns[key]?.threads)
+                core.actionGate.complete(Unit)
+                waitUntil { state.kanbanColumns[key]?.threads?.isNotEmpty() == true && !state.syncing }
+                assertEquals(
+                    thread.id,
+                    state.kanbanColumns[key]
+                        ?.threads
+                        ?.single()
+                        ?.id,
+                )
+                assertEquals(thread.id, state.coreThreads.single().id)
+            } finally {
+                childScope.cancel()
+            }
+        }
+
+    @Test
+    fun notificationMailboxCannotRestoreAnArchivedThread() = removalSurvivesLateRead(kanban = false, loadMore = false, notification = true)
+
+    @Test
+    fun aCompletedColumnMoveDoesNotReleaseAnOverlappingArchive() =
+        runBlocking {
+            val childScope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+            try {
+                val core = GatedCore()
+                val moveGate = CompletableDeferred<Unit>()
+                val archiveGate = CompletableDeferred<Unit>()
+                core.actionGates[MobileCommand.Move] = moveGate
+                core.actionGates[MobileCommand.Archive] = archiveGate
+                val state = state(core, childScope)
+                val thread = ThreadSummary(id = "a:INBOX:t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+                state.coreThreads = listOf(thread)
+                state.moveThreadToColumn(thread, KanbanColumnSpec(accountId = "a", folderId = "Archive"))
+                state.archiveOrRemove(thread)
+                waitUntil { core.actionCalls == 2 }
+                moveGate.complete(Unit)
+                waitUntil { state.status == "Move complete" }
+                // Begin a mailbox read after the first mutation has completed.
+                state.openNotificationThread(NotificationThreadTarget(accountId = "a", folder = "INBOX"))
+                waitUntil { core.threadListCalls >= 2 }
+                waitUntil { !state.syncing }
+                assertEquals(emptyList(), state.coreThreads)
+                archiveGate.complete(Unit)
+                waitUntil { state.threadRemovalGuard.filter(listOf(thread)).isNotEmpty() }
+                core.gate.complete(Unit)
+                waitUntil { state.kanbanColumns.values.none { it.loading } }
+            } finally {
+                childScope.cancel()
+            }
+        }
+
+    @Test
+    fun cachedMailboxesRetainTheirOtherRowsAndCursorsAfterRemoval() = checkCachedRemoval(success = true)
+
+    @Test
+    fun overlappingFailuresRestoreCachedRowsAfterAnInterveningRead() = checkCachedRemoval(success = false)
+
+    private fun checkCachedRemoval(success: Boolean) =
+        runBlocking {
+            val state = state(GatedCore(), this)
+            val thread = ThreadSummary(id = "a:INBOX:t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+            val other = thread.copy(id = "a:INBOX:t2", dateEpochSeconds = 2)
+            val keys = listOf(mailboxCacheKey("a", "INBOX", "", FilterMode.All), mailboxCacheKey(UNIFIED_ACCOUNT_ID, "INBOX", "", FilterMode.All))
+            val cached = MailboxLoadResult(emptyList(), "INBOX", listOf(other, thread), nextCursor = "older", pageDepth = 100)
+            state.mailboxCache = keys.associateWith { cached }
+            val first = state.suppressRemovedThread(thread.id)
+            val second = state.suppressRemovedThread(thread.id)
+            // Another read caches only the visible rows while both writes are out.
+            state.mailboxCache = keys.associateWith { cached.copy(threads = listOf(other)) }
+            if (success) first.complete() else first.rollback()
+            second.rollback()
+            keys.forEach { key ->
+                assertEquals(if (success) listOf(other) else listOf(other, thread), state.mailboxCache[key]?.threads)
+                assertEquals("older", state.mailboxCache[key]?.nextCursor)
+                assertEquals(100, state.mailboxCache[key]?.pageDepth)
+            }
+        }
+
+    @Test
+    fun manualMoveBackReleasesTheDestinationInASlowMailboxRead() =
+        runBlocking {
+            val childScope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+            try {
+                val core = GatedCore()
+                val state = state(core, childScope)
+                val thread = ThreadSummary(id = "a:INBOX:t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+                state.coreThreads = listOf(thread)
+                state.syncCoreThreads(syncFirst = false)
+                waitUntil { core.threadListCalls == 1 }
+                var moves = 0
+                state.moveThreadToFolder(thread, "Archive") { moves++ }
+                waitUntil { moves == 1 }
+                state.moveThreadToFolder(thread.copy(id = "a:Archive:t1", folder = "Archive"), "INBOX") { moves++ }
+                waitUntil { moves == 2 }
+                core.gate.complete(Unit)
+                waitUntil { !state.syncing }
+                assertEquals(thread.id, state.coreThreads.single().id)
+            } finally {
+                childScope.cancel()
+            }
+        }
+
+    @Test
+    fun emptyFolderKeepsUnloadedRowsOutOfAnOlderMailboxRead() =
+        runBlocking {
+            val childScope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+            try {
+                val core = GatedCore(gateActions = true, emptyAfterActions = true, listedFolder = "Trash")
+                val state = state(core, childScope)
+                state.selectedCoreFolder = "Trash"
+                state.syncCoreThreads(syncFirst = false)
+                waitUntil { core.threadListCalls == 1 }
+                state.emptyMailFolder("a", "Trash")
+                waitUntil { core.actionCalls == 1 }
+                core.gate.complete(Unit)
+                waitUntil { !state.syncing }
+                assertEquals(emptyList(), state.coreThreads)
+                core.actionGate.complete(Unit)
+                waitUntil { core.threadListCalls == 2 && !state.syncing }
+                assertEquals(emptyList(), state.coreThreads)
+            } finally {
+                childScope.cancel()
+            }
+        }
+
+    @Test
+    fun permanentDeleteCannotReleaseItsSourceIdFromChange() = removalSurvivesLateRead(kanban = false, loadMore = true, permanentDelete = true)
+
+    @Test
+    fun undoMovesFromTheTopLevelDestinationInsteadOfTheChangeSource() =
+        runBlocking {
+            val core = GatedCore()
+            val state = state(core, this)
+            val thread = ThreadSummary(id = "a#INBOX#t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+            state.restoreThread(
+                thread,
+                listOf(thread),
+                emptyMap(),
+                """{"change":{"source_folder":"INBOX","thread_id":"a#INBOX#t1"},"folder":"Archive","moved":1,"ok":true,"thread_id":"a#Archive#t1"}""",
+            )
+            waitUntil { state.status == "Restored" }
+            val (command, payload) = core.actionRequests.single()
+            assertEquals(MobileCommand.Move, command)
+            assertEquals("a#Archive#t1", payload.jsonStringValue("thread_id"))
+            assertEquals("INBOX", payload.jsonStringValue("target_folder_id"))
+            assertEquals(listOf(thread), state.coreThreads)
+        }
+
+    @Test
+    fun permanentDeleteWithOnlyAChangeSourceDoesNotOfferUndo() =
+        runBlocking {
+            val core = GatedCore()
+            val state = state(core, this)
+            val thread = ThreadSummary(id = "a#Trash#t1", accountId = "a", folder = "Trash", subject = "Hello", sender = "Ada")
+            state.restoreThread(
+                thread,
+                listOf(thread),
+                emptyMap(),
+                """{"change":{"source_folder":"Trash","thread_id":"a#Trash#t1"},"deleted":1,"ok":true,"permanent":true}""",
+            )
+            assertEquals("Undo unavailable", state.status)
+            assertEquals(emptyList(), core.actionRequests)
+            assertEquals(emptyList(), state.coreThreads)
+        }
+
+    @Test
+    fun cacheRollbackLeavesUnaffectedMailboxOrderAndInstanceAlone() =
+        runBlocking {
+            val state = state(GatedCore(), this)
+            val thread = ThreadSummary(id = "a:INBOX:t1", accountId = "a", folder = "INBOX", subject = "Hello", sender = "Ada")
+            val older = thread.copy(id = "a:Archive:older", folder = "Archive", dateEpochSeconds = 1)
+            val newer = older.copy(id = "a:Archive:newer", dateEpochSeconds = 2)
+            val affectedKey = mailboxCacheKey("a", "INBOX", "", FilterMode.All)
+            val untouchedKey = mailboxCacheKey("a", "Archive", "", FilterMode.All)
+            val unaffected = MailboxLoadResult(emptyList(), "Archive", listOf(older, newer))
+            state.mailboxCache =
+                mapOf(
+                    affectedKey to MailboxLoadResult(emptyList(), "INBOX", listOf(thread)),
+                    untouchedKey to unaffected,
+                )
+            val removal = state.suppressRemovedThread(thread.id)
+            removal.rollback()
+            assertSame(unaffected, state.mailboxCache[untouchedKey])
+            assertEquals(listOf(older, newer), state.mailboxCache[untouchedKey]?.threads)
+        }
+
+    private fun removalSurvivesLateRead(
+        kanban: Boolean,
+        loadMore: Boolean,
+        actionFails: Boolean = false,
+        notification: Boolean = false,
+        permanentDelete: Boolean = false,
+    ) = runBlocking {
+        val childScope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+        try {
+            val folder = if (permanentDelete) "Trash" else "INBOX"
+            val core = GatedCore(gateActions = true, actionFails = actionFails, permanentDelete = permanentDelete, listedFolder = folder)
+            val state = state(core, childScope)
+            val thread = ThreadSummary(id = "a:$folder:t1", accountId = "a", folder = folder, subject = "Hello", sender = "Ada")
+            val column = KanbanColumnSpec(accountId = "a", folderId = folder)
+            val key = kanbanColumnKey(column)
+            val cacheKey = mailboxCacheKey("a", folder, "", FilterMode.All)
+            state.selectedCoreFolder = folder
+            state.coreThreads = listOf(thread)
+            state.visibleMailboxKey = cacheKey
+            state.mailboxCursor = "older"
+            state.mailboxCache = mapOf(cacheKey to MailboxLoadResult(emptyList(), folder, listOf(thread)))
+            state.kanbanColumns = mapOf(key to KanbanColumnState(threads = listOf(thread), nextCursor = "older"))
+            if (notification) {
+                state.openNotificationThread(NotificationThreadTarget(accountId = "a", folder = folder))
+            } else if (kanban) {
+                if (loadMore) state.loadMoreKanbanColumn(column) else state.loadKanbanColumn(column)
+            } else {
+                if (loadMore) state.loadMoreCoreThreads() else state.syncCoreThreads(syncFirst = false)
+            }
+            waitUntil { core.threadListCalls == 1 }
+            when {
+                kanban && loadMore -> state.moveThreadToFolder(thread, "Archive")
+                loadMore -> state.deleteThread(thread)
+                else -> state.archiveOrRemove(thread)
+            }
+            waitUntil { core.actionCalls == 1 }
+            assertEquals(emptyList(), state.coreThreads)
+            assertEquals(emptyList(), state.threadRemovalGuard.filter(state.mailboxCache[cacheKey]!!.threads))
+            core.actionGate.complete(Unit)
+            waitUntil { state.threadRemovalGuard.filter(listOf(thread)).isNotEmpty() }
+            // The backend write is done, but the old read still holds its row.
+            core.gate.complete(Unit)
+            waitUntil { !state.syncing && !state.loadingMoreThreads && state.kanbanColumns[key]?.loading != true && state.kanbanColumns[key]?.loadingMore != true }
+            if (actionFails) {
+                assertEquals(thread.id, state.coreThreads.single().id)
+                assertEquals(
+                    thread.id,
+                    state.kanbanColumns[key]
+                        ?.threads
+                        ?.single()
+                        ?.id,
+                )
+            } else {
+                assertEquals(emptyList(), state.coreThreads)
+                assertEquals(emptyList(), state.kanbanColumns[key]?.threads)
+                assertFalse(state.mailboxCache.values.any { cached -> cached.threads.any { it.id == thread.id } })
+            }
+            // A subsequent valid read can display a moved-back copy or new reply.
+            if (kanban) state.loadKanbanColumn(column) else state.syncCoreThreads(syncFirst = false)
+            waitUntil { core.threadListCalls >= 2 && !state.syncing && state.kanbanColumns[key]?.loading != true }
+            assertEquals(
+                thread.id,
+                if (kanban) {
+                    state.kanbanColumns[key]
+                        ?.threads
+                        ?.single()
+                        ?.id
+                } else {
+                    state.coreThreads.single().id
+                },
+            )
+        } finally {
+            childScope.cancel()
+        }
+    }
 
     private suspend fun waitUntil(condition: () -> Boolean) {
         withTimeout(5_000) {
@@ -89,7 +389,18 @@ class KanbanColumnLoadOrderTest {
 
     /** Holds the first thread list read open until [gate] completes; every
      *  later read answers at once with one message fewer on the card. */
-    private class GatedCore : MeronCore {
+    private class GatedCore(
+        private val gateActions: Boolean = false,
+        private val actionFails: Boolean = false,
+        private val permanentDelete: Boolean = false,
+        private val emptyAfterActions: Boolean = false,
+        private val listedFolder: String = "INBOX",
+    ) : MeronCore {
+        val actionGate = CompletableDeferred<Unit>()
+        val actionGates = mutableMapOf<String, CompletableDeferred<Unit>>()
+        val actionRequests = mutableListOf<Pair<String, String>>()
+        var actionCalls = 0
+        private var actionsCompleted = false
         val gate = CompletableDeferred<Unit>()
         var threadListCalls = 0
 
@@ -104,11 +415,65 @@ class KanbanColumnLoadOrderTest {
 
                 MobileCommand.ThreadList -> {
                     threadListCalls += 1
-                    if (threadListCalls == 1) {
+                    if (emptyAfterActions && actionsCompleted) {
+                        """{"threads":[]}"""
+                    } else if (threadListCalls == 1) {
                         gate.await()
                         card(messageCount = 3, hasDraft = true)
                     } else {
                         card(messageCount = 2, hasDraft = false)
+                    }
+                }
+
+                MobileCommand.Archive, MobileCommand.Delete, MobileCommand.Move, MobileCommand.EmptyFolder -> {
+                    actionRequests.add(command to payloadJson)
+                    actionCalls += 1
+                    val gate = actionGates[command]
+                    if (gate != null) {
+                        gate.await()
+                    } else if (gateActions) {
+                        actionGate.await()
+                    }
+                    actionsCompleted = true
+                    when {
+                        actionFails -> {
+                            """{"error":{"message":"Action rejected"}}"""
+                        }
+
+                        else -> {
+                            val sourceId = payloadJson.jsonStringValue("thread_id")
+                            val destination =
+                                when (command) {
+                                    MobileCommand.Archive -> "Archive"
+                                    MobileCommand.Delete -> "Trash"
+                                    MobileCommand.Move -> payloadJson.jsonStringValue("target_folder_id")
+                                    else -> ""
+                                }
+                            val change = """{"account_id":"a","removed":true,"source_folder":"$listedFolder","thread_id":"$sourceId"}"""
+                            when {
+                                command == MobileCommand.EmptyFolder -> {
+                                    """{"ok":true}"""
+                                }
+
+                                command == MobileCommand.Delete && permanentDelete -> {
+                                    """{"change":$change,"deleted":1,"ok":true,"permanent":true}"""
+                                }
+
+                                else -> {
+                                    val destinationId =
+                                        if (sourceId.contains('#')) {
+                                            "${sourceId.substringBefore('#')}#$destination#${sourceId.substringAfterLast('#')}"
+                                        } else {
+                                            "a:$destination:t1"
+                                        }
+                                    if (command == MobileCommand.Delete) {
+                                        """{"change":$change,"deleted":1,"ok":true,"thread_id":"$destinationId","trash":"$destination"}"""
+                                    } else {
+                                        """{"change":$change,"folder":"$destination","moved":1,"ok":true,"thread_id":"$destinationId"}"""
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -121,7 +486,7 @@ class KanbanColumnLoadOrderTest {
             messageCount: Int,
             hasDraft: Boolean,
         ): String =
-            """{"threads":[{"id":"a:INBOX:t1","account_id":"a","folder_id":"INBOX","subject":"Re: hello",""" +
+            """{"threads":[{"id":"a:$listedFolder:t1","account_id":"a","folder_id":"$listedFolder","subject":"Re: hello",""" +
                 """"message_count":$messageCount,"has_draft":$hasDraft,"date":1}]}"""
 
         override fun events(): CoreEventStream =

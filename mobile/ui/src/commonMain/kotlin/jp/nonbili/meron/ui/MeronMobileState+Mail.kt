@@ -44,6 +44,7 @@ internal fun MeronMobileState.runCoreThreadAction(
     undoMessage: String? = null,
     onUndo: ((String) -> Unit)? = null,
     afterSuccess: (() -> Unit)? = null,
+    removesThread: Boolean = false,
 ) {
     if (!coreLoaded) {
         status = coreUnavailableMessage
@@ -53,6 +54,7 @@ internal fun MeronMobileState.runCoreThreadAction(
     // call fails. Snapshots taken here back the failure rollback.
     val threadsBefore = coreThreads
     val kanbanBefore = kanbanColumns
+    val removal = if (removesThread) suppressRemovedThread(thread.id) else null
     coreThreads = update(coreThreads).forStarredView(selectedCoreAccountId, selectedCoreFolder)
     kanbanColumns =
         kanbanColumns.mapValues { (key, state) ->
@@ -76,14 +78,17 @@ internal fun MeronMobileState.runCoreThreadAction(
                 },
             )
         }.onSuccess { response ->
+            removal?.complete()
+            if (removesThread) releaseMovedThread(response)
             applyCoreFolderUnreadChanges(response)
             if (undoMessage == null || onUndo == null) status = "$label complete"
             committed.complete(response)
             afterSuccess?.invoke()
         }.onFailure {
+            removal?.rollback()
             Log.w("Mail", "$label failed", it)
-            coreThreads = threadsBefore
-            kanbanColumns = kanbanBefore
+            coreThreads = removal?.filter?.invoke(threadsBefore) ?: threadsBefore
+            kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal?.filter?.invoke(state.threads) ?: state.threads) }
             status = "$label failed: ${it.message}"
             snackbarHost.currentSnackbarData?.dismiss()
             committed.complete(null)
@@ -203,11 +208,14 @@ internal fun MeronMobileState.restoreThread(
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
-                MobileMailCommandClient(core).move(
-                    MoveThreadParams(threadId = undoThreadId, targetFolderId = thread.folder),
+                requireCoreOk(
+                    MobileMailCommandClient(core).move(
+                        MoveThreadParams(threadId = undoThreadId, targetFolderId = thread.folder),
+                    ),
                 )
             }
         }.onSuccess {
+            threadRemovalGuard.release(thread.id)
             coreThreads = threadsSnapshot
             kanbanColumns = kanbanSnapshot
             status = "Restored"
@@ -951,6 +959,7 @@ internal fun MeronMobileState.emptyMailFolder(
 
     val threadsBefore = coreThreads
     val kanbanBefore = kanbanColumns
+    val removal = suppressEmptiedFolder(accountId, folderId)
     val inFolder = { thread: ThreadSummary -> thread.accountId == accountId && thread.folder == folderId }
     coreThreads = coreThreads.filterNot(inFolder)
     kanbanColumns =
@@ -971,13 +980,15 @@ internal fun MeronMobileState.emptyMailFolder(
                 )
             }
         }.onSuccess { response ->
+            removal.complete()
             applyCoreFolderUnreadChanges(response)
             status = "Folder emptied"
             if (column != null) loadKanbanColumn(column, refresh = true) else syncCoreThreads(syncFirst = false)
         }.onFailure {
+            removal.rollback()
             Log.w("Mail", "empty folder failed", it)
-            coreThreads = threadsBefore
-            kanbanColumns = kanbanBefore
+            coreThreads = removal.filter(threadsBefore)
+            kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal.filter(state.threads)) }
             status = "Empty folder failed: ${it.message}"
         }
     }
@@ -1050,6 +1061,7 @@ internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
         runCoreThreadAction(
             thread = thread,
             label = "Remove feed",
+            removesThread = true,
             action = { removeRssFeed(RemoveRssFeedParams(threadId = thread.id)) },
             update = { threads -> threads.filterNot { it.id == thread.id } },
             afterSuccess = {
@@ -1067,6 +1079,7 @@ internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
         runCoreThreadAction(
             thread = thread,
             label = "Archive",
+            removesThread = true,
             action = { archive(ThreadActionParams(threadId = thread.id)) },
             update = { threads -> threads.filterNot { it.id == thread.id } },
             undoMessage = "Archived",
@@ -1085,6 +1098,7 @@ internal fun MeronMobileState.deleteThread(thread: ThreadSummary) {
     runCoreThreadAction(
         thread = thread,
         label = threadDeleteActionLabel(thread.folder, thread.folderRole),
+        removesThread = true,
         action = { delete(ThreadActionParams(threadId = thread.id, folderId = thread.folder)) },
         update = { threads -> threads.filterNot { it.id == thread.id } },
         undoMessage = "Deleted",

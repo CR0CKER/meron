@@ -201,7 +201,7 @@ internal fun MeronMobileState.loadKanbanColumn(
     val listLimit = shown?.readDepth?.coerceIn(MAILBOX_PAGE_SIZE, MAILBOX_MAX_RELOAD_DEPTH) ?: MAILBOX_PAGE_SIZE
     val oldestShown = shown?.threads?.minOfOrNull { it.dateEpochSeconds }
     updateKanbanColumn(key) { it.copy(loading = true, error = null) }
-    scope.launch {
+    scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
@@ -233,7 +233,7 @@ internal fun MeronMobileState.loadKanbanColumn(
             }
             updateKanbanColumn(key) {
                 it.copy(
-                    threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(result.threads)),
+                    threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(read.filter(result.threads))),
                     unreadCount = result.unreadCount,
                     loading = false,
                     loadingMore = false,
@@ -265,7 +265,7 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
     // A reload started since (new query, filter or sync) owns the list instead.
     val token = kanbanColumnLoadTokens[key] ?: 0L
     updateKanbanColumn(key) { it.copy(loadingMore = true, error = null) }
-    scope.launch {
+    scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
@@ -289,9 +289,9 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
             }
             updateKanbanColumn(key) { current ->
                 val existingIds = current.threads.map { it.id }.toSet()
-                val appended = withLocalDraftFlags(result.threads).filterNot { it.id in existingIds }
+                val appended = withLocalDraftFlags(read.filter(result.threads)).filterNot { it.id in existingIds }
                 current.copy(
-                    threads = (current.threads + appended).sortedByDescending { it.dateEpochSeconds },
+                    threads = read.filter(current.threads + appended).sortedByDescending { it.dateEpochSeconds },
                     loadingMore = false,
                     error = null,
                     nextCursor = result.nextCursor,

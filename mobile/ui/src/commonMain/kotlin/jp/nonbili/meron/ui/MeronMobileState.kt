@@ -130,6 +130,7 @@ internal class MeronMobileState(
     var coreAccounts by mutableStateOf(emptyList<AccountSummary>())
     var selectedCoreAccountId by mutableStateOf(loadLastMailAccountId(prefs))
     internal val folderReadGuard = FolderReadGuard()
+    internal val threadRemovalGuard = ThreadRemovalGuard()
     var coreFolders by mutableStateOf(emptyList<FolderSummary>())
     var foldersByAccount by mutableStateOf(emptyMap<String, List<FolderSummary>>())
     var selectedCoreFolder by mutableStateOf(loadLastMailFolder(prefs))

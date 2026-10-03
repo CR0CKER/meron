@@ -516,7 +516,7 @@ private fun MeronMobileState.openNotificationMailbox(target: NotificationThreadT
     selectedCoreAccountId = target.accountId
     selectedCoreFolder = target.folder
     syncing = true
-    scope.launch {
+    scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
             withContext(ioDispatcher) {
@@ -547,7 +547,7 @@ private fun MeronMobileState.openNotificationMailbox(target: NotificationThreadT
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
             }
             selectedCoreFolder = result.folder
-            coreThreads = withLocalDraftFlags(result.threads)
+            coreThreads = withLocalDraftFlags(read.filter(result.threads))
             visibleMailboxKey = mailboxCacheKey(target.accountId, result.folder, "", FilterMode.All)
             mailboxCursor = result.nextCursor
             mailboxAccountCursors = result.accountCursors
