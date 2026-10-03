@@ -168,7 +168,15 @@ export function KanbanView({ boardId }: { boardId: string }) {
 
   return (
     <section className="flex flex-1 min-w-0 flex-col bg-chats max-[768px]:w-full">
-      <div className="@container relative z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 backdrop-blur-md px-4">
+      <div
+        // Inside the framed content (Meron's title bar) the header sits in its
+        // rounded top-left corner, and WebKit (WebKitGTK, WKWebView) can fail to
+        // clip a blurred, separately composited layer to a rounded corner. Nothing
+        // scrolls under the header, so the blur changes nothing visible there.
+        className={`@container relative z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 px-4 ${
+          titleBar ? '' : 'backdrop-blur-md'
+        }`}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {board?.avatarUrl ? (
             <img
