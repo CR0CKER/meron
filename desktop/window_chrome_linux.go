@@ -7,6 +7,9 @@ package main
 
 #include <stdlib.h>
 #include <gtk/gtk.h>
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 
 static GtkWindow *mainWindow = NULL;
 static gboolean wantIntegrated = FALSE;
@@ -78,6 +81,7 @@ static int isTiled(void) {
 
 // Defined in Go (window_chrome_linux_export.go).
 extern void goWindowStateChanged(void);
+extern void goWindowTitlebarUnavailable(void);
 
 // Tiling can land after the page's resize event, so the page is told to ask
 // again (window.stateChanged) once GTK has the new state.
@@ -92,23 +96,48 @@ static gboolean onWindowState(GtkWidget *widget, GdkEventWindowState *event, gpo
 	return FALSE;
 }
 
-// Whether GTK draws the window frame itself: client-side decorations with an
-// alpha channel (the csd style class, not solid-csd). Where the desktop draws
-// the frame instead (KWin on KDE Plasma, most X11 window managers) or there is
-// no compositor, the window's corners are the desktop's, so the page keeps
-// them square and the integrated title bar isn't offered. Recorded as the
-// window is realized, before any titlebar of ours; read from Go.
+// Whether the current GTK frame has transparent client-side decorations.
+// Re-read after installing a custom titlebar: KDE defaults to server-side
+// decorations, but a custom titlebar asks GTK to take ownership of the frame.
+// Without compositing GTK may use solid-csd, which must keep square corners.
 static volatile gint gtkFrame = 0;
+static volatile gint liveTitlebar = 0;
+
+static void updateFrame(void) {
+	GtkStyleContext *style = gtk_widget_get_style_context(GTK_WIDGET(mainWindow));
+	g_atomic_int_set(&gtkFrame, gtk_style_context_has_class(style, "csd") && !gtk_style_context_has_class(style, "solid-csd"));
+}
 
 static int drawsFrame(void) {
 	return g_atomic_int_get(&gtkFrame);
 }
 
+static int switchesTitlebarLive(void) {
+	// Without transparent CSD, GTK may not have an internal titlebar to
+	// swap. Keep that transition at startup too.
+	return g_atomic_int_get(&liveTitlebar) && drawsFrame();
+}
+
 static void applyTitlebar(void) {
 	if (mainWindow == NULL) return;
-	if (!drawsFrame()) wantIntegrated = FALSE;
 	clearSizeHints();
 	if (wantIntegrated) {
+		GtkWidget *current = gtk_window_get_titlebar(mainWindow);
+		GtkStyleContext *style = gtk_widget_get_style_context(GTK_WIDGET(mainWindow));
+		// If preparation missed this window, adding its first titlebar now
+		// would unrealize it inside the realize signal. Keep the native bar.
+		// A preinstalled solid-csd titlebar is safe even without compositing.
+		if (gtk_widget_get_realized(GTK_WIDGET(mainWindow)) && current == NULL &&
+			!gtk_style_context_has_class(style, "csd")) {
+			wantIntegrated = FALSE;
+			goWindowTitlebarUnavailable();
+			updateFrame();
+			return;
+		}
+		if (current != NULL && !gtk_widget_get_visible(current)) {
+			updateFrame();
+			return;
+		}
 		GtkWidget *bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 		gtk_widget_set_no_show_all(bar, TRUE);
 		gtk_window_set_titlebar(mainWindow, bar);
@@ -123,12 +152,39 @@ static void applyTitlebar(void) {
 		gtk_widget_show(bar);
 		gtk_window_set_titlebar(mainWindow, bar);
 	}
+	updateFrame();
 }
 
-// Wails creates and shows its window inside wails.Run, with no hook in
-// between, so the window is picked up as it is realized. Emission hooks run
-// after the class handler, so it is already realized here; setting the
-// titlebar still takes effect.
+// Wails has no callback between creating and showing its GtkWindow. GTK
+// validates the window's style before realizing it, so style-updated lets us
+// install the custom titlebar before the GdkWindow and WebKit child exist.
+// Installing the first titlebar from realize is too late: GTK unrealizes the
+// window while other realize handlers still expect a valid GdkWindow.
+static gboolean onStyleUpdated(GSignalInvocationHint *hint, guint n, const GValue *params, gpointer data) {
+	GObject *object = g_value_get_object(&params[0]);
+	if (!GTK_IS_WINDOW(object) || gtk_window_get_window_type(GTK_WINDOW(object)) != GTK_WINDOW_TOPLEVEL) return TRUE;
+	// Setting the titlebar may validate styles again before this hook returns.
+	static gboolean prepared = FALSE;
+	if (prepared) return FALSE;
+	prepared = TRUE;
+	GtkWidget *widget = GTK_WIDGET(object);
+	GdkDisplay *display = gtk_widget_get_display(widget);
+	gboolean defaultCsd = g_strcmp0(g_getenv("GTK_CSD"), "1") == 0;
+#ifdef GDK_WINDOWING_WAYLAND
+	if (GDK_IS_WAYLAND_DISPLAY(display)) defaultCsd = !gdk_wayland_display_prefers_ssd(display);
+#endif
+	// KDE and default X11 windows need a restart to return to the desktop's
+	// native frame. GNOME's two GTK titlebars can be swapped live.
+	g_atomic_int_set(&liveTitlebar, defaultCsd);
+	if (wantIntegrated) {
+		GtkWidget *bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+		gtk_widget_set_no_show_all(bar, TRUE);
+		gtk_window_set_titlebar(GTK_WINDOW(object), bar);
+	}
+	return FALSE;
+}
+
+// The realized window owns the native state callbacks and startup reveal.
 static gboolean onRealize(GSignalInvocationHint *hint, guint n, const GValue *params, gpointer data) {
 	GObject *object = g_value_get_object(&params[0]);
 	if (!GTK_IS_WINDOW(object) || gtk_window_get_window_type(GTK_WINDOW(object)) != GTK_WINDOW_TOPLEVEL) {
@@ -141,8 +197,6 @@ static gboolean onRealize(GSignalInvocationHint *hint, guint n, const GValue *pa
 	gtk_widget_set_opacity(GTK_WIDGET(object), 0.0);
 	g_object_add_weak_pointer(object, (gpointer *)&mainWindow);
 	g_signal_connect(object, "window-state-event", G_CALLBACK(onWindowState), NULL);
-	GtkStyleContext *style = gtk_widget_get_style_context(GTK_WIDGET(object));
-	g_atomic_int_set(&gtkFrame, gtk_style_context_has_class(style, "csd") && !gtk_style_context_has_class(style, "solid-csd"));
 	readChromeSettings();
 	GtkSettings *settings = gtk_settings_get_default();
 	if (settings != NULL) {
@@ -154,12 +208,15 @@ static gboolean onRealize(GSignalInvocationHint *hint, guint n, const GValue *pa
 	return FALSE;
 }
 
-static void installWindowChrome(int integrated) {
+static gulong installWindowChrome(int integrated) {
 	wantIntegrated = integrated ? TRUE : FALSE;
 	// Before gtk_init the widget classes aren't loaded and the lookup fails.
 	g_type_class_unref(g_type_class_ref(GTK_TYPE_WINDOW));
+	guint styleId = g_signal_lookup("style-updated", GTK_TYPE_WIDGET);
+	gulong styleHook = g_signal_add_emission_hook(styleId, 0, onStyleUpdated, NULL, NULL);
 	guint id = g_signal_lookup("realize", GTK_TYPE_WIDGET);
 	g_signal_add_emission_hook(id, 0, onRealize, NULL, NULL);
+	return styleHook;
 }
 
 static gboolean setIntegratedIdle(gpointer data) {
@@ -217,8 +274,9 @@ const integratedTitlebarSupported = true
 // isn't frameless.
 const framelessTitlebar = false
 
-// The GTK title bar can be swapped on the live window; a var for tests.
-var titlebarSwitchesLive = true
+// Only windows that originally had a GTK titlebar can switch live without
+// recreating the WebKit window. A var lets the command tests stub this query.
+var titlebarSwitchesLive = func() bool { return C.switchesTitlebarLive() != 0 }
 
 func installWindowChrome(integrated bool) {
 	C.installWindowChrome(cBool(integrated))

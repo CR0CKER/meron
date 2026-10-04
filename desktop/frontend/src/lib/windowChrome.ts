@@ -26,9 +26,9 @@ export const windowChrome$ = observable({
   /** Whether Meron's title bar is in effect now. */
   integrated: false,
   /** The saved choice; differs from `integrated` until a restart where the
-   *  switch can't apply to the live window (Windows). */
+   *  switch can't apply to the live window (Windows, KDE). */
   wanted: false,
-  /** Whose window controls to draw: 'windows' or GNOME's ('linux'). */
+  /** Whose window controls to draw: 'windows' or the Linux desktop's ('linux'). */
   platform: '',
   layout: { start: [], end: ['close'] } as DecorationLayout,
   doubleClick: 'toggle-maximize',

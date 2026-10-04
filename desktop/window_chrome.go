@@ -10,17 +10,16 @@ import (
 // titlebarSystem is windowState.Titlebar for someone who turned the
 // integrated title bar off. Anything else is the default: integrated (no GTK
 // title bar; the page's own takes its place and draws the window controls)
-// wherever GTK draws the frame.
+// on supported platforms.
 const titlebarSystem = "system"
 
 // integratedTitlebar is whether the integrated title bar is in effect now.
 var integratedTitlebar atomic.Bool
 
 // integratedTitlebarActive is whether the integrated title bar is actually
-// drawn: a saved choice is dropped where the desktop draws the frame, which is
-// known once the window is realized.
+// drawn. Frame ownership affects rounded corners, not title bar support.
 func integratedTitlebarActive() bool {
-	return integratedTitlebar.Load() && windowDrawsFrame()
+	return integratedTitlebarSupported && integratedTitlebar.Load()
 }
 
 // Window controls go through these vars so the commands can be tested.
@@ -41,9 +40,7 @@ var (
 // follows rather than offering its own settings.
 func (a *App) windowChrome() (any, error) {
 	layout, doubleClick := readChromeSettings()
-	// On Linux only where GTK draws the frame: on KDE Plasma or an X11 window
-	// manager the desktop's own frame stays, and the option isn't offered.
-	supported := integratedTitlebarSupported && windowDrawsFrame()
+	supported := integratedTitlebarSupported
 	a.windowMu.Lock()
 	wanted := a.window.Titlebar != titlebarSystem
 	a.windowMu.Unlock()
@@ -60,10 +57,11 @@ func (a *App) windowChrome() (any, error) {
 // windowSetTitlebar switches between the system and the integrated title bar
 // and remembers the choice in window.json, which is read before the window is
 // created on the next launch. Where the switch can't apply to the live window
-// (Windows), that launch is when it takes effect.
+// (Windows and Linux desktops with native server-side decorations), that launch
+// is when it takes effect.
 func (a *App) windowSetTitlebar(payload map[string]any) (any, error) {
 	wanted, _ := payload["integrated"].(bool)
-	integrated := wanted && integratedTitlebarSupported && windowDrawsFrame()
+	integrated := wanted && integratedTitlebarSupported
 	a.windowMu.Lock()
 	a.window.Titlebar = ""
 	if !wanted {
@@ -71,7 +69,7 @@ func (a *App) windowSetTitlebar(payload map[string]any) (any, error) {
 	}
 	a.windowMu.Unlock()
 	a.flushWindowState()
-	if titlebarSwitchesLive && integratedTitlebar.Swap(integrated) != integrated {
+	if titlebarSwitchesLive() && integratedTitlebar.Swap(integrated) != integrated {
 		applyNativeTitlebar(integrated)
 		refreshNativeTitlebarCss()
 	}

@@ -9,7 +9,7 @@ const integratedTitlebarSupported = false
 // See window_chrome_linux.go.
 const framelessTitlebar = false
 
-var titlebarSwitchesLive = false
+var titlebarSwitchesLive = func() bool { return false }
 
 func installWindowChrome(integrated bool) {}
 

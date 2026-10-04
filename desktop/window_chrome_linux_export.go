@@ -17,3 +17,10 @@ func goWindowStateChanged() {
 	// Called on the GTK thread; the event emit must not block it.
 	go wailsRuntime.EventsEmit(globalApp.ctx, "window.stateChanged")
 }
+
+//export goWindowTitlebarUnavailable
+func goWindowTitlebarUnavailable() {
+	// GTK kept the native frame after a missed startup hook. Report the actual
+	// mode to React while preserving the saved custom-titlebar preference.
+	integratedTitlebar.Store(false)
+}

@@ -13,7 +13,7 @@ func stubWindowChrome(t *testing.T) *[]bool {
 	applyNativeTitlebar = func(integrated bool) { *applied = append(*applied, integrated) }
 	readChromeSettings = func() (string, string) { return "menu:close", "toggle-maximize" }
 	windowDrawsFrame = func() bool { return true }
-	titlebarSwitchesLive = true
+	titlebarSwitchesLive = func() bool { return true }
 	t.Cleanup(func() {
 		applyNativeTitlebar, readChromeSettings, windowDrawsFrame, titlebarSwitchesLive = apply, read, drawsFrame, live
 		integratedTitlebar.Store(was)
@@ -102,43 +102,43 @@ func TestWindowControlsRouteToTheWindow(t *testing.T) {
 	}
 }
 
-// Where the desktop draws the frame (KDE Plasma, X11 window managers), the
-// option isn't offered and can't be switched on.
-func TestIntegratedTitlebarNotOfferedOnADesktopFrame(t *testing.T) {
+// KDE's native frame does not prevent selecting the custom titlebar. The
+// choice is saved while the current window stays native until restart.
+func TestIntegratedTitlebarOfferedOnADesktopFrame(t *testing.T) {
 	applied := stubWindowChrome(t)
 	windowDrawsFrame = func() bool { return false }
-	integratedTitlebar.Store(true)
+	titlebarSwitchesLive = func() bool { return false }
 	app := newWindowStateApp(t)
+	app.window.Titlebar = titlebarSystem
+	app.flushWindowState()
 
+	if _, err := app.windowSetTitlebar(map[string]any{"integrated": true}); err != nil {
+		t.Fatal(err)
+	}
 	result, err := app.windowChrome()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := result.(map[string]any); got["supported"] != false || got["integrated"] != false {
+	got := result.(map[string]any)
+	if got["supported"] != integratedTitlebarSupported || got["integrated"] != false || got["wanted"] != integratedTitlebarSupported {
 		t.Fatalf("got %v", got)
-	}
-	if _, err := app.windowSetTitlebar(map[string]any{"integrated": true}); err != nil {
-		t.Fatal(err)
 	}
 	if got := loadWindowState(app.windowStatePath).Titlebar; got != "" {
 		t.Fatalf("saved titlebar %q, want empty", got)
 	}
-	if len(*applied) != 1 || (*applied)[0] != false {
-		t.Fatalf("applied %v, want [false]", *applied)
+	if len(*applied) != 0 || integratedTitlebarActive() {
+		t.Fatalf("applied %v: want unchanged native titlebar until restart", *applied)
 	}
 }
 
-// A saved choice read at startup, before the window shows whether GTK draws
-// the frame, is not in effect where the desktop draws it.
-func TestIntegratedTitlebarActiveNeedsAGtkFrame(t *testing.T) {
+// A custom titlebar can remain active without transparent GTK shadows
+// (solid-csd). Rounded corners are reported separately by windowResized.
+func TestIntegratedTitlebarActiveWithoutTransparentGtkFrame(t *testing.T) {
 	stubWindowChrome(t)
-	integratedTitlebar.Store(true)
-	if !integratedTitlebarActive() {
-		t.Fatal("GTK frame: want active")
-	}
 	windowDrawsFrame = func() bool { return false }
-	if integratedTitlebarActive() {
-		t.Fatal("desktop frame: want inactive")
+	integratedTitlebar.Store(true)
+	if integratedTitlebarActive() != integratedTitlebarSupported {
+		t.Fatal("want active on supported platforms regardless of frame ownership")
 	}
 }
 
@@ -147,7 +147,7 @@ func TestIntegratedTitlebarActiveNeedsAGtkFrame(t *testing.T) {
 // title bar in effect stays until the next launch.
 func TestWindowSetTitlebarWaitsForRestartWhereNotLive(t *testing.T) {
 	applied := stubWindowChrome(t)
-	titlebarSwitchesLive = false
+	titlebarSwitchesLive = func() bool { return false }
 	integratedTitlebar.Store(true)
 	app := newWindowStateApp(t)
 

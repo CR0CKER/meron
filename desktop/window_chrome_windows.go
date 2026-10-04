@@ -15,7 +15,7 @@ const framelessTitlebar = true
 
 // Frameless is a creation-time option in Wails v2, so a switch applies on the
 // next launch.
-var titlebarSwitchesLive = false
+var titlebarSwitchesLive = func() bool { return false }
 
 func installWindowChrome(integrated bool) {}
 

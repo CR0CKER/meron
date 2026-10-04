@@ -751,9 +751,9 @@ function CloseToTrayRow() {
   )
 }
 
-// Linux (where GTK draws the frame) and Windows. The choice lives in Go
-// (window.json), since it is needed before the window exists; on Windows it
-// takes effect on the next launch, so the switch shows the saved choice.
+// Linux and Windows. The choice lives in Go (window.json), since it is
+// needed before the window exists. Windows and Linux desktops with native
+// server-side decorations apply it on restart, so the switch shows the saved choice.
 function IntegratedTitlebarRow() {
   const { t } = useTranslation()
   const supported = useValue(windowChrome$.supported)
