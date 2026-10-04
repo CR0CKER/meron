@@ -66,10 +66,10 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
     <div
       ref={barRef}
       className={clsx(
-        'group flex min-w-0 items-center overflow-visible border border-transparent focus-within:bg-chats',
+        'group flex min-w-0 items-center overflow-visible border focus-within:bg-chats',
         compact
-          ? 'h-full w-full rounded-lg bg-sidenav-ink/10 focus-within:border-accent'
-          : 'h-9 basis-72 shrink rounded-xl bg-hover focus-within:border-accent/40',
+          ? 'h-full w-full rounded-lg border-transparent bg-sidenav-ink/4 hover:not-focus-within:bg-sidenav-ink/8 focus-within:border-accent'
+          : 'h-9 basis-72 shrink rounded-xl border-transparent bg-hover focus-within:border-accent/40',
       )}
     >
       <div className="relative h-full min-w-0 flex-1">

@@ -52,7 +52,8 @@ export function SearchScopeDropdown({
   return (
     <div
       ref={containerRef}
-      className={`relative h-full shrink-0 border-l ${compact ? 'border-sidenav-ink/15 group-focus-within:border-border/60' : 'border-border/60'}`}
+      // The title bar's box keeps no divider, so the quiet search reads as one field.
+      className={`relative h-full shrink-0 ${compact ? '' : 'border-l border-border/60'}`}
     >
       <button
         type="button"
