@@ -16,12 +16,15 @@ export function SearchScopeDropdown({
   onChange,
   visibleColumns,
   compact = false,
+  quiet = false,
 }: {
   value: string
   onChange: (value: string) => void
   visibleColumns: KanbanColumn[]
   /** In the title bar: its colors, until the search box around it is focused. */
   compact?: boolean
+  /** Soften the trigger while its search is empty and unfocused. */
+  quiet?: boolean
 }) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
@@ -58,7 +61,9 @@ export function SearchScopeDropdown({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex h-full items-center gap-1.5 text-[0.6875rem] font-semibold transition-colors cursor-pointer select-none outline-none border-0 ${
+        className={`flex h-full items-center gap-1.5 text-[0.6875rem] font-semibold transition-[color,opacity] cursor-pointer select-none outline-none border-0 ${
+          quiet && !isOpen ? 'opacity-60 hover:opacity-100 group-focus-within:opacity-100' : ''
+        } ${
           compact
             ? 'px-2.5 rounded-r-lg text-sidenav-ink/60 hover:text-sidenav-ink group-focus-within:text-secondary group-focus-within:hover:text-primary'
             : 'px-3.5 rounded-r-xl text-secondary hover:text-primary'

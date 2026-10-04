@@ -14,7 +14,7 @@ export function FloatingContextMenu({
   placement = 'down',
   margin = 8,
   overlay = false,
-  overlayClassName = 'fixed inset-0 z-40',
+  overlayClassName = 'fixed inset-0 z-50',
   dataAttribute,
   onClick,
   onContextMenu,

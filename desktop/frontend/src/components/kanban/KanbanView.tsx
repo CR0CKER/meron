@@ -178,7 +178,8 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
         // top-left corner, and WebKit (WebKitGTK, WKWebView) can fail to clip a
         // blurred, separately composited layer to a rounded corner. Nothing
         // scrolls under the header, so the blur changed nothing visible there.
-        className="@container relative z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 px-4"
+        // Above the conversation header (z-40), below title-bar dropdowns (z-50).
+        className="@container relative z-[45] flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-header/70 px-4"
       >
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {board?.avatarUrl ? (

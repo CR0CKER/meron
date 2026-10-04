@@ -126,6 +126,7 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
         }}
         visibleColumns={visibleColumns}
         compact={compact}
+        quiet={!searchQuery.trim()}
       />
     </div>
   )
