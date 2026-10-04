@@ -54,6 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - name: Test pre-commit hook
+        run: bun run test:hooks
       - run: bun install --frozen-lockfile
         working-directory: desktop/frontend
       - name: Generate localization catalogs
