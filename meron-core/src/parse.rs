@@ -960,13 +960,22 @@ fn split_important(value: &str) -> (&str, bool) {
 /// WebKitGTK); the `default-src 'none'` CSP still blocks all email JS, so the
 /// CSP also gates remote image/media loads.
 pub fn prepare_html(source: &str, load_remote_images: bool) -> String {
+    prepare_message_html(source, load_remote_images, "")
+}
+
+/// [`prepare_html`] for a mail with a subject, which is what tells an Outlook
+/// forward from a reply when folding the quote (see quote.rs).
+pub fn prepare_message_html(source: &str, load_remote_images: bool, subject: &str) -> String {
     // Defence in depth: strip script-bearing markup *before* the CSP `<meta>` is
     // injected, so a CSP bypass alone can't run the email's JS. CSS is kept (the
     // CSP allows `style-src 'unsafe-inline'`); only script vectors are removed.
     let raw_source = source;
     // Marked after sanitizing, which drops every sender `data-*` attribute, so
     // the quote marker the frames fold on is always ours.
-    let source = &crate::quote::mark_html_quote(&sanitize_email_html(source));
+    let source = &crate::quote::mark_html_quote(
+        &sanitize_email_html(source),
+        crate::quote::is_forward_subject(subject),
+    );
     let (img, media) = if load_remote_images {
         (
             "'self' data: http: https:",

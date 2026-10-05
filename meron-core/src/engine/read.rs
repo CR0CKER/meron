@@ -208,6 +208,10 @@ pub async fn read_cached_or_fetch(
 pub fn attach_html(message: &mut parse::Message, policy: &store::RemoteImagePolicy) {
     let allowed = policy.allows(&message.from_addr);
     if let Some(html) = message.body_html.take() {
-        message.body_html = Some(parse::prepare_html(&html, allowed));
+        message.body_html = Some(parse::prepare_message_html(
+            &html,
+            allowed,
+            &message.subject,
+        ));
     }
 }
