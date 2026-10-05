@@ -5,6 +5,7 @@ import {
   CheckSquare,
   ChevronRight,
   Copy,
+  Download,
   FolderInput,
   Mail,
   MailOpen,
@@ -24,6 +25,7 @@ import { mail$ } from '../../states/mail'
 import { markThreadRead, markThreadUnread, starThread } from '../../states/mailFlags'
 import { ensureAccountFolders, isDraftFolder, isTrashFolderId } from '../../states/mailFolders'
 import { archiveThread, copyThreadToFolder, deleteThread, moveThreadToFolder } from '../../states/mailMoves'
+import { exportThreadsAsEml } from '../../states/emlExport'
 import { accounts$, isSendableAccount } from '../../states/accounts'
 import { isRssAccount } from '../../lib/threadActions'
 import type { Account, Message } from '../../types'
@@ -541,6 +543,15 @@ export function ThreadContextMenu({
           )}
         </div>
       )}
+      <MenuItem
+        icon={<Download size={13} className="text-secondary" />}
+        label={t('chat.actions.saveAsEml')}
+        onClick={() => {
+          const { threadId, folderId, subject } = menu
+          close()
+          void exportThreadsAsEml([{ threadId, folderId }], subject)
+        }}
+      />
       <div className="my-1 border-t border-border" />
       <MenuItem
         danger

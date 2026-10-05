@@ -34,7 +34,9 @@ import {
   emptyFolder,
   deletableFolder,
   deleteFolder,
+  folderMatches,
 } from '../../states/mailFolders'
+import { exportFolderAsEml } from '../../states/emlExport'
 import { isRssAccount } from '../../lib/threadActions'
 import { folderLabel } from '../../lib/kanbanData'
 import { isUnifiedStarred } from '../../lib/unifiedFolders'
@@ -132,6 +134,12 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
           folders.find((folder) => folder.id === selectedFolder),
           folders,
         )
+  // A whole-folder export needs one real mailbox to list on the server. The
+  // folder row only supplies a name: the inbox is selected as "inbox" whatever
+  // the server calls it, and the list may not have loaded yet.
+  const canExportFolder = !isStarredView && !isRSSAccount && !!activeAccount && !!selectedFolder
+  const exportFolderName =
+    folders.find((folder) => folderMatches(folder, selectedAccount, selectedFolder))?.name ?? selectedFolder
   const hasUnread = isRSSAccount
     ? filteredThreads.some((thread) => thread.unread)
     : folderUnread(folders, selectedFolder) > 0 || filteredThreads.some((thread) => thread.unread)
@@ -344,6 +352,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                               deletableTarget.name,
                               deletableTarget.nested,
                             )
+                        : undefined
+                    }
+                    onExportFolder={
+                      canExportFolder
+                        ? () => void exportFolderAsEml(selectedAccount, selectedFolder, exportFolderName)
                         : undefined
                     }
                     onSync={syncMail}

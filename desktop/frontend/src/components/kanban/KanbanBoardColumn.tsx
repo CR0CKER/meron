@@ -8,7 +8,15 @@ import { useValue } from '@legendapp/state/react'
 import { clsx } from '../../lib/utils'
 import { accounts$ } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
-import { deletableFolder, deleteFolder, emptiableFolder, emptyFolder, isDraftFolder } from '../../states/mailFolders'
+import { exportFolderAsEml } from '../../states/emlExport'
+import {
+  deletableFolder,
+  deleteFolder,
+  emptiableFolder,
+  emptyFolder,
+  folderMatches,
+  isDraftFolder,
+} from '../../states/mailFolders'
 import {
   clearBulkSelection,
   isWailsDesktopRuntime,
@@ -158,6 +166,14 @@ function KanbanColumnContent({
           labelFolders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId),
           labelFolders.filter((folder) => folder.account_id === column.accountId),
         )
+  // A whole-folder export needs one real mailbox to list on the server. The
+  // folder row only supplies a name: an inbox column is keyed "inbox" whatever
+  // the server calls it, and the list may not have loaded yet.
+  const canExportFolder = !starredColumn && !isRss && !!columnAccount
+  const exportColumnFolder = () => {
+    const folder = labelFolders.find((item) => folderMatches(item, column.accountId, column.folderId))
+    void exportFolderAsEml(column.accountId, column.folderId, folder?.name ?? column.folderId)
+  }
   const deleteColumnFolder = () => {
     if (!deletableTarget) return
     void deleteFolder(column.accountId, column.folderId, deletableTarget.name, deletableTarget.nested)
@@ -258,6 +274,7 @@ function KanbanColumnContent({
           emptiableTarget?.role === 'junk' ? t('threads.actions.emptyJunk') : t('threads.actions.emptyTrash')
         }
         onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
+        onExportFolder={canExportFolder ? exportColumnFolder : undefined}
         onSync={async () => {
           setSyncing(true)
           try {
@@ -407,6 +424,7 @@ function KanbanColumnContent({
                 emptiableTarget?.role === 'junk' ? t('threads.actions.emptyJunk') : t('threads.actions.emptyTrash')
               }
               onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
+              onExportFolder={canExportFolder ? exportColumnFolder : undefined}
               onSync={async () => {
                 setSyncing(true)
                 try {

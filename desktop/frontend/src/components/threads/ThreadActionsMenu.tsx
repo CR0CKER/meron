@@ -8,6 +8,7 @@ import {
   Paperclip,
   Check,
   CheckCheck,
+  Download,
   EyeOff,
   FolderX,
   RefreshCw,
@@ -33,6 +34,8 @@ export type ThreadActionsMenuItemsProps = {
   emptyFolderLabel?: string
   /** Only wired for an ordinary folder of a single mail account; hidden otherwise. */
   onDeleteFolder?: () => void
+  /** Only wired for a folder of a single mail account; hidden otherwise. */
+  onExportFolder?: () => void
   onSync?: () => void
   syncing?: boolean
   syncLabel?: string
@@ -56,6 +59,7 @@ export function ThreadActionsMenuItems({
   onEmptyFolder,
   emptyFolderLabel,
   onDeleteFolder,
+  onExportFolder,
   onSync,
   syncing = false,
   syncLabel,
@@ -154,7 +158,7 @@ export function ThreadActionsMenuItems({
           }}
         />
       )}
-      {(onSync || onRemove || onDeleteFolder) && (
+      {(onSync || onRemove || onDeleteFolder || onExportFolder) && (
         <>
           <div className="my-1 border-t border-border" />
           {onSync && (
@@ -175,6 +179,17 @@ export function ThreadActionsMenuItems({
               }
               onClick={() => {
                 onSync()
+                closeMenu()
+              }}
+            />
+          )}
+          {onExportFolder && (
+            <MenuItem
+              className="flex-nowrap"
+              icon={<Download size={13} className="text-secondary shrink-0" />}
+              label={<span className="whitespace-nowrap shrink-0">{t('folders.exportEml')}</span>}
+              onClick={() => {
+                onExportFolder()
                 closeMenu()
               }}
             />
@@ -220,6 +235,7 @@ export function ThreadActionsMenu({
   onEmptyFolder,
   emptyFolderLabel,
   onDeleteFolder,
+  onExportFolder,
   onSync,
   syncing = false,
   syncLabel,
@@ -240,6 +256,7 @@ export function ThreadActionsMenu({
   onEmptyFolder?: () => void
   emptyFolderLabel?: string
   onDeleteFolder?: () => void
+  onExportFolder?: () => void
   onSync?: () => void
   syncing?: boolean
   syncLabel?: string
@@ -292,6 +309,7 @@ export function ThreadActionsMenu({
             onEmptyFolder={onEmptyFolder}
             emptyFolderLabel={emptyFolderLabel}
             onDeleteFolder={onDeleteFolder}
+            onExportFolder={onExportFolder}
             onSync={onSync}
             syncing={syncing}
             syncLabel={syncLabel}

@@ -110,9 +110,12 @@ pub(crate) async fn dispatch(
         | "messages.thread"
         | "messages.threadHeaders" => messages::dispatch(engine, req, out).await,
 
-        "send" | "save_draft" | "discard_draft" | "messages.saveRaw" => {
-            compose::dispatch(engine, req, out).await
-        }
+        "send"
+        | "save_draft"
+        | "discard_draft"
+        | "messages.saveRaw"
+        | "messages.exportUids"
+        | "messages.saveRawBatch" => compose::dispatch(engine, req, out).await,
 
         "messages.markRead"
         | "messages.markStarred"

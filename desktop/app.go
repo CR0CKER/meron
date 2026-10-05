@@ -39,6 +39,11 @@ type App struct {
 	windowSaveTimer *time.Timer
 	windowStatePath string
 
+	// At most one bulk .eml export runs at a time; emlExportCancel is non-nil
+	// for as long as it does.
+	emlExportMu     sync.Mutex
+	emlExportCancel context.CancelFunc
+
 	filePickerMu sync.Mutex
 	lastFileDir  string
 	lastImageDir string
@@ -380,6 +385,11 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return printed, err
 	case "mail.saveEml":
 		return a.saveMessageEml(payload)
+	case "mail.exportEml":
+		return a.exportEml(payload)
+	case "mail.exportEmlCancel":
+		a.cancelEmlExport()
+		return map[string]any{"ok": true}, nil
 	case "mail.copyImage":
 		return a.copyImage(payload)
 	case "mail.readAttachment":

@@ -739,10 +739,16 @@ func copyFileTo(src, dest string, perm os.FileMode) error {
 }
 
 // emlFilename turns a subject into a safe ".eml" default filename for the save
-// dialog. Path separators, control characters and the Windows-reserved set are
-// dropped so the name can't escape the chosen directory or be rejected by the
-// platform dialog; an empty or unusable subject falls back to "message".
+// dialog; an empty or unusable subject falls back to "message".
 func emlFilename(subject string) string {
+	return safeFilenameBase(subject, "message") + ".eml"
+}
+
+// safeFilenameBase turns free text into a safe filename without its extension.
+// Path separators, control characters and the Windows-reserved set are dropped
+// so the name can't escape the chosen directory or be rejected by the platform
+// dialog; an empty or unusable name becomes fallback.
+func safeFilenameBase(name, fallback string) string {
 	cleaned := strings.Map(func(r rune) rune {
 		switch {
 		case r < 0x20 || r == 0x7f:
@@ -751,10 +757,10 @@ func emlFilename(subject string) string {
 			return -1
 		}
 		return r
-	}, subject)
+	}, name)
 	cleaned = strings.Trim(cleaned, " .")
 	if cleaned == "" {
-		cleaned = "message"
+		cleaned = fallback
 	}
 	// Leave room for the extension inside the common 255-byte name limit.
 	if len(cleaned) > 120 {
@@ -772,7 +778,7 @@ func emlFilename(subject string) string {
 			upper[3] >= '1' && upper[3] <= '9') {
 		cleaned = "_" + cleaned
 	}
-	return cleaned + ".eml"
+	return cleaned
 }
 
 func messageEmlSource(payload map[string]any) (map[string]any, error) {

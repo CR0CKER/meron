@@ -3,6 +3,7 @@ import {
   Archive,
   ChevronRight,
   Copy,
+  Download,
   FolderInput,
   Mail,
   MailOpen,
@@ -27,6 +28,7 @@ import {
   bulkDeleteSelected,
   bulkMoveSelectedToFolder,
 } from '../../states/mailMoves'
+import { exportThreadsAsEml } from '../../states/emlExport'
 import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { FolderMenuTree } from '../menu/FolderMenuTree'
@@ -342,6 +344,15 @@ export function BulkActionBar({
               </FloatingContextMenu>
             )}
           </div>
+          <MenuItem
+            icon={<Download size={13} className="text-secondary" />}
+            label={t('chat.actions.saveAsEml')}
+            disabled={mailItems.length === 0}
+            onClick={() => {
+              setMenu(null)
+              void exportThreadsAsEml(mailItems, '')
+            }}
+          />
           <div className="my-1 border-t border-border" />
           <MenuItem
             icon={<Trash2 size={13} />}

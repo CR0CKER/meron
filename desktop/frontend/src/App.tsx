@@ -23,6 +23,7 @@ import { AppHotkeys } from './components/dialog/AppHotkeys'
 import { QuitHotkey } from './components/dialog/QuitHotkey'
 import { ShortcutsDialog } from './components/dialog/ShortcutsDialog'
 import { AppToast } from './components/toast/AppToast'
+import { EmlExportProgress } from './components/toast/EmlExportProgress'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
@@ -137,6 +138,7 @@ export default function App() {
         {editFeed && <FeedEditDialog />}
 
         <AppToast />
+        <EmlExportProgress />
         <AppConfirm />
         <McpApprovalDialog />
         <CertificateTrustDialog />

@@ -1497,6 +1497,8 @@ pub async fn move_to_folder(
 
 #[derive(Clone)]
 pub struct RawMessageCopy {
+    /// The source UID, or 0 when the server left it out of the FETCH reply.
+    pub uid: u32,
     pub raw: Vec<u8>,
     pub seen: bool,
     pub starred: bool,
@@ -1530,6 +1532,7 @@ pub async fn fetch_raw_messages_for_copy(
                     .flags()
                     .any(|flag| matches!(flag, async_imap::types::Flag::Flagged));
                 out.push(RawMessageCopy {
+                    uid: fetch.uid.unwrap_or(0),
                     raw: body.to_vec(),
                     seen,
                     starred,
@@ -3014,6 +3017,7 @@ mod append_tests {
                     &mut session,
                     "a\"b\\c",
                     &RawMessageCopy {
+                        uid: 0,
                         raw: raw.to_vec(),
                         seen: true,
                         starred: true,

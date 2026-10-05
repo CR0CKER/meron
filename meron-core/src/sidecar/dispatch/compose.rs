@@ -11,6 +11,21 @@ use meron_core::{imap, smtp, store};
 use crate::sidecar::params::*;
 use crate::{Writer, emit};
 
+/// The optional `uids` array of a request, ignoring anything that isn't a UID.
+fn opt_uids(params: &Value) -> Vec<u32> {
+    params
+        .get("uids")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_u64)
+                .map(|n| n as u32)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Handle outgoing mail: send, drafts, and saving raw messages.
 pub(crate) async fn dispatch(
     engine: &Arc<Engine>,
@@ -222,6 +237,76 @@ pub(crate) async fn dispatch(
                 .write_all(&message.raw)
                 .with_context(|| format!("write message export {path}"))?;
             Ok(json!({ "saved": true, "size": message.raw.len() }))
+        }
+
+        // Resolve what a bulk .eml export covers into source UIDs: a thread
+        // (from the local cache, like copy/move) or, with `all`, every message
+        // the server holds in the folder — not just the cached window.
+        "messages.exportUids" => {
+            let account = req_str(p, "account")?;
+            let folder =
+                canon_folder(&req_str(p, "folder").unwrap_or_else(|_| "INBOX".to_string()));
+            let mut uids = if p.get("all").and_then(Value::as_bool).unwrap_or(false) {
+                engine
+                    .with_read_session(&account, |session| {
+                        let folder = folder.clone();
+                        Box::pin(async move { imap::list_all_uids(session, &folder).await })
+                    })
+                    .await?
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            } else {
+                let (thread_key, subject_filter) =
+                    store::split_thread_key(&req_str(p, "thread_key").unwrap_or_default());
+                let uid = p.get("uid").and_then(Value::as_u64).map(|n| n as u32);
+                store::resolve_message_uids(
+                    &engine.db.lock().unwrap(),
+                    &account,
+                    &folder,
+                    &thread_key,
+                    subject_filter.as_deref(),
+                    uid,
+                    &opt_uids(p),
+                )?
+            };
+            uids.sort_unstable();
+            uids.dedup();
+            Ok(json!({ "uids": uids }))
+        }
+
+        // Fetch a small batch of messages and write each one's RFC822 bytes to
+        // `<dir>/<uid>.eml`. The caller packs them into the export archive and
+        // batches the UIDs, so one slow or missing message costs one batch and
+        // a whole batch never has to fit in a JSON response. UIDs the server no
+        // longer has are simply absent from `saved`.
+        "messages.saveRawBatch" => {
+            let account = req_str(p, "account")?;
+            let folder =
+                canon_folder(&req_str(p, "folder").unwrap_or_else(|_| "INBOX".to_string()));
+            let uids = opt_uids(p);
+            let dir = std::path::PathBuf::from(req_str(p, "dir")?);
+
+            let raw_messages = engine
+                .with_read_session(&account, |session| {
+                    let folder = folder.clone();
+                    let uids = uids.clone();
+                    Box::pin(async move {
+                        imap::fetch_raw_messages_for_copy(session, &folder, &uids).await
+                    })
+                })
+                .await?;
+            let mut saved = Vec::with_capacity(raw_messages.len());
+            for message in raw_messages {
+                // Only UIDs that were asked for become file names.
+                if !uids.contains(&message.uid) {
+                    continue;
+                }
+                let path = dir.join(format!("{}.eml", message.uid));
+                std::fs::write(&path, &message.raw)
+                    .with_context(|| format!("write message export {}", path.display()))?;
+                saved.push(message.uid);
+            }
+            Ok(json!({ "saved": saved }))
         }
 
         other => Err(anyhow::anyhow!("unknown method: {other}")),
