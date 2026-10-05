@@ -1365,6 +1365,22 @@ internal fun HtmlMessageBody(
                     if (mw[0]) style.setProperty('max-width', mw[0], mw[1]); else style.removeProperty('max-width');
                     return natural > 0 ? Math.ceil(natural * fitScale) : -1;
                   }
+                  // How far the reader has pinched in, where the view allows it.
+                  // Taken from the two viewports rather than visualViewport.scale:
+                  // the fit above already sets a page scale, and their ratio is 1
+                  // at whatever scale the document rests at. The view is sized
+                  // to its content and never scrolls down, so the height it is
+                  // given has to grow with the zoom or the enlarged mail would
+                  // be cut off at its unzoomed length.
+                  var pinchZooms = ${if (MailWebViewPinchZooms) "true" else "false"};
+                  function pinchZoom() {
+                    var vv = window.visualViewport;
+                    var layout = document.documentElement ? document.documentElement.clientWidth : 0;
+                    if (!pinchZooms || !vv || !vv.width || !layout) return 1;
+                    var zoom = layout / vv.width;
+                    // Rounding in either width is not a zoom.
+                    return zoom > 1.01 ? zoom : 1;
+                  }
                   function report() {
                     // A lazy list can attach a fresh web view and load it before
                     // the view is laid out. At zero width every word wraps onto a
@@ -1393,7 +1409,7 @@ internal fun HtmlMessageBody(
                     // The measurement is in the (possibly widened) layout
                     // viewport's CSS pixels; the view renders it at fitScale, so
                     // scale it back to dp or the view gets sized to a phantom tail.
-                    var h = Math.ceil(contentHeight() * fitScale);
+                    var h = Math.ceil(contentHeight() * fitScale * pinchZoom());
                     if (overflowExtent !== reportedOverflowExtent) {
                       reportedOverflowExtent = overflowExtent;
                       if (window.MeronOverflow && window.MeronOverflow.report) {
@@ -1601,6 +1617,9 @@ internal fun HtmlMessageBody(
                   document.addEventListener('DOMContentLoaded', report);
                   if (window.ResizeObserver) {
                     new ResizeObserver(report).observe(document.documentElement);
+                  }
+                  if (pinchZooms && window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', report);
                   }
                   setTimeout(report, 300);
                 })();

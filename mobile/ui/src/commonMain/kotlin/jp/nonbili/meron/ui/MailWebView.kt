@@ -65,3 +65,7 @@ internal expect val MailWebViewFollowsSystemFontScale: Boolean
 /** Whether [MailWebView]'s `fitWideContent` does anything here, so a setting
  *  built on it is only offered where it works. */
 internal expect val MailWebViewFitsWideContent: Boolean
+
+/** Whether the reader can pinch [MailWebView] to zoom its page, in which case
+ *  the document reports a height that grows with the zoom. */
+internal expect val MailWebViewPinchZooms: Boolean

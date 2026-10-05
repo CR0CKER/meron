@@ -168,3 +168,5 @@ internal actual val MailWebViewFollowsSystemFontScale: Boolean = false
 
 // WKWebView has no shrink-to-fit counterpart (see fitWideContent above).
 internal actual val MailWebViewFitsWideContent: Boolean = false
+
+internal actual val MailWebViewPinchZooms: Boolean = false
