@@ -4,7 +4,16 @@ import { useTranslation } from '../../lib/i18n'
 import { copyText } from '../../lib/native'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
-import { FRAME_GENERATION_MARKER, applyBubbleTheme, prepareBubbleHtml } from './bubbleHtml'
+import {
+  FRAME_GENERATION_MARKER,
+  applyBubbleTheme,
+  applyBubbleThemeAsync,
+  prepareBubbleHtml,
+  reloadFailedImages,
+  reserveImageBox,
+  releaseFailedImageBox,
+  restoreImageBox,
+} from './bubbleHtml'
 import { bodyContentKey } from './messageHelpers'
 import { applyFrameHighlights, clearFrameHighlights } from './frameSearchHighlight'
 import { frameMetrics, measureFrameHeight } from './frameHeight'
@@ -30,6 +39,7 @@ export function BubbleHtmlFrame({
   html,
   outgoing = false,
   allowRemote = false,
+  mediaMissing = 0,
   searchQuery = '',
   activeSearchOffset = -1,
   onLinkHover,
@@ -41,6 +51,8 @@ export function BubbleHtmlFrame({
   outgoing?: boolean
   /** Loosen the baked CSP so this message's remote content loads. */
   allowRemote?: boolean
+  /** How many attachment files this message refers to are not on disk yet. */
+  mediaMissing?: number
   /** In-thread search query; matches are marked inside the frame document. */
   searchQuery?: string
   /** Which of this frame's matches the search is parked on, -1 for none. */
@@ -87,14 +99,23 @@ export function BubbleHtmlFrame({
   const cacheKey = `${documentKey}:${bubbleTheme.appearance}`
   const cachedHeight = measuredHeights.get(cacheKey)
   const [height, setHeight] = useState(() => cachedHeight ?? DEFAULT_FRAME_HEIGHT)
-  const [measured, setMeasured] = useState(() => cachedHeight !== undefined)
   const [nearViewport, setNearViewport] = useState(() => typeof IntersectionObserver === 'undefined')
   const hostRef = useRef<HTMLDivElement | null>(null)
   const heightRef = useRef(height)
-  const measuredRef = useRef(measured)
+  // Whether the document in the frame has been themed and measured. Until then
+  // the frame is hidden, so the message is never seen in its unthemed colors
+  // at the placeholder height. That happens as soon as the document is parsed
+  // (`readyWhenParsed` below), not at `load`, which waits for every picture.
+  // A height remembered from an earlier mount sizes the frame but does not
+  // show it: the document in it is a new one, and has not been themed.
+  const [measured, setMeasured] = useState(false)
+  // The document the frame was last themed and measured for, so a new one
+  // starts over and one whose handler beat the effect below is left alone.
+  const heightKeyRef = useRef<string | null>(null)
   const [frameDoc, setFrameDoc] = useState<Document | null>(null)
   // The ready handler is keyed on the document, not on the theme; the effect
   // below repaints a live frame when the theme changes under it.
+  const appliedThemeRef = useRef<{ doc: Document; theme: typeof bubbleTheme } | null>(null)
   const bubbleThemeRef = useRef(bubbleTheme)
   bubbleThemeRef.current = bubbleTheme
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([])
@@ -143,16 +164,18 @@ export function BubbleHtmlFrame({
     if (naturalWidths.has(documentKey)) onNaturalWidthRef.current?.(naturalWidths.get(documentKey) ?? null)
   }, [documentKey])
 
-  // Only a new document starts over from the placeholder height. A theme change
-  // keeps the height it has — the frame is still showing a measured document —
-  // and the resize observer files the new one if the canvas changes its box.
+  // Only a new document starts over: hidden, at the height it measured to last
+  // time or else the placeholder. A theme change keeps the height it has — the
+  // frame is still showing a measured document — and the resize observer files
+  // the new one if the canvas changes its box. The ready handler can run in the
+  // same turn the iframe loads, before this effect; undoing its work would hide
+  // the message it has just themed.
   useEffect(() => {
-    const cached = measuredHeights.get(`${documentKey}:${appearanceRef.current}`)
-    const nextHeight = cached ?? DEFAULT_FRAME_HEIGHT
+    if (heightKeyRef.current === documentKey) return
+    const nextHeight = measuredHeights.get(`${documentKey}:${appearanceRef.current}`) ?? DEFAULT_FRAME_HEIGHT
     heightRef.current = nextHeight
-    measuredRef.current = cached !== undefined
     setHeight(nextHeight)
-    setMeasured(cached !== undefined)
+    setMeasured(false)
   }, [documentKey])
 
   useEffect(() => {
@@ -163,10 +186,17 @@ export function BubbleHtmlFrame({
     }
 
     const scrollRoot = host.closest('.message-scroll')
-    const observer = new IntersectionObserver(([entry]) => setNearViewport(entry?.isIntersecting ?? false), {
-      root: scrollRoot,
-      rootMargin: FRAME_OVERSCAN,
-    })
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const near = entry?.isIntersecting ?? false
+        if (!near) setMeasured(false)
+        setNearViewport(near)
+      },
+      {
+        root: scrollRoot,
+        rootMargin: FRAME_OVERSCAN,
+      },
+    )
     observer.observe(host)
     return () => observer.disconnect()
   }, [documentKey])
@@ -178,21 +208,30 @@ export function BubbleHtmlFrame({
       // still installed, and the load event wires this one again.
       if (doc.documentElement.getAttribute(FRAME_GENERATION_MARKER) !== generation) return
 
+      // Before the first measurement, so a folded quote never flashes open.
+      const foldQuote = installFrameQuoteFold(doc, quoteKey, {
+        show: t('chat.showQuotedText'),
+        hide: t('chat.hideQuotedText'),
+      })
+      foldQuoteRef.current = foldQuote
+
       let animationFrame = 0
       let disposed = false
+      let themed = false
       // Per document: what its out-of-flow content was last seen to need.
       let overflowExtent = 0
       const cleanupFns: Array<() => void> = []
+      cleanupFns.push(() => {
+        if (foldQuoteRef.current === foldQuote) foldQuoteRef.current = null
+      })
 
       const commitHeight = (nextHeight: number) => {
         if (disposed) return
         // Filed under the document this handler was installed for, in whatever
         // appearance is painting it now: a later document has its own handler.
         measuredHeights.set(`${documentKey}:${appearanceRef.current}`, nextHeight)
-        if (!measuredRef.current) {
-          measuredRef.current = true
-          setMeasured(true)
-        }
+        heightKeyRef.current = documentKey
+        setMeasured(true)
         if (Math.abs(nextHeight - heightRef.current) < HEIGHT_CHANGE_EPSILON) return
         heightRef.current = nextHeight
         setHeight(nextHeight)
@@ -236,6 +275,11 @@ export function BubbleHtmlFrame({
       }
 
       const measure = () => {
+        // Wired as soon as the document is parsed, which can be before the
+        // frame has its column: a height read then is not the message's, and
+        // would be shown and filed as if it were. The resize observer calls
+        // again once there is a width.
+        if (disposed || !themed || !doc.documentElement.clientWidth) return
         wrapOverflowingTables()
         reportNaturalWidth()
         const measurement = measureFrameHeight(frameMetrics(doc), overflowExtent)
@@ -254,7 +298,21 @@ export function BubbleHtmlFrame({
         const limit = doc.documentElement?.clientWidth ?? 0
         if (!limit) return
         for (const table of doc.querySelectorAll<HTMLTableElement>('table')) {
-          if (table.closest('.meron-table-scroll')) continue
+          if (table.closest('.meron-table-scroll')) {
+            // An effect replay keeps the DOM wrappers but replaces this map.
+            // Track only the wrapped table itself, not its nested tables.
+            if (
+              autoFitRef.current &&
+              table.parentElement?.classList.contains('meron-table-scroll') &&
+              !fitTables.has(table)
+            ) {
+              fitTables.set(table, {
+                natural: Math.max(table.scrollWidth, table.offsetWidth),
+                zoom: Number.parseFloat(table.style.getPropertyValue('zoom')) || 1,
+              })
+            }
+            continue
+          }
           const rect = table.getBoundingClientRect()
           const overflowsFrame = rect.left < -1 || rect.right > limit + 1
           const overflowsItself = table.scrollWidth > table.clientWidth + 1
@@ -314,32 +372,39 @@ export function BubbleHtmlFrame({
         wrapper.appendChild(button)
       }
 
-      // Before the first measurement, so a folded quote never flashes open.
-      const foldQuote = installFrameQuoteFold(doc, quoteKey, {
-        show: t('chat.showQuotedText'),
-        hide: t('chat.hideQuotedText'),
-      })
-      foldQuoteRef.current = foldQuote
-      cleanupFns.push(() => {
-        if (foldQuoteRef.current === foldQuote) foldQuoteRef.current = null
-      })
-
-      applyBubbleTheme(doc, bubbleThemeRef.current)
-      setFrameDoc(doc)
-      cleanupFns.push(() => setFrameDoc((current) => (current === doc ? null : current)))
-
-      measure()
-      const observer = new ResizeObserver(measure)
+      // Observe media while the theme is prepared. Measurements wait for the
+      // theme, and run in a separate frame after its work has yielded.
+      const observer = new ResizeObserver(scheduleMeasure)
       observer.observe(doc.documentElement)
       if (doc.body) observer.observe(doc.body)
 
+      for (const video of doc.querySelectorAll<HTMLVideoElement>('video[width][height]')) {
+        reserveImageBox(video)
+      }
       for (const image of doc.querySelectorAll<HTMLImageElement>('img')) {
-        if (image.complete) continue
-        image.addEventListener('load', scheduleMeasure)
-        image.addEventListener('error', scheduleMeasure)
+        reserveImageBox(image)
+        const onError = () => {
+          // A blocked remote picture is an intentional placeholder, not a
+          // failed attachment. Keep the sender's layout until it is revealed.
+          const src = image.getAttribute('src') ?? ''
+          if (allowRemote || !/^(?:https?:)?\/\//i.test(src)) releaseFailedImageBox(image)
+          scheduleMeasure()
+        }
+        // Zero intrinsic width is valid for SVGs. Preserve those and intentional
+        // remote placeholders; other completed zero-width requests have failed.
+        const src = image.getAttribute('src') ?? ''
+        if (image.complete && image.naturalWidth === 0 && src && !/\.svg(?:[?#]|$)|^data:image\/svg\+xml/i.test(src)) {
+          onError()
+        }
+        const onLoad = () => {
+          restoreImageBox(image)
+          scheduleMeasure()
+        }
+        image.addEventListener('load', onLoad)
+        image.addEventListener('error', onError)
         cleanupFns.push(() => {
-          image.removeEventListener('load', scheduleMeasure)
-          image.removeEventListener('error', scheduleMeasure)
+          image.removeEventListener('load', onLoad)
+          image.removeEventListener('error', onError)
         })
       }
 
@@ -356,6 +421,38 @@ export function BubbleHtmlFrame({
       const fontReady = doc.fonts?.ready.then(scheduleMeasure).catch(() => undefined)
       void fontReady
 
+      const initialTheme = bubbleThemeRef.current
+      const remembersHeight = measuredHeights.has(`${documentKey}:${initialTheme.appearance}`)
+      const finishTheme = () => {
+        if (disposed) return
+        themed = true
+        appliedThemeRef.current = { doc, theme: initialTheme }
+        setFrameDoc(doc)
+        // A remount is already at the height this document measured to: show
+        // it the moment it is themed, and let the measurement that follows
+        // correct the height if the layout has changed since.
+        if (remembersHeight) {
+          heightKeyRef.current = documentKey
+          setMeasured(true)
+        }
+        scheduleMeasure()
+      }
+      const themeFailed = (error: unknown) => {
+        // A styling failure must not hide otherwise readable message text.
+        if (disposed) return
+        console.warn('Could not theme message HTML', error)
+        try {
+          applyBubbleTheme(doc, initialTheme)
+        } catch (fallbackError) {
+          console.warn('Could not apply fallback message theme', fallbackError)
+        }
+        finishTheme()
+      }
+      // Batched even for a remount: the walk over a large newsletter would
+      // otherwise block scrolling once per frame that comes back into view.
+      void applyBubbleThemeAsync(doc, initialTheme, () => disposed).then(finishTheme, themeFailed)
+      cleanupFns.push(() => setFrameDoc((current) => (current === doc ? null : current)))
+
       return () => {
         disposed = true
         if (animationFrame) window.cancelAnimationFrame(animationFrame)
@@ -371,8 +468,28 @@ export function BubbleHtmlFrame({
   // Repaint a live frame when the theme changes under it: the document isn't
   // rebuilt for a theme (only typography is baked in), so nothing else would.
   useEffect(() => {
-    if (frameDoc?.body) applyBubbleTheme(frameDoc, bubbleTheme)
+    if (!frameDoc?.body) return
+    if (appliedThemeRef.current?.doc === frameDoc && appliedThemeRef.current.theme === bubbleTheme) return
+    // A visible document changes palette atomically; only its initial hidden
+    // theme walk yields, so intermediate canvas decisions cannot flash.
+    applyBubbleTheme(frameDoc, bubbleTheme)
+    appliedThemeRef.current = { doc: frameDoc, theme: bubbleTheme }
   }, [frameDoc, bubbleTheme])
+
+  // A body can be shown before its attachment files are back on disk. When they
+  // arrive the HTML is the same, so the frame keeps its document — and a picture
+  // that already failed stays broken unless it is asked for again. Any drop in
+  // the count is a file that came back, whether or not the rest followed.
+  const mediaMissingRef = useRef(mediaMissing)
+  const mediaRestoredRef = useRef(false)
+  useEffect(() => {
+    if (mediaMissing < mediaMissingRef.current) mediaRestoredRef.current = true
+    mediaMissingRef.current = mediaMissing
+    if (!mediaRestoredRef.current || !frameDoc) return
+    // Pending pictures keep this recovery as a one-shot error retry.
+    mediaRestoredRef.current = false
+    reloadFailedImages(frameDoc)
+  }, [mediaMissing, frameDoc])
 
   // Mark search hits in the live document. Re-runs when the query, the active
   // match, or the document itself changes; clearing on teardown keeps a frame
@@ -401,10 +518,15 @@ export function BubbleHtmlFrame({
             prepareHtml={prepareHtml}
             title={t('chat.messageHtml')}
             className="block w-full border-0 bg-transparent"
-            style={{ height, overflow: 'hidden', visibility: measured ? 'visible' : 'hidden' }}
+            style={{
+              height,
+              overflow: 'hidden',
+              visibility: measured && heightKeyRef.current === documentKey ? 'visible' : 'hidden',
+            }}
             scrolling="no"
             onFrameClick={handleFrameClick}
             onReady={handleReady}
+            readyWhenParsed
             onLinkHover={onLinkHover}
             onUserScrollIntent={onUserScrollIntent}
             forwardContextMenu

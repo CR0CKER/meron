@@ -219,8 +219,15 @@ pub struct Attachment {
     pub size: usize,
     /// Relative media key (`account/folder/uid/index.ext`) for the bytes written
     /// to disk and served at `/media/<key>`; null only when no media context was
-    /// provided (tests, previews) or the write failed.
+    /// provided (tests, previews), the write failed, or the file is
+    /// `oversized`.
     pub key: Option<String>,
+    /// Left off disk on purpose: larger than the whole media cache, so it
+    /// could not outlive a prune. Downloading the message again would not
+    /// change that, which is what tells it from a key-less attachment whose
+    /// bytes were never written.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub oversized: bool,
 }
 
 /// Decode a bare RFC 2047 header fragment — one that arrives without its field
@@ -469,6 +476,15 @@ pub fn message_id_of(raw: &[u8]) -> String {
 /// written under `media` (when provided) and referenced by key; passing `None`
 /// (tests, previews) skips disk writes and leaves every attachment key null.
 pub fn parse_message(raw: &[u8], media: Option<&MediaCtx>) -> Message {
+    let message = parse_message_unpruned(raw, media);
+    if let Some(ctx) = media {
+        prune_media_cache(&ctx.root);
+    }
+    message
+}
+
+/// Batch fetches prune once off the async runtime after parsing their messages.
+pub(crate) fn parse_message_unpruned(raw: &[u8], media: Option<&MediaCtx>) -> Message {
     let mail = match parse_mail(raw) {
         Ok(mail) => mail,
         Err(_) => return Message::default(),
@@ -492,10 +508,6 @@ pub fn parse_message(raw: &[u8], media: Option<&MediaCtx>) -> Message {
     let mut attachments = Vec::new();
     let mut cid_keys: Vec<(String, String)> = Vec::new();
     collect_attachments(&mail, &mut attachments, &mut cid_keys, media);
-    if let Some(ctx) = media {
-        prune_media_cache(&ctx.root);
-    }
-
     // Prefer the MIME text/plain alternative for the conversation and Plain
     // reader view. Keep HTML separately for the HTML reader; when a message is
     // HTML-only, fall back to converting HTML so there is still readable text.
@@ -1024,22 +1036,14 @@ pub fn prepare_message_html(source: &str, load_remote_images: bool, subject: &st
     inject_head(source, &head)
 }
 
-/// Insert `head_extra` into the document head: after an existing `<head ...>`, or
-/// after `<html ...>` as a new head, or as a prepended document otherwise.
+/// Wrap a sanitized message in the document that carries `head_extra`.
+///
+/// Always a fresh shell, never a search for the message's own `<html>` or
+/// `<head>`: ammonia returns a fragment, so those strings can only occur inside
+/// its `<style>` text or an attribute value. Injecting there would park the CSP
+/// `<meta>` where the browser does not read it. The desktop frame recognises
+/// this exact shell (see `bubbleHtml.ts`), so keep the two in step.
 fn inject_head(html: &str, head_extra: &str) -> String {
-    let lower = html.to_ascii_lowercase();
-    if let Some(head) = lower.find("<head")
-        && let Some(rel) = lower[head..].find('>')
-    {
-        let at = head + rel + 1;
-        return format!("{}{head_extra}{}", &html[..at], &html[at..]);
-    }
-    if let Some(htmltag) = lower.find("<html")
-        && let Some(rel) = lower[htmltag..].find('>')
-    {
-        let at = htmltag + rel + 1;
-        return format!("{}<head>{head_extra}</head>{}", &html[..at], &html[at..]);
-    }
     format!("<!doctype html><html><head>{head_extra}</head><body>{html}</body></html>")
 }
 
@@ -1097,7 +1101,10 @@ fn collect_attachments(
     // Persist every attachment (images and files alike) so the bridge can serve
     // it at `/media/<key>` and the user can download it. Without media context
     // (tests, previews) the key stays null and only metadata is kept.
-    let key = media.and_then(|ctx| write_media(ctx, index, &filename, &mime, &bytes));
+    let oversized = media.is_some() && size as u64 > media_cache_cap();
+    let key = media
+        .filter(|_| !oversized)
+        .and_then(|ctx| write_media(ctx, index, &filename, &mime, &bytes));
 
     // Map this inline image's Content-ID to its served key so HTML mode can
     // rewrite `cid:` references (`<foo@host>` headers — strip the angle brackets).
@@ -1119,6 +1126,7 @@ fn collect_attachments(
         mime,
         size,
         key,
+        oversized,
     });
 }
 
@@ -1134,6 +1142,21 @@ fn write_media(
     mime: &str,
     bytes: &[u8],
 ) -> Option<String> {
+    write_media_with_cap(ctx, index, filename, mime, bytes, media_cache_cap())
+}
+
+fn write_media_with_cap(
+    ctx: &MediaCtx,
+    index: usize,
+    filename: &str,
+    mime: &str,
+    bytes: &[u8],
+    cap: u64,
+) -> Option<String> {
+    // An individual file larger than the entire cache cannot survive pruning.
+    if bytes.len() as u64 > cap {
+        return None;
+    }
     let ext = sanitize_segment(
         Path::new(filename)
             .extension()
@@ -1161,26 +1184,37 @@ fn write_media(
 /// True when every attachment's bytes are still on disk. Used before serving
 /// cached mail rows; when false the caller refetches and re-parses the message.
 /// Two cases force a refetch: a keyed file that pruning removed independently of
-/// SQLite, and a key-less attachment — a row cached before attachments were
-/// persisted to disk, whose bytes were never written and must be fetched now.
+/// SQLite, and a key-less attachment whose bytes were never written — a row
+/// cached before attachments were persisted to disk, or a write that failed.
+/// An `oversized` attachment is key-less by design and is not one of them.
 pub fn cached_media_available(root: &Path, message: &Message) -> bool {
+    missing_media_count(root, message) == 0
+}
+
+/// How many of a cached message's attachments a download could put back on
+/// disk: pruned, or never written. Not the ones left off for their size.
+pub fn missing_media_count(root: &Path, message: &Message) -> usize {
     message
         .attachments
         .iter()
-        .all(|att| match att.key.as_deref() {
-            Some(key) => root.join(key).is_file(),
-            None => false,
+        .filter(|att| match att.key.as_deref() {
+            Some(key) => !root.join(key).is_file(),
+            None => !att.oversized,
         })
+        .count()
 }
 
 /// Keep the shared media cache under its configured cap by removing oldest files
 /// first. The cap is bytes and can be overridden with `MERON_MEDIA_CAP`.
-pub fn prune_media_cache(root: &Path) {
-    let cap = std::env::var("MERON_MEDIA_CAP")
+fn media_cache_cap() -> u64 {
+    std::env::var("MERON_MEDIA_CAP")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(MEDIA_CAP_BYTES);
+        .unwrap_or(MEDIA_CAP_BYTES)
+}
 
+pub fn prune_media_cache(root: &Path) {
+    let cap = media_cache_cap();
     let mut files = Vec::new();
     let mut total = 0u64;
     collect_media_files(root, &mut files, &mut total);
@@ -2238,6 +2272,21 @@ AQID\r\n\
     }
 
     #[test]
+    fn prepare_html_keeps_the_csp_ahead_of_markup_posing_as_a_head() {
+        // `<style>` text and attribute values survive sanitizing verbatim.
+        for source in [
+            "<style>/*<html><head>*/</style><img src=\"https://t.example/p.png\">",
+            "<img alt=\"<html><head>\" src=\"https://t.example/p.png\">",
+        ] {
+            let out = prepare_html(source, false);
+            let head = "<!doctype html><html><head><meta charset=\"utf-8\">\
+                        <meta http-equiv=\"Content-Security-Policy\"";
+            assert!(out.starts_with(head), "{out}");
+            assert_eq!(out.matches("Content-Security-Policy").count(), 1, "{out}");
+        }
+    }
+
+    #[test]
     fn prepare_html_gates_remote_images_via_csp() {
         let off = prepare_html("<p>hi</p>", false);
         assert!(off.contains("Content-Security-Policy"));
@@ -2513,11 +2562,13 @@ AQID\r\n\
             mime: "image/png".to_string(),
             size: 3,
             key: Some("acct/inbox/1/0.png".to_string()),
+            oversized: false,
         });
         assert!(cached_media_available(&root, &msg));
 
         std::fs::remove_file(root.join("acct/inbox/1/0.png")).unwrap();
         assert!(!cached_media_available(&root, &msg));
+        assert_eq!(missing_media_count(&root, &msg), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2528,6 +2579,7 @@ AQID\r\n\
             mime: "image/png".to_string(),
             size: 3,
             key: Some(key.to_string()),
+            oversized: false,
         };
         let mut msg = Message {
             body_html: Some("<img src=\"/media/acct/inbox/1/0.png\">".to_string()),
@@ -2582,9 +2634,35 @@ END:VCALENDAR
     }
 
     #[test]
-    fn cached_media_unavailable_for_keyless_attachment() {
+    fn a_failed_write_is_recovered_and_an_oversized_file_is_not_written() {
+        let root = std::env::temp_dir().join(format!("meron-unwritable-{}", std::process::id()));
+        let _ = std::fs::remove_file(&root);
+        std::fs::write(&root, b"not a directory").unwrap();
+        let ctx = MediaCtx {
+            root: root.clone(),
+            account: "acc".into(),
+            folder: "INBOX".into(),
+            uid: 1,
+        };
+        let raw = b"Message-ID: <one@test>\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=file.bin\r\n\r\ndata";
+        let message = parse_message(raw, Some(&ctx));
+        assert_eq!(message.attachments.len(), 1);
+        assert_eq!(message.attachments[0].key, None);
+        assert!(!message.attachments[0].oversized);
+        assert_eq!(missing_media_count(&root, &message), 1);
+        std::fs::remove_file(&root).unwrap();
+        assert_eq!(
+            write_media_with_cap(&ctx, 0, "file.bin", "application/octet-stream", b"data", 3),
+            None
+        );
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn keyless_attachments_trigger_media_recovery_unless_oversized() {
         // A row cached before attachments were persisted has a key-less file;
         // it must report unavailable so the caller refetches and writes it.
+        // One left off disk for its size would only be left off again.
         let root = std::env::temp_dir().join(format!("meron-keyless-{}", std::process::id()));
         let mut msg = Message::default();
         msg.attachments.push(Attachment {
@@ -2592,8 +2670,13 @@ END:VCALENDAR
             mime: "text/calendar".to_string(),
             size: 3072,
             key: None,
+            oversized: false,
         });
         assert!(!cached_media_available(&root, &msg));
+        assert_eq!(missing_media_count(&root, &msg), 1);
+        msg.attachments[0].oversized = true;
+        assert!(cached_media_available(&root, &msg));
+        assert_eq!(missing_media_count(&root, &msg), 0);
     }
 
     #[test]
