@@ -6,6 +6,7 @@ import jp.nonbili.meron.shared.MessageBody
 import jp.nonbili.meron.shared.MobileMailCommandClient
 import jp.nonbili.meron.shared.RssThreadParams
 import jp.nonbili.meron.shared.SendStatus
+import jp.nonbili.meron.shared.ThreadReadPage
 import jp.nonbili.meron.shared.ThreadReadParams
 import jp.nonbili.meron.shared.ThreadSummary
 import jp.nonbili.meron.shared.attachmentToDraftAttachment
@@ -23,6 +24,7 @@ import jp.nonbili.meron.shared.parseThreadReadPage
 import jp.nonbili.meron.shared.rewriteMediaRefsToCid
 import jp.nonbili.meron.shared.splitAddressList
 import jp.nonbili.meron.shared.threadIdIsRss
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -282,31 +284,110 @@ internal fun ThreadSummary.rssItemKeys(): List<String> = listOf(id).takeIf { thr
 // canonical copy from the core. Used after sending a quick reply so the stored
 // sent message replaces the optimistic one. Runs on ioDispatcher; guards against
 // the user having switched threads while the read was in flight.
-internal suspend fun MeronMobileState.reloadCurrentThreadMessages() {
+internal suspend fun MeronMobileState.reloadCurrentThreadMessages(reportOlderPageFailure: Boolean = false) {
     val thread = selectedCoreThread ?: return
     if (!coreLoaded) return
-    val response =
+    val generation = ++threadRefreshGeneration
+    val boundary = oldestServerMessage(messages)
+
+    suspend fun readPage(before: String?): ThreadReadPage =
         withContext(ioDispatcher) {
             val client = MobileMailCommandClient(core)
-            if (threadIdIsRss(thread.id)) {
-                client.readRssThread(RssThreadParams(threadId = thread.id))
-            } else {
-                withManagedGoogleAuth(client, thread.accountId) {
-                    client.readThread(ThreadReadParams(threadId = thread.id))
-                }
-            }
+            parseThreadReadPage(
+                if (threadIdIsRss(thread.id)) {
+                    client.readRssThread(RssThreadParams(threadId = thread.id, beforeCursor = before))
+                } else {
+                    withManagedGoogleAuth(client, thread.accountId) {
+                        client.readThread(ThreadReadParams(threadId = thread.id, beforeCursor = before))
+                    }
+                },
+            )
         }
-    if (selectedCoreThread?.id != thread.id) return
-    val page = parseThreadReadPage(response)
-    messages = mergeLocalSendMessages(messages, page.messages)
-    messageCursor = page.nextCursor
+    var page = readPage(null)
+    var loaded = page.messages
+    // The newest page is shown as soon as it is read. Older pages the user
+    // scrolled back to are then re-read one at a time: replacing the list with
+    // the newest page alone would drop them from under the reader, and waiting
+    // on all of them would hold a new message back behind a slow download.
+    while (true) {
+        // A newer refresh has already written fresher pages than these.
+        if (selectedCoreThread?.id != thread.id || threadRefreshApplied > generation) return
+        threadRefreshApplied = generation
+        // Until a page is re-read its messages stay as they were, and so does
+        // the cursor that continues from them. That covers a load-more landing
+        // meanwhile too: its pages reach further back than this refresh.
+        val wholeThread = page.nextCursor.isBlank()
+        val older = if (wholeThread) emptyList() else messagesOlderThan(messages, loaded)
+        messages = mergeLocalSendMessages(messages, older + loaded)
+        if (older.isEmpty()) messageCursor = page.nextCursor
+        if (wholeThread || page.messages.isEmpty() || refreshReachedBoundary(loaded, boundary)) return
+        // An older page that cannot be read keeps what it showed before; the
+        // newer pages above are already refreshed. Only a caller with somewhere
+        // to say so hears about it.
+        page =
+            try {
+                readPage(page.nextCursor)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (reportOlderPageFailure) throw e
+                return
+            }
+        val known = loaded.map { it.id }.toSet()
+        loaded = (page.messages.filterNot { it.id in known } + loaded).sortedBy { it.dateEpochSeconds }
+    }
+}
+
+// The messages on screen that sit further back than a refresh has read so
+// far: everything ahead of the first one it did read.
+internal fun messagesOlderThan(
+    current: List<MessageBody>,
+    loaded: List<MessageBody>,
+): List<MessageBody> {
+    val oldest = loaded.firstOrNull() ?: return emptyList()
+    val loadedIds = loaded.map { it.id }.toSet()
+    // A row the core has since collapsed into its copy in another folder was
+    // read again under that copy's id.
+    val loadedMessageIds = loaded.mapNotNull { it.messageId.normalizedMessageId().takeIf(String::isNotBlank) }.toSet()
+    val at = current.indexOfFirst { it.id in loadedIds }
+    val older =
+        if (at >= 0) {
+            // Not one the refresh passed over: that was deleted meanwhile.
+            current.take(at).filter { it.dateEpochSeconds <= oldest.dateEpochSeconds }
+        } else {
+            current.filter { it.dateEpochSeconds < oldest.dateEpochSeconds }
+        }
+    return older.filter { isServerMessage(it) && it.messageId.normalizedMessageId() !in loadedMessageIds }
+}
+
+private fun isServerMessage(message: MessageBody): Boolean = !message.id.startsWith("local-send-") && !message.id.startsWith("local-draft-")
+
+// The oldest message that came from the core: how far back the reader has
+// paged. Optimistic sends and local drafts are not on any page.
+internal fun oldestServerMessage(messages: List<MessageBody>): MessageBody? = messages.firstOrNull(::isServerMessage)
+
+// Whether a refresh has re-read as far back as `boundary`. By identity, since
+// one timestamp can span pages: its own id, or its Message-ID when the core
+// has since collapsed it into its copy in another folder. A strictly older
+// message covers a boundary that was deleted and will never come back.
+internal fun refreshReachedBoundary(
+    loaded: List<MessageBody>,
+    boundary: MessageBody?,
+): Boolean {
+    if (boundary == null) return true
+    val messageId = boundary.messageId.normalizedMessageId()
+    return loaded.any {
+        it.id == boundary.id ||
+            it.dateEpochSeconds < boundary.dateEpochSeconds ||
+            (messageId.isNotBlank() && it.messageId.normalizedMessageId() == messageId)
+    }
 }
 
 // Retry loading bodies for the open thread. Re-reading is enough: the core
 // re-attempts the on-demand IMAP fetch for any message without a cached body.
 internal fun MeronMobileState.retryOpenThreadLoad() {
     scope.launch {
-        runCatching { reloadCurrentThreadMessages() }
+        runCatching { reloadCurrentThreadMessages(reportOlderPageFailure = true) }
             .onFailure { status = "Could not open message: ${it.message}" }
     }
 }

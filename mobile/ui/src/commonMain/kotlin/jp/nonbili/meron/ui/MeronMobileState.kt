@@ -188,6 +188,13 @@ internal class MeronMobileState(
     var loadingMoreThreads by mutableStateOf(false)
     var selectedCoreThread by mutableStateOf<ThreadSummary?>(null)
     var activeThreadReadToken by mutableStateOf(0L)
+
+    // Refreshes of the open conversation, numbered as they start, and the
+    // newest one to have written. A refresh writes page by page, so it must
+    // stop once a later one has put fresher pages on screen — but not before:
+    // a later refresh that fails writes nothing.
+    var threadRefreshGeneration = 0L
+    var threadRefreshApplied = 0L
     var conversationHtmlOverrides by mutableStateOf(emptyMap<String, Boolean>())
     var previousTopScreen by mutableStateOf(Screen.Mail)
     var composeReturnScreen by mutableStateOf(Screen.Mail)

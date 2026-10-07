@@ -405,6 +405,9 @@ pub async fn read_thread_page(
     };
     let mut seen_message_ids = HashSet::new();
     let mut messages = Vec::with_capacity(headers.len());
+    // Looked at after any fill above was started, so a placeholder this read
+    // returns says whether its body is on the way.
+    let filling = engine.body_fetches.lock().unwrap().clone();
     for (header, slot) in headers.iter().zip(slots) {
         let mut cached = slot.cached;
         if let Some(message) = cached.as_mut() {
@@ -437,6 +440,11 @@ pub async fn read_thread_page(
         // has to show.
         if slot.media_missing > 0 {
             message["media_missing"] = json!(slot.media_missing);
+        }
+        // Tells a body still downloading in the background from one that
+        // could not be downloaded: only the second is worth a retry button.
+        if cached.is_none() && filling.contains(&message_key(account, &slot.folder, header.uid)) {
+            message["body_loading"] = json!(true);
         }
         messages.push(message);
     }
@@ -951,7 +959,10 @@ mod tests {
                 None,
             )
         };
-        assert_eq!(read().await.unwrap()["messages"][0]["body_missing"], true);
+        let page = read().await.unwrap();
+        assert_eq!(page["messages"][0]["body_missing"], true);
+        // Still downloading: a placeholder, not a failure to retry.
+        assert_eq!(page["messages"][0]["body_loading"], true);
         tokio::time::timeout(std::time::Duration::from_secs(3), notified)
             .await
             .unwrap()
@@ -1016,6 +1027,9 @@ mod tests {
         assert_eq!(page["messages"][0]["body"], "Cached body");
         assert_eq!(page["messages"][1]["body_missing"], true);
         assert_eq!(page["messages"][2]["body_missing"], true);
+        // Failed, not on the way.
+        assert!(page["messages"][1].get("body_loading").is_none());
+        assert!(page["messages"][2].get("body_loading").is_none());
         // Neither is downloaded again by the read its failure announced.
         assert!(engine.body_fetches.lock().unwrap().is_empty());
         assert!(engine.body_fetch_failures.lock().unwrap().is_empty());

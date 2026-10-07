@@ -164,6 +164,9 @@ export type Message = {
   /** True when the body isn't cached yet — the on-demand fetch failed or is
    * still filling in the background (a `mail.synced` re-read delivers it). */
   body_missing?: boolean
+  /** With `body_missing`: the body is downloading in the background right
+   * now, rather than having failed (absent otherwise). */
+  body_loading?: boolean
   /** How many attachment files this message refers to are not on disk yet
    * (absent when none): the body is shown first and a `mail.synced` re-read
    * lowers this as they come back. The body and its `/media` URLs do not

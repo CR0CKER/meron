@@ -682,18 +682,20 @@ internal fun ColumnScope.MessageBodyContent(
             )
         }
     } else if (message.bodyMissing) {
-        // The core has no cached body (the on-demand fetch failed) — a
-        // different state from a genuinely empty message, so offer a retry
-        // instead of "(no content)".
+        // The core has no cached body — a different state from a genuinely
+        // empty message, so not "(no content)". Still downloading in the
+        // background, it arrives by itself; only a failed fetch offers a retry.
         Column(Modifier.padding(horizontal = chromeInset)) {
             Text(
-                tr("chat.messageLoadFailed"),
+                tr(if (message.bodyLoading) "common.loading" else "chat.messageLoadFailed"),
                 color = textColor.copy(alpha = 0.6f),
                 fontSize = 15.5.sp,
                 lineHeight = 21.sp,
             )
-            TextButton(onClick = onRetryLoad, modifier = Modifier.align(Alignment.End)) {
-                Text(tr("chat.retry"))
+            if (!message.bodyLoading) {
+                TextButton(onClick = onRetryLoad, modifier = Modifier.align(Alignment.End)) {
+                    Text(tr("chat.retry"))
+                }
             }
         }
     } else {
