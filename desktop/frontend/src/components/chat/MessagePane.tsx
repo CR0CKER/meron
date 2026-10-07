@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { openComposeTab } from '../../states/compose'
@@ -8,7 +8,7 @@ import { ui$ } from '../../states/ui'
 import { mail$, getActiveThread, loadThread } from '../../states/mail'
 import { accounts$ } from '../../states/accounts'
 import { settings$ } from '../../states/settings'
-import { resetThreadView, thread$, type ConversationMode } from '../../states/thread'
+import { resetThreadView, thread$ } from '../../states/thread'
 import { Gallery } from './Gallery'
 import { ConversationDetailsPanel } from './ConversationDetailsPanel'
 import { EmptyState } from '../empty-state/EmptyState'
@@ -18,16 +18,21 @@ import { ReaderTabView } from './ReaderTabView'
 import { ConversationHeader } from './ConversationHeader'
 import { ThreadSearchBarMobile } from './ThreadSearchBarMobile'
 import { ConversationMessageList } from './ConversationMessageList'
-import { MessageContextMenu, type MessageContextMenuState } from './MessageContextMenu'
+import { MessageContextMenu } from './MessageContextMenu'
 import { buildGalleryItems, buildThreadMedia, buildParticipants } from './conversationMedia'
 import { useThreadSearch } from './useThreadSearch'
-import { useConversationScroll } from './useConversationScroll'
+import {
+  ConversationScrollContext,
+  ConversationScrollIntentContext,
+  useConversationScroll,
+} from './useConversationScroll'
 import { ArrowRight } from 'lucide-react'
 import { usePresence } from '../../lib/usePresence'
 import { PANE_ANIMATION_MS } from '../kanban/KanbanConversationPane'
 import { wallpaperCss } from '../../lib/wallpapers'
 import { clearMediaSession } from '../../lib/mediaSession'
 import { openCorrespondentMail } from '../../states/kanban'
+import { isRssAccount } from '../../lib/threadActions'
 import type { Message, MessageTab } from '../../types'
 
 function threadFromTab(tab: MessageTab, fallback: Message | null): Message {
@@ -65,7 +70,6 @@ export function MessagePane() {
   const allowedSenders = useValue(settings$.remoteImageSenders)
   const galleryIndex = useValue(thread$.galleryIndex)
   const mediaOpen = useValue(thread$.mediaOpen)
-  const modeOverrides = useValue(thread$.conversationModeOverrides)
   // Ring-highlight for a message jumped to from the starred list; shares the
   // search-match ring styling in ConversationMessageList.
   const flashMessageId = useValue(thread$.flashMessageId)
@@ -91,7 +95,7 @@ export function MessagePane() {
   const activeAccount = activeThread
     ? accounts.find((account) => account.id === activeThread.account_id)
     : (accounts.find((account) => account.id === selectedAccountId) ?? null)
-  const isRSS = activeAccount?.provider === 'rss' || activeAccount?.auth_type === 'rss'
+  const isRSS = isRssAccount(activeAccount ?? undefined, activeThread?.account_id ?? selectedAccountId)
   const activeThreadId = activeThread?.thread_id ?? ''
   const conversationWallpaper = wallpaperCss(activeAccount?.chat_wallpaper)
   // Show a spinner instead of the previous thread's messages while a freshly
@@ -117,18 +121,6 @@ export function MessagePane() {
   )
   const unreadKey = displayMessages.map((message) => `${message.id}:${message.unread ? '1' : '0'}`).join('|')
 
-  const accountConversationMode: ConversationMode = (activeAccount?.conversation_html ?? true) ? 'html' : 'plain'
-  const conversationMode: ConversationMode = activeAccount
-    ? (modeOverrides[activeAccount.id] ?? accountConversationMode)
-    : 'plain'
-  const setQuickConversationMode = useCallback(
-    (mode: ConversationMode) => {
-      if (!activeAccount) return
-      thread$.conversationModeOverrides[activeAccount.id].set(mode)
-    },
-    [activeAccount],
-  )
-
   const { galleryItems, galleryOffsets } = useMemo(
     () => buildGalleryItems(displayMessages, accounts, revealedRemote, allowedSenders),
     [displayMessages, accounts, revealedRemote, allowedSenders],
@@ -145,19 +137,11 @@ export function MessagePane() {
   const threadSearchFocus = useValue(thread$.searchFocus)
   const desktopThreadSearchInputRef = useRef<HTMLInputElement | null>(null)
   const mobileThreadSearchInputRef = useRef<HTMLInputElement | null>(null)
-  const { threadSearchOpen, searchMatches, matchCount, activeSearchIndex, activeSearchId, goToSearchMatch } =
-    useThreadSearch(displayMessages)
-  const {
-    scrollRef,
-    bottomAnchorRef,
-    messagesWrapperRef,
-    handleConversationScroll,
-    setScrollTop,
-    scrollMessageToTop,
-    releasePinForUserScroll,
-  } = useConversationScroll(activeThreadId, displayMessages, conversationActiveTab, unreadKey)
+  const { threadSearchOpen, searchMatches, activeSearchId } = useThreadSearch(displayMessages, activeThread?.account_id)
+  const conversationScroll = useConversationScroll(activeThreadId, displayMessages, conversationActiveTab, unreadKey)
+  const { scrollRef } = conversationScroll
 
-  const [contextMenu, setContextMenu] = useState<MessageContextMenuState | null>(null)
+  const contextMenu = useValue(thread$.messageContextMenu)
 
   const showMessageInConversation = useCallback((messageId: string) => {
     thread$.pendingScrollMessageId.set(messageId)
@@ -263,38 +247,27 @@ export function MessagePane() {
         </div>
       )}
 
-      {threadSearchOpen && (
-        <ThreadSearchBarMobile
-          matchCount={matchCount}
-          activeSearchIndex={activeSearchIndex}
-          goToSearchMatch={goToSearchMatch}
-          inputRef={mobileThreadSearchInputRef}
-        />
-      )}
+      {threadSearchOpen && <ThreadSearchBarMobile inputRef={mobileThreadSearchInputRef} />}
 
-      <ConversationMessageList
-        messages={displayMessages}
-        showThreadLoading={showThreadLoading}
-        showThreadError={showThreadError}
-        onRetryThreadLoad={retryThreadLoad}
-        messagesCursor={messagesCursor}
-        messagesLoadingMore={messagesLoadingMore}
-        activeThreadId={activeThreadId}
-        searchMatches={searchMatches}
-        activeSearchId={activeSearchId}
-        jumpMessageId={flashMessageId}
-        galleryOffsets={galleryOffsets}
-        scrollRef={scrollRef}
-        messagesWrapperRef={messagesWrapperRef}
-        bottomAnchorRef={bottomAnchorRef}
-        wallpaperClassName={conversationWallpaper.className}
-        wallpaperStyle={conversationWallpaper.style}
-        onScroll={handleConversationScroll}
-        onSetScrollTop={setScrollTop}
-        onScrollMessageToTop={scrollMessageToTop}
-        onUserScrollIntent={releasePinForUserScroll}
-        onOpenContextMenu={setContextMenu}
-      />
+      <ConversationScrollContext value={conversationScroll}>
+        <ConversationScrollIntentContext value={conversationScroll.releasePinForUserScroll}>
+          <ConversationMessageList
+            messages={displayMessages}
+            showThreadLoading={showThreadLoading}
+            showThreadError={showThreadError}
+            onRetryThreadLoad={retryThreadLoad}
+            messagesCursor={messagesCursor}
+            messagesLoadingMore={messagesLoadingMore}
+            activeThreadId={activeThreadId}
+            searchMatches={searchMatches}
+            activeSearchId={activeSearchId}
+            jumpMessageId={flashMessageId}
+            galleryOffsets={galleryOffsets}
+            wallpaperClassName={conversationWallpaper.className}
+            wallpaperStyle={conversationWallpaper.style}
+          />
+        </ConversationScrollIntentContext>
+      </ConversationScrollContext>
 
       {!isRSS && <QuickReplyComposer />}
     </>
@@ -315,16 +288,7 @@ export function MessagePane() {
     >
       <ConversationTabs />
       {activeThread && !activeDocumentTab && (
-        <ConversationHeader
-          activeThread={activeThread}
-          isRSS={isRSS}
-          conversationMode={conversationMode}
-          setQuickConversationMode={setQuickConversationMode}
-          matchCount={matchCount}
-          activeSearchIndex={activeSearchIndex}
-          goToSearchMatch={goToSearchMatch}
-          desktopSearchInputRef={desktopThreadSearchInputRef}
-        />
+        <ConversationHeader activeThread={activeThread} desktopSearchInputRef={desktopThreadSearchInputRef} />
       )}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
@@ -390,7 +354,9 @@ export function MessagePane() {
         />
       )}
 
-      {contextMenu && <MessageContextMenu state={contextMenu} isRSS={isRSS} onClose={() => setContextMenu(null)} />}
+      {contextMenu && (
+        <MessageContextMenu state={contextMenu} isRSS={isRSS} onClose={() => thread$.messageContextMenu.set(null)} />
+      )}
     </div>
   )
 }

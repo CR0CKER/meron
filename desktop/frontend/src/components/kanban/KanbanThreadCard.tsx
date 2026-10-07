@@ -94,13 +94,10 @@ export function KanbanThreadCard({
     <div ref={setNodeRef} style={style} {...attributes} {...pointerListeners}>
       <ThreadListItem
         thread={thread}
-        accounts={accounts}
-        selectedAccount={column.accountId}
-        selectedThread={paneThreadId}
         contextMenuOpen={threadMenu.isOpen(thread, ownerKey)}
-        active={starredColumn ? active : undefined}
+        active={starredColumn ? active : thread.thread_id === paneThreadId}
         rootRef={active ? selectedItemRef : undefined}
-        showAccountBadge={column.accountId === 'unified'}
+        badgeAccount={column.accountId === 'unified' ? account : undefined}
         className="rounded-lg border border-border bg-chats shadow-sm overflow-hidden"
         bulkSelectable={bulkSelectable}
         bulkSelected={bulkSelected}
@@ -167,10 +164,9 @@ export function KanbanDragPreview({ thread, column }: { thread: Message; column:
     <div className="w-[310px] max-w-[calc(100vw-32px)] cursor-grabbing opacity-95 shadow-2xl">
       <ThreadListItem
         thread={thread}
-        accounts={accounts}
-        selectedAccount={column.accountId}
-        selectedThread=""
-        showAccountBadge={column.accountId === 'unified'}
+        badgeAccount={
+          column.accountId === 'unified' ? accounts.find((item) => item.id === thread.account_id) : undefined
+        }
         className="rounded-lg border border-border bg-chats shadow-lg overflow-hidden"
         onSelect={() => undefined}
       />

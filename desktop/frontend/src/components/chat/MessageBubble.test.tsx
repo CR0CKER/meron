@@ -26,7 +26,7 @@ const sent: Message = {
 }
 
 function openDetails(message: Message) {
-  const view = render(<MessageBubble message={message} galleryOffset={0} onOpenContextMenu={() => undefined} />)
+  const view = render(<MessageBubble message={message} galleryOffset={0} />)
   fireEvent.click(view.getByTitle('Show details'))
   return view.getByText('From:').parentElement?.parentElement
 }
@@ -77,7 +77,7 @@ describe('MessageBubble long messages', () => {
   })
 
   function bodyBox() {
-    const view = render(<MessageBubble message={sent} galleryOffset={0} onOpenContextMenu={() => undefined} />)
+    const view = render(<MessageBubble message={sent} galleryOffset={0} />)
     return view.getByText('Body').closest('div')!
   }
 

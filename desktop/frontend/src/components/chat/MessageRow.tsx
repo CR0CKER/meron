@@ -5,6 +5,7 @@ import { AlertCircle, ChevronDown, ExternalLink, Loader2, MoreHorizontal, Paperc
 
 import { openDraftCompose, openMessageTab } from '../../states/compose'
 import { retrySend } from '../../states/quickReplySend'
+import { thread$ } from '../../states/thread'
 import type { Message } from '../../types'
 import { Avatar } from '../avatar/Avatar'
 import { AddressRow } from './AddressList'
@@ -12,7 +13,6 @@ import { BlockedRemoteButton } from './BlockedRemoteButton'
 import { MessageContent } from './MessageContent'
 import { formatFullTimestamp, formatMessageStamp, normalizeBodyText } from './messageHelpers'
 import { useMessageView } from './useMessageView'
-import type { MessageContextMenuState } from './MessageContextMenu'
 
 const COLLAPSED_PREVIEW_CHARS = 200
 
@@ -32,17 +32,11 @@ export function MessageRow({
   galleryOffset,
   expanded,
   onToggleExpanded,
-  onOpenContextMenu,
-  onLinkHover,
-  onUserScrollIntent,
 }: {
   message: Message
   galleryOffset: number
   expanded: boolean
   onToggleExpanded: () => void
-  onOpenContextMenu: (state: MessageContextMenuState) => void
-  onLinkHover?: (url: string | null) => void
-  onUserScrollIntent?: () => void
 }) {
   const { t } = useTranslation()
   const [metaOpen, setMetaOpen] = useState(false)
@@ -68,7 +62,7 @@ export function MessageRow({
   const openActionsMenu = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
-    onOpenContextMenu({ x: rect.right, y: rect.bottom + 4, message, hideOpenInNewTab: true })
+    thread$.messageContextMenu.set({ x: rect.right, y: rect.bottom + 4, message, hideOpenInNewTab: true })
   }
   const openMessageOrDraftTab = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -294,14 +288,7 @@ export function MessageRow({
       </div>
 
       <div className="px-4 pb-3 pt-2.5">
-        <MessageContent
-          message={message}
-          view={view}
-          galleryOffset={galleryOffset}
-          fullHeight
-          onLinkHover={onLinkHover}
-          onUserScrollIntent={onUserScrollIntent}
-        />
+        <MessageContent message={message} view={view} galleryOffset={galleryOffset} fullHeight />
       </div>
     </div>
   )

@@ -31,15 +31,8 @@ import { deleteMessage } from '../../states/mailMoves'
 import { copyText, openExternal } from '../../lib/native'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
+import type { MessageContextMenuState } from '../../states/thread'
 import type { Message } from '../../types'
-
-export type MessageContextMenuState = {
-  x: number
-  y: number
-  message: Message
-  linkUrl?: string
-  hideOpenInNewTab?: boolean
-}
 
 // Right-click menu for a message (or a link inside it). Clamps itself inside the
 // viewport on mount since clientX/clientY can land near the right/bottom edge.

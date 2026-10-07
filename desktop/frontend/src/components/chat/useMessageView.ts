@@ -17,15 +17,27 @@ import {
 
 export type MessageView = ReturnType<typeof useMessageView>
 
+/** The render mode for an account: the session override when the user flipped
+ *  it in the header, otherwise the account setting. */
+export function resolveConversationMode(
+  accounts: Account[],
+  modeOverrides: Record<string, ConversationMode>,
+  accountId: string | undefined,
+): ConversationMode {
+  const account = accountId ? accounts.find((acc) => acc.id === accountId) : null
+  if (!account) return 'plain'
+  return modeOverrides[account.id] ?? ((account.conversation_html ?? true) ? 'html' : 'plain')
+}
+
 /** The render mode the open thread's account is on: the session override when
- *  the user flipped it in the header, otherwise the account setting. */
-export function useConversationMode(): ConversationMode {
+ *  the user flipped it in the header, otherwise the account setting. Callers
+ *  that know the account pass it: a thread open in a tab can be absent from
+ *  every loaded list, where getActiveThread has nothing to resolve it from. */
+export function useConversationMode(accountId?: string): ConversationMode {
   const accounts = useValue(accounts$)
   const activeThread = useValue(getActiveThread)
   const modeOverrides = useValue(thread$.conversationModeOverrides)
-  const activeAccount = activeThread ? accounts.find((acc) => acc.id === activeThread.account_id) : null
-  if (!activeAccount) return 'plain'
-  return modeOverrides[activeAccount.id] ?? ((activeAccount.conversation_html ?? true) ? 'html' : 'plain')
+  return resolveConversationMode(accounts, modeOverrides, accountId || activeThread?.account_id)
 }
 
 /**
@@ -41,7 +53,7 @@ export function useMessageView(message: Message) {
   const activeSearchOffset = useValue(thread$.activeSearchOffset)
   const activeThread = useValue(getActiveThread)
   const revealedMap = useValue(thread$.revealedRemote)
-  const conversationMode = useConversationMode()
+  const conversationMode = useConversationMode(message.account_id)
   const allowedSenders = useValue(settings$.remoteImageSenders)
 
   const account: Account | undefined = accounts.find((acc) => acc.id === message.account_id)

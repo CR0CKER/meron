@@ -10,10 +10,8 @@ import { AttachmentChips } from './AttachmentChips'
 
 export function ThreadListItem({
   thread,
-  accounts,
-  selectedAccount,
-  selectedThread,
-  active,
+  active = false,
+  badgeAccount,
   onSelect,
   onOpenInNewTab,
   onContextMenu,
@@ -23,15 +21,14 @@ export function ThreadListItem({
   onDragEnd,
   className = '',
   rootRef,
-  showAccountBadge,
   bulkSelectable = false,
   bulkSelected = false,
 }: {
   thread: Message
-  accounts: Account[]
-  selectedAccount: string
-  selectedThread: string
   active?: boolean
+  // The account the thread belongs to, badged on the avatar in lists that mix
+  // accounts; omitted elsewhere.
+  badgeAccount?: Account
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void
   // Double-click opens the row in its own tab (single click previews it).
   onOpenInNewTab?: () => void
@@ -42,15 +39,10 @@ export function ThreadListItem({
   onDragEnd?: (event: DragEvent<HTMLDivElement>) => void
   className?: string
   rootRef?: Ref<HTMLDivElement>
-  showAccountBadge?: boolean
   bulkSelectable?: boolean
   bulkSelected?: boolean
 }) {
   const { t } = useTranslation()
-  const isActive = active ?? thread.thread_id === selectedThread
-  const threadAccount = accounts.find((acc) => acc.id === thread.account_id)
-  const badgeLabel = threadAccount ? threadAccount.display_name || threadAccount.email : ''
-  const accountBadgeVisible = showAccountBadge ?? selectedAccount === 'unified'
   const threadTitle = thread.subject || '(no subject)'
   // RSS feed rows carry a feed_url (and, once cached, a feed_icon). For those,
   // skip the email-based gravatar/favicon resolution and use the feed's icon.
@@ -71,7 +63,7 @@ export function ThreadListItem({
           // Rows are inset pills, told apart by spacing rather than divider
           // lines; unread weight and the count badge mark unread, not a tint.
           'relative w-full rounded-lg px-2.5 py-2.5 text-primary transition-colors duration-150 flex items-center gap-2.5 cursor-pointer select-none text-left',
-          (bulkSelectable ? bulkSelected : isActive)
+          (bulkSelectable ? bulkSelected : active)
             ? 'bg-accent/[0.13] dark:bg-accent/20'
             : contextMenuOpen
               ? 'bg-hover'
@@ -102,9 +94,13 @@ export function ThreadListItem({
               email={isRSS ? undefined : thread.from_addr}
               src={isRSS && thread.feed_icon ? `/media/${thread.feed_icon}` : undefined}
             />
-            {accountBadgeVisible && threadAccount && (
+            {badgeAccount && (
               <div className="absolute -bottom-1 -left-1 rounded-full ring-2 ring-chats overflow-hidden">
-                <Avatar name={badgeLabel} src={threadAccount.avatar_url} size={16} />
+                <Avatar
+                  name={badgeAccount.display_name || badgeAccount.email}
+                  src={badgeAccount.avatar_url}
+                  size={16}
+                />
               </div>
             )}
           </div>

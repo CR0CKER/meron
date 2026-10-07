@@ -18,8 +18,6 @@ export function MessageContent({
   view,
   galleryOffset,
   fullHeight = false,
-  onLinkHover,
-  onUserScrollIntent,
   onNaturalWidth,
 }: {
   message: Message
@@ -28,8 +26,6 @@ export function MessageContent({
   galleryOffset: number
   /** Let the body grow instead of scrolling inside its own box. */
   fullHeight?: boolean
-  onLinkHover?: (url: string | null) => void
-  onUserScrollIntent?: () => void
   onNaturalWidth?: (width: number | null) => void
 }) {
   const { t } = useTranslation()
@@ -117,8 +113,6 @@ export function MessageContent({
         normalizedSearchQuery={view.normalizedSearchQuery}
         activeSearchOffset={view.activeSearchOffset}
         fullHeight={fullHeight}
-        onLinkHover={onLinkHover}
-        onUserScrollIntent={onUserScrollIntent}
         onNaturalWidth={onNaturalWidth}
       />
 

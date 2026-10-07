@@ -7,13 +7,13 @@ import { AlertCircle, Check, ChevronDown, ExternalLink, Loader2, MoreHorizontal,
 import { openDraftCompose, openMessageTab } from '../../states/compose'
 import { retrySend } from '../../states/quickReplySend'
 import { settings$ } from '../../states/settings'
+import { thread$ } from '../../states/thread'
 import type { Message } from '../../types'
 import { formatFullTimestamp, formatMessageStamp } from './messageHelpers'
 import { AddressRow } from './AddressList'
 import { BlockedRemoteButton } from './BlockedRemoteButton'
 import { MessageContent } from './MessageContent'
 import { useMessageView } from './useMessageView'
-import type { MessageContextMenuState } from './MessageContextMenu'
 
 // The bubble's horizontal chrome: p-3.5 on both sides is rem-based, so it scales with
 // the interface size; the two 1px borders and a pixel of slack (so a line measured
@@ -27,18 +27,9 @@ interface MessageBubbleProps {
   message: Message
   // Index of this bubble's first image within the thread-wide gallery list.
   galleryOffset: number
-  onOpenContextMenu: (state: MessageContextMenuState) => void
-  onLinkHover?: (url: string | null) => void
-  onUserScrollIntent?: () => void
 }
 
-export function MessageBubble({
-  message,
-  galleryOffset,
-  onOpenContextMenu,
-  onLinkHover,
-  onUserScrollIntent,
-}: MessageBubbleProps) {
+export function MessageBubble({ message, galleryOffset }: MessageBubbleProps) {
   const { t } = useTranslation()
   const [metaOpen, setMetaOpen] = useState(false)
   // What a short HTML body needs, so its bubble can hug it (see below): undefined
@@ -76,7 +67,7 @@ export function MessageBubble({
 
   const openActionsMenu = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    onOpenContextMenu({ x: rect.right, y: rect.bottom + 4, message, hideOpenInNewTab: true })
+    thread$.messageContextMenu.set({ x: rect.right, y: rect.bottom + 4, message, hideOpenInNewTab: true })
   }
   const openMessageOrDraftTab = () => {
     if (isDraft) {
@@ -232,10 +223,6 @@ export function MessageBubble({
           view={view}
           galleryOffset={galleryOffset}
           fullHeight={fullHeight}
-          onLinkHover={onLinkHover}
-          // Only a full-height body hands the wheel on to the pane; a capped
-          // one scrolls itself and leaves the pane where it is.
-          onUserScrollIntent={fullHeight ? onUserScrollIntent : undefined}
           onNaturalWidth={hugsText ? setNaturalWidth : undefined}
         />
       </div>

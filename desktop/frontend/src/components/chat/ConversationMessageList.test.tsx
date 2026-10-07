@@ -1,12 +1,29 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createRef } from 'react'
+import type { ReactElement } from 'react'
 // Initialize this side of the mail/compose cycle before ConversationMessageList
 // pulls both modules in through its message actions and mail paging imports.
 import '../../states/compose'
 import { settings$ } from '../../states/settings'
 import type { Message } from '../../types'
 import { ConversationMessageList } from './ConversationMessageList'
+import { ConversationScrollContext, type ConversationScroll } from './useConversationScroll'
+
+function withScroll(overrides: Partial<ConversationScroll>, list: ReactElement) {
+  const scroll: ConversationScroll = {
+    scrollRef: createRef<HTMLDivElement>(),
+    messagesWrapperRef: createRef<HTMLDivElement>(),
+    bottomAnchorRef: createRef<HTMLDivElement>(),
+    handleConversationScroll: () => undefined,
+    maybeMarkRead: () => undefined,
+    setScrollTop: () => undefined,
+    scrollMessageToTop: () => undefined,
+    releasePinForUserScroll: () => undefined,
+    ...overrides,
+  }
+  return <ConversationScrollContext value={scroll}>{list}</ConversationScrollContext>
+}
 
 function message(id: string, body: string): Message {
   return {
@@ -36,9 +53,11 @@ describe('ConversationMessageList direct jumps', () => {
   it('keeps an older jumped-to message expanded after its highlight ends', () => {
     settings$.conversationLayout.set('traditional')
     const messages = [message('older', 'Older body'), message('newer', 'Newer body')]
-    const scrollRef = createRef<HTMLDivElement>()
-    const messagesWrapperRef = createRef<HTMLDivElement>()
-    const bottomAnchorRef = createRef<HTMLDivElement>()
+    const scroll = {
+      scrollRef: createRef<HTMLDivElement>(),
+      messagesWrapperRef: createRef<HTMLDivElement>(),
+      bottomAnchorRef: createRef<HTMLDivElement>(),
+    }
     const commonProps = {
       messages,
       showThreadLoading: false,
@@ -50,60 +69,48 @@ describe('ConversationMessageList direct jumps', () => {
       searchMatches: [],
       activeSearchId: '',
       galleryOffsets: new Map<string, number>(),
-      scrollRef,
-      messagesWrapperRef,
-      bottomAnchorRef,
       wallpaperClassName: '',
-      onScroll: () => undefined,
-      onSetScrollTop: () => undefined,
-      onScrollMessageToTop: () => undefined,
-      onUserScrollIntent: () => undefined,
-      onOpenContextMenu: () => undefined,
     }
 
-    const view = render(<ConversationMessageList {...commonProps} jumpMessageId="" />)
+    const view = render(withScroll(scroll, <ConversationMessageList {...commonProps} jumpMessageId="" />))
     const older = view.container.querySelector<HTMLElement>('[data-message-id="older"]')!
     expect(older.querySelector('[title="Expand message"]')).not.toBeNull()
 
-    view.rerender(<ConversationMessageList {...commonProps} jumpMessageId="older" />)
+    view.rerender(withScroll(scroll, <ConversationMessageList {...commonProps} jumpMessageId="older" />))
     expect(older.querySelector('[title="Collapse message"]')).not.toBeNull()
 
-    view.rerender(<ConversationMessageList {...commonProps} jumpMessageId="" />)
+    view.rerender(withScroll(scroll, <ConversationMessageList {...commonProps} jumpMessageId="" />))
     expect(older.querySelector('[title="Collapse message"]')).not.toBeNull()
   })
 
   it('scrolls an expanded message only after its full row has committed', () => {
     settings$.conversationLayout.set('traditional')
     const messages = [message('older', 'Older body'), message('newer', 'Newer body')]
-    const scrollRef = createRef<HTMLDivElement>()
     let expandedWhenScrolled = false
     const view = render(
-      <ConversationMessageList
-        messages={messages}
-        showThreadLoading={false}
-        showThreadError={false}
-        onRetryThreadLoad={() => undefined}
-        messagesCursor=""
-        messagesLoadingMore={false}
-        activeThreadId="thread-1"
-        searchMatches={[]}
-        activeSearchId=""
-        jumpMessageId=""
-        galleryOffsets={new Map<string, number>()}
-        scrollRef={scrollRef}
-        messagesWrapperRef={createRef<HTMLDivElement>()}
-        bottomAnchorRef={createRef<HTMLDivElement>()}
-        wallpaperClassName=""
-        onScroll={() => undefined}
-        onSetScrollTop={() => undefined}
-        onScrollMessageToTop={(messageId) => {
-          expandedWhenScrolled =
-            messageId === 'older' &&
-            view.container.querySelector('[data-message-id="older"] [title="Collapse message"]') !== null
-        }}
-        onUserScrollIntent={() => undefined}
-        onOpenContextMenu={() => undefined}
-      />,
+      withScroll(
+        {
+          scrollMessageToTop: (messageId) => {
+            expandedWhenScrolled =
+              messageId === 'older' &&
+              view.container.querySelector('[data-message-id="older"] [title="Collapse message"]') !== null
+          },
+        },
+        <ConversationMessageList
+          messages={messages}
+          showThreadLoading={false}
+          showThreadError={false}
+          onRetryThreadLoad={() => undefined}
+          messagesCursor=""
+          messagesLoadingMore={false}
+          activeThreadId="thread-1"
+          searchMatches={[]}
+          activeSearchId=""
+          jumpMessageId=""
+          galleryOffsets={new Map<string, number>()}
+          wallpaperClassName=""
+        />,
+      ),
     )
 
     fireEvent.click(view.container.querySelector('[data-message-id="older"] [title="Expand message"]')!)
@@ -115,28 +122,26 @@ describe('ConversationMessageList direct jumps', () => {
     let scrollIntents = 0
     let scrollEvents = 0
     const view = render(
-      <ConversationMessageList
-        messages={[message('newer', 'Newer body')]}
-        showThreadLoading={false}
-        showThreadError={false}
-        onRetryThreadLoad={() => undefined}
-        messagesCursor=""
-        messagesLoadingMore={false}
-        activeThreadId="thread-1"
-        searchMatches={[]}
-        activeSearchId=""
-        jumpMessageId=""
-        galleryOffsets={new Map<string, number>()}
-        scrollRef={createRef<HTMLDivElement>()}
-        messagesWrapperRef={createRef<HTMLDivElement>()}
-        bottomAnchorRef={createRef<HTMLDivElement>()}
-        wallpaperClassName=""
-        onScroll={() => scrollEvents++}
-        onSetScrollTop={() => undefined}
-        onScrollMessageToTop={() => undefined}
-        onUserScrollIntent={() => scrollIntents++}
-        onOpenContextMenu={() => undefined}
-      />,
+      withScroll(
+        {
+          handleConversationScroll: () => scrollEvents++,
+          releasePinForUserScroll: () => scrollIntents++,
+        },
+        <ConversationMessageList
+          messages={[message('newer', 'Newer body')]}
+          showThreadLoading={false}
+          showThreadError={false}
+          onRetryThreadLoad={() => undefined}
+          messagesCursor=""
+          messagesLoadingMore={false}
+          activeThreadId="thread-1"
+          searchMatches={[]}
+          activeSearchId=""
+          jumpMessageId=""
+          galleryOffsets={new Map<string, number>()}
+          wallpaperClassName=""
+        />,
+      ),
     )
 
     const scroller = view.container.querySelector('.message-scroll')!

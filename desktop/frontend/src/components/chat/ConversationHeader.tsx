@@ -27,7 +27,9 @@ import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
 import { starThread } from '../../states/mailFlags'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
-import { thread$, type ConversationMode } from '../../states/thread'
+import { goToSearchMatch, thread$ } from '../../states/thread'
+import { accounts$ } from '../../states/accounts'
+import { isRssAccount } from '../../lib/threadActions'
 import { closeCurrentConversation, kanban$, openCorrespondentMail } from '../../states/kanban'
 import { openComposeTab, openReplyInFullEditor } from '../../states/compose'
 import { canReplyAllToThread } from '../../states/composeReply'
@@ -38,31 +40,24 @@ import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ConversationSubject } from './ConversationSubject'
+import { useConversationMode } from './useMessageView'
 
 // The conversation header: back/close affordances, sender info, the desktop
 // in-thread search box and the overflow actions menu (view mode, star, archive,
-// delete). Search match state is computed by the parent via useThreadSearch.
+// delete). Search match state is published to thread$ by useThreadSearch.
 export function ConversationHeader({
   activeThread,
-  isRSS,
-  conversationMode,
-  setQuickConversationMode,
-  matchCount,
-  activeSearchIndex,
-  goToSearchMatch,
   desktopSearchInputRef,
 }: {
   activeThread: Message
-  isRSS: boolean
-  conversationMode: ConversationMode
-  setQuickConversationMode: (mode: ConversationMode) => void
-  /** Total occurrences in the thread, not matching messages. */
-  matchCount: number
-  activeSearchIndex: number
-  goToSearchMatch: (direction: -1 | 1) => void
   desktopSearchInputRef: RefObject<HTMLInputElement | null>
 }) {
   const { t } = useTranslation()
+  const account = useValue(accounts$).find((acc) => acc.id === activeThread.account_id)
+  const isRSS = isRssAccount(account, activeThread.account_id)
+  const conversationMode = useConversationMode(activeThread.account_id)
+  const matchCount = useValue(thread$.searchMatchCount)
+  const activeSearchIndex = useValue(thread$.activeSearchIndex)
   const inKanban = !!useValue(kanban$.activeBoardId)
   // A tab's conversation is closed from the tab strip, not from here: this
   // button closes the conversation the board's card opened.
@@ -268,7 +263,7 @@ export function ConversationHeader({
               <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border border-border bg-chats p-1 shadow-xl">
                 <button
                   onClick={() => {
-                    setQuickConversationMode('html')
+                    if (account) thread$.conversationModeOverrides[account.id].set('html')
                     setActionsMenuOpen(false)
                   }}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${
@@ -279,7 +274,7 @@ export function ConversationHeader({
                 </button>
                 <button
                   onClick={() => {
-                    setQuickConversationMode('plain')
+                    if (account) thread$.conversationModeOverrides[account.id].set('plain')
                     setActionsMenuOpen(false)
                   }}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${

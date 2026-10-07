@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { createContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { markMessagesRead } from '../../states/mailFlags'
 import { thread$ } from '../../states/thread'
@@ -481,14 +481,29 @@ export function useConversationScroll(
     applyScrollTop,
   ])
 
-  return {
-    scrollRef,
-    bottomAnchorRef,
-    messagesWrapperRef,
-    handleConversationScroll,
-    maybeMarkRead,
-    setScrollTop,
-    scrollMessageToTop,
-    releasePinForUserScroll,
-  }
+  return useMemo(
+    () => ({
+      scrollRef,
+      bottomAnchorRef,
+      messagesWrapperRef,
+      handleConversationScroll,
+      maybeMarkRead,
+      setScrollTop,
+      scrollMessageToTop,
+      releasePinForUserScroll,
+    }),
+    [handleConversationScroll, maybeMarkRead, setScrollTop, scrollMessageToTop, releasePinForUserScroll],
+  )
 }
+
+export type ConversationScroll = ReturnType<typeof useConversationScroll>
+
+// The open conversation's scroll controller, provided by MessagePane. These are
+// callbacks bound to the scroll container's refs, so they travel by context
+// rather than through thread$. Null outside a conversation pane.
+export const ConversationScrollContext = createContext<ConversationScroll | null>(null)
+
+// Just releasePinForUserScroll, for the message bodies. It never changes
+// identity, whereas the controller above is rebuilt as messages change — bodies
+// subscribed to that would re-render with every one.
+export const ConversationScrollIntentContext = createContext<(() => void) | undefined>(undefined)

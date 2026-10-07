@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Copy } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { copyText, openExternal } from '../../lib/native'
+import { thread$ } from '../../states/thread'
 import type { Message } from '../../types'
 import {
   MESSAGE_BODY_MAX_HEIGHT,
@@ -16,6 +17,9 @@ import {
 import { BubbleHtmlFrame } from './BubbleHtmlFrame'
 import { matchRanges } from './frameSearchHighlight'
 import { isQuoteUnfolded, setQuoteUnfolded, splitQuotedBody } from './quoteFold'
+import { ConversationScrollIntentContext } from './useConversationScroll'
+
+const setHoveredLink = (url: string | null) => thread$.hoveredLink.set(url)
 
 // The message body: the sandboxed HTML view, or the plain/markdown renderer with
 // inline bold/italic/code, fenced code blocks (with copy buttons) and links,
@@ -28,8 +32,6 @@ export function MessageBubbleBody({
   normalizedSearchQuery,
   activeSearchOffset,
   fullHeight = false,
-  onLinkHover,
-  onUserScrollIntent,
   onNaturalWidth,
 }: {
   message: Message
@@ -47,13 +49,12 @@ export function MessageBubbleBody({
   /** Grow to fit the content instead of scrolling inside a capped box — the
    *  traditional layout lets the conversation itself do the scrolling. */
   fullHeight?: boolean
-  onLinkHover?: (url: string | null) => void
-  onUserScrollIntent?: () => void
   /** HTML body only: the width a plain-text-like document needs, null when it should fill the bubble. */
   onNaturalWidth?: (width: number | null) => void
 }) {
   const { t } = useTranslation()
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  const releasePinForUserScroll = useContext(ConversationScrollIntentContext)
   // The active <mark> is scrolled to from here, where it is rendered — the pane
   // only knows which message to bring into view, and its own effect runs a
   // render before this body has moved its highlight. (The HTML frame does the
@@ -81,8 +82,10 @@ export function MessageBubbleBody({
           mediaMissing={message.media_missing ?? 0}
           searchQuery={normalizedSearchQuery}
           activeSearchOffset={activeSearchOffset}
-          onLinkHover={onLinkHover}
-          onUserScrollIntent={onUserScrollIntent}
+          onLinkHover={setHoveredLink}
+          // Only a full-height body hands the wheel on to the pane; a capped
+          // one scrolls itself and leaves the pane where it is.
+          onUserScrollIntent={fullHeight ? releasePinForUserScroll : undefined}
           onNaturalWidth={onNaturalWidth}
         />
       </div>
@@ -198,10 +201,10 @@ export function MessageBubbleBody({
                     e.preventDefault()
                     openExternal(part.content)
                   }}
-                  onMouseEnter={() => onLinkHover?.(part.content)}
-                  onMouseLeave={() => onLinkHover?.(null)}
-                  onFocus={() => onLinkHover?.(part.content)}
-                  onBlur={() => onLinkHover?.(null)}
+                  onMouseEnter={() => setHoveredLink(part.content)}
+                  onMouseLeave={() => setHoveredLink(null)}
+                  onFocus={() => setHoveredLink(part.content)}
+                  onBlur={() => setHoveredLink(null)}
                   title={part.content}
                   className="text-accent hover:underline break-all font-semibold cursor-pointer"
                 >

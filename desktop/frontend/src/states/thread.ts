@@ -1,6 +1,15 @@
 import { observable } from '@legendapp/state'
+import type { Message } from '../types'
 
 export type ConversationMode = 'plain' | 'html'
+
+export type MessageContextMenuState = {
+  x: number
+  y: number
+  message: Message
+  linkUrl?: string
+  hideOpenInNewTab?: boolean
+}
 
 // UI state scoped to the active conversation view (MessagePane and its children).
 // Kept separate from app$ so per-thread/per-bubble interactions don't add noise
@@ -20,6 +29,9 @@ export const thread$ = observable({
   // Which occurrence within that message is focused (-1 when the message
   // matches only in its subject or sender, so no <mark> is the active one).
   activeSearchOffset: -1,
+  // Total occurrences of the query in the thread; published by useThreadSearch
+  // for the two search bars' counter and prev/next buttons.
+  searchMatchCount: 0,
   // Message id to scroll to when its thread next renders — set by direct-jump
   // actions such as starred items and shared media, consumed once by
   // useConversationScroll.
@@ -31,6 +43,11 @@ export const thread$ = observable({
   // Index into galleryItems for the lightbox; null when closed.
   galleryIndex: null as number | null,
   mediaOpen: false,
+  // URL of the link under the pointer in a message body, shown in the pane's
+  // status-bar style preview.
+  hoveredLink: null as string | null,
+  // The open right-click / "more" menu for a message; null when closed.
+  messageContextMenu: null as MessageContextMenuState | null,
   // Per-account override of the conversation render mode for this session.
   conversationModeOverrides: {} as Record<string, ConversationMode>,
 })
@@ -38,6 +55,14 @@ export const thread$ = observable({
 export function openThreadSearch() {
   thread$.searchOpen.set(true)
   thread$.searchFocus.set(thread$.searchFocus.peek() + 1)
+}
+
+/** Steps the in-thread search to the previous/next occurrence, wrapping round. */
+export function goToSearchMatch(direction: -1 | 1) {
+  const matchCount = thread$.searchMatchCount.peek()
+  if (matchCount === 0) return
+  const next = thread$.activeSearchIndex.peek() + direction
+  thread$.activeSearchIndex.set(next < 0 ? matchCount - 1 : next >= matchCount ? 0 : next)
 }
 
 export function revealRemote(messageId: string) {
@@ -55,4 +80,6 @@ export function resetThreadView() {
   thread$.flashMessageId.set('')
   thread$.revealedRemote.set({})
   thread$.galleryIndex.set(null)
+  thread$.hoveredLink.set(null)
+  thread$.messageContextMenu.set(null)
 }

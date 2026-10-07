@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { RefObject } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { loadMoreMessages } from '../../states/mail'
 import { settings$ } from '../../states/settings'
+import { thread$ } from '../../states/thread'
 import type { Message } from '../../types'
 import { LinkHoverPreview } from './LinkHoverPreview'
 import { MessageBubble } from './MessageBubble'
 import { MessageRow } from './MessageRow'
 import { formatDateDivider } from './messageHelpers'
-import type { MessageContextMenuState } from './MessageContextMenu'
+import { ConversationScrollContext } from './useConversationScroll'
 
 const AUTO_LOAD_EARLIER_THRESHOLD_PX = 400
 
@@ -19,9 +19,15 @@ function hasSelectedText(): boolean {
   return !!window.getSelection()?.toString().trim()
 }
 
+// Subscribes on its own so hovering a link doesn't re-render the message list.
+function HoveredLinkPreview() {
+  return <LinkHoverPreview url={useValue(thread$.hoveredLink)} />
+}
+
 // The scrollable conversation body: the "load earlier" affordance, date dividers
 // and one MessageBubble per message. Scroll positioning lives in the parent's
-// useConversationScroll hook, which owns the refs wired up here.
+// useConversationScroll hook, which owns the refs wired up here and reaches
+// this component through ConversationScrollContext.
 export function ConversationMessageList({
   messages,
   showThreadLoading,
@@ -34,16 +40,8 @@ export function ConversationMessageList({
   activeSearchId,
   jumpMessageId,
   galleryOffsets,
-  scrollRef,
-  messagesWrapperRef,
-  bottomAnchorRef,
   wallpaperClassName,
   wallpaperStyle,
-  onScroll,
-  onSetScrollTop,
-  onScrollMessageToTop,
-  onUserScrollIntent,
-  onOpenContextMenu,
 }: {
   messages: Message[]
   showThreadLoading: boolean
@@ -58,25 +56,25 @@ export function ConversationMessageList({
    *  separately so it stays open after the highlight expires. */
   jumpMessageId: string
   galleryOffsets: Map<string, number>
-  scrollRef: RefObject<HTMLDivElement | null>
-  messagesWrapperRef: RefObject<HTMLDivElement | null>
-  bottomAnchorRef: RefObject<HTMLDivElement | null>
   wallpaperClassName: string
   wallpaperStyle?: CSSProperties
-  onScroll: () => void
-  /** Repositions the container through useConversationScroll's bookkeeping, so
-   *  the move is not mistaken for the reader scrolling. */
-  onSetScrollTop: (scrollTop: number) => void
-  /** Brings a message's header to the top of the viewport, pinned while its
-   *  body grows. Used when the reader expands a collapsed message. */
-  onScrollMessageToTop: (messageId: string) => void
-  /** Releases expansion anchoring before input that intentionally moves the view. */
-  onUserScrollIntent: () => void
-  onOpenContextMenu: (state: MessageContextMenuState) => void
 }) {
   const { t } = useTranslation()
   const traditional = useValue(settings$.conversationLayout) === 'traditional'
-  const [hoveredLink, setHoveredLink] = useState<string | null>(null)
+  const {
+    scrollRef,
+    messagesWrapperRef,
+    bottomAnchorRef,
+    handleConversationScroll: onScroll,
+    // Repositions the container through useConversationScroll's bookkeeping, so
+    // the move is not mistaken for the reader scrolling.
+    setScrollTop: onSetScrollTop,
+    // Brings a message's header to the top of the viewport, pinned while its
+    // body grows. Used when the reader expands a collapsed message.
+    scrollMessageToTop: onScrollMessageToTop,
+    // Releases expansion anchoring before input that intentionally moves the view.
+    releasePinForUserScroll: onUserScrollIntent,
+  } = useContext(ConversationScrollContext)!
   // Traditional layout only: message ids the user has explicitly expanded or
   // collapsed, overriding the default below. Cleared when the thread changes.
   const [expandOverrides, setExpandOverrides] = useState<Record<string, boolean>>({})
@@ -173,7 +171,7 @@ export function ConversationMessageList({
   return (
     <div
       style={wallpaperStyle}
-      onMouseLeave={() => setHoveredLink(null)}
+      onMouseLeave={() => thread$.hoveredLink.set(null)}
       className={`flex-1 flex flex-col min-h-0 relative ${wallpaperClassName}`}
     >
       <div
@@ -261,7 +259,7 @@ export function ConversationMessageList({
                         }
                       }
                     }
-                    onOpenContextMenu({ x: event.clientX, y: event.clientY, message, linkUrl })
+                    thread$.messageContextMenu.set({ x: event.clientX, y: event.clientY, message, linkUrl })
                   }}
                   className={`rounded-2xl transition-shadow ${traditional ? 'space-y-2' : 'space-y-4'} ${
                     activeSearchId === message.id || jumpMessageId === message.id
@@ -282,18 +280,9 @@ export function ConversationMessageList({
                       galleryOffset={galleryOffsets.get(message.id) ?? 0}
                       expanded={expanded}
                       onToggleExpanded={() => setExpanded(message.id, !expanded)}
-                      onOpenContextMenu={onOpenContextMenu}
-                      onLinkHover={setHoveredLink}
-                      onUserScrollIntent={onUserScrollIntent}
                     />
                   ) : (
-                    <MessageBubble
-                      message={message}
-                      galleryOffset={galleryOffsets.get(message.id) ?? 0}
-                      onOpenContextMenu={onOpenContextMenu}
-                      onLinkHover={setHoveredLink}
-                      onUserScrollIntent={onUserScrollIntent}
-                    />
+                    <MessageBubble message={message} galleryOffset={galleryOffsets.get(message.id) ?? 0} />
                   )}
                 </div>
               )
@@ -301,7 +290,7 @@ export function ConversationMessageList({
         </div>
         <div ref={bottomAnchorRef} className="message-scroll-anchor h-px" />
       </div>
-      <LinkHoverPreview url={hoveredLink} />
+      <HoveredLinkPreview />
     </div>
   )
 }

@@ -447,12 +447,14 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                 <ThreadListItem
                   key={thread.id}
                   thread={thread}
-                  accounts={accounts}
-                  selectedAccount={selectedAccount}
-                  selectedThread={selectedThread}
+                  active={thread.thread_id === selectedThread}
+                  badgeAccount={
+                    isStarredView || selectedAccount === 'unified'
+                      ? accounts.find((acc) => acc.id === thread.account_id)
+                      : undefined
+                  }
                   contextMenuOpen={threadMenu.isOpen(thread)}
                   rootRef={thread.thread_id === selectedThread ? selectedItemRef : undefined}
-                  showAccountBadge={isStarredView ? true : undefined}
                   draggable={feedRowsDraggable}
                   onDragStart={(event) => startFeedDrag(event, thread)}
                   bulkSelectable={desktopBulk && bulkInThisList}
