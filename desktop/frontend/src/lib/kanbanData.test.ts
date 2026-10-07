@@ -14,6 +14,7 @@ import {
   activeKanbanColumnFilter,
   activeKanbanColumnQuery,
   columnDropTargetClass,
+  restrictColumnDragToHorizontal,
   columnEmptyText,
   columnSearchActive,
   folderLabel,
@@ -1088,6 +1089,16 @@ describe('resolveKanbanMove', () => {
       kind: 'move',
       origin: { accountId: 'feed1', folderId: 'inbox' },
     })
+  })
+})
+
+describe('restrictColumnDragToHorizontal', () => {
+  const transform = { x: 40, y: 25, scaleX: 1, scaleY: 1 }
+  const dragging = (type: string) => ({ data: { current: { type } } })
+
+  it('pins a column to its row and leaves a card free', () => {
+    expect(restrictColumnDragToHorizontal({ transform, active: dragging('column') })).toEqual({ ...transform, y: 0 })
+    expect(restrictColumnDragToHorizontal({ transform, active: dragging('thread') })).toEqual(transform)
   })
 })
 

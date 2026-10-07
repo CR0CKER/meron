@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { closestCenter, DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { Columns3, Plus, SquarePen } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
@@ -32,7 +40,13 @@ import { useThreadContextMenu } from '../threads/ThreadContextMenu'
 import { useTitleBar } from '../titlebar/TitleBar'
 import { expandSearchScope, KanbanSearch } from './KanbanSearch'
 import { BoardMenu, FilterSwitch } from './KanbanBoardMenu'
-import { isRSSAccount, loadKanbanColumn, resolveKanbanMove, useFoldersByAccount } from '../../lib/kanbanData'
+import {
+  isRSSAccount,
+  loadKanbanColumn,
+  resolveKanbanMove,
+  restrictColumnDragToHorizontal,
+  useFoldersByAccount,
+} from '../../lib/kanbanData'
 import { boardWallpaper, wallpaperCss } from '../../lib/wallpapers'
 import { useKanbanBoardSync, useKanbanDnd } from './useKanbanBoard'
 
@@ -59,7 +73,11 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
   const [dialogOpen, setDialogOpen] = useState(false)
   const hasSendableAccount = accounts.some(isSendableAccount)
   const visibleColumns = useMemo(() => getKanbanColumns(boardId), [boards, boardId])
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  // The keyboard sensor is for column headers only; cards drop its listener.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
   const selectedKeys = useMemo(() => visibleColumns.map((column) => kanbanColumnKey(column)), [visibleColumns])
   // Derived from the folder cache rather than snapshotted when the dialog opens,
   // so a folder LIST that finishes while it is open shows up without reopening.
@@ -243,6 +261,7 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            modifiers={[restrictColumnDragToHorizontal]}
             // Locked boards stay put: a drag never scrolls the columns out from
             // under the pointer, so a curated set of visible columns keeps its
             // place. Off-screen columns are still reachable via "Move to…".

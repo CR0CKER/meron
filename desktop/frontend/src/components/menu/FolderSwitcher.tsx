@@ -185,8 +185,6 @@ export function FolderSwitcher({
         className={clsx('flex h-8 min-w-0 items-center gap-1 rounded px-2 hover:bg-hover', labelClassName)}
         title={t('kanban.actions.switchFolder')}
         onClick={open}
-        // A kanban column header is a drag handle; keep the pointer gesture to ourselves.
-        onPointerDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.stopPropagation()}
       >
         <span className="min-w-0 truncate">{label}</span>

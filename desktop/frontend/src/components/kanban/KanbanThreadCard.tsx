@@ -50,7 +50,9 @@ export function KanbanThreadCard({
   const starredColumn = isUnifiedStarredColumn(column)
   const account = accounts.find((item) => item.id === thread.account_id)
   const starredFeed = starredColumn && isRssAccount(account, thread.account_id)
-  const draggableId = starredFeed ? thread.id : thread.thread_id
+  // Scoped to the column: the same thread can sit in two columns of one board
+  // (a unified inbox next to the account's own), and draggable ids must be unique.
+  const draggableId = `${ownerKey}\n${starredFeed ? thread.id : thread.thread_id}`
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: draggableId,
     // A unified column's cards are draggable too: the card carries the thread's
@@ -78,6 +80,10 @@ export function KanbanThreadCard({
     ui$.mobilePane.set('conversation')
   }
 
+  // Cards are dragged by pointer only: the board's keyboard sensor is for column
+  // headers, and here it would swallow Enter/Space meant for the row.
+  const { onKeyDown: _keyboardDrag, ...pointerListeners } = listeners ?? {}
+
   const style = {
     transform: transform && !isDragging ? CSS.Translate.toString(transform) : undefined,
     opacity: isDragging ? 0.18 : movingThread === thread.thread_id ? 0.55 : undefined,
@@ -85,7 +91,7 @@ export function KanbanThreadCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...pointerListeners}>
       <ThreadListItem
         thread={thread}
         accounts={accounts}

@@ -93,7 +93,7 @@ export function KanbanColumnMinimized({
       className={clsx(
         'relative flex h-full shrink-0 flex-col items-center gap-3 rounded-lg border p-2 transition-colors',
         columnSearchHighlightClass(searchActive, overWallpaper),
-        columnDropTargetClass(wrapper.isOver, !!wrapper.dropRejection),
+        columnDropTargetClass(wrapper.isOver || !!wrapper.isDragging, !!wrapper.dropRejection),
         wrapper.dragHandle ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer',
       )}
       // Too narrow for the reason the expanded column shows, so it lives in the

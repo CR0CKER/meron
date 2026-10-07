@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -69,13 +69,37 @@ import { boardWallpaper } from '../../lib/wallpapers'
 // the wiring the column renderers need from those hooks.
 export type ColumnWrapper = {
   setNodeRef: (node: HTMLElement | null) => void
+  // The header that starts a drag. Registered so a key pressed on a button
+  // inside it isn't taken for picking the column up.
+  setHandleRef?: (node: HTMLElement | null) => void
   scrollIntoView: () => void
+  /** A card (not another column) is being dragged over this column. */
   isOver: boolean
+  /** This column is the one being dragged to a new slot. */
+  isDragging?: boolean
   /** Why the card currently being dragged can't be dropped here, if it can't. */
   dropRejection?: string
   style?: CSSProperties
   // Header drag props for reordering.
   dragHandle?: Record<string, unknown>
+}
+
+// The handle's props, minus the presses that must not pick the column up. A
+// menu opened from the handle is portaled out of it but still bubbles through it
+// in React's tree, so a press inside one is never a drag. `ignoreButtons` also
+// leaves the handle's own buttons alone, for a handle that is mostly controls.
+function dragHandleProps(handle: Record<string, unknown> | undefined, ignoreButtons = false) {
+  if (!handle) return undefined
+  const start = handle.onPointerDown as ((event: ReactPointerEvent<HTMLElement>) => void) | undefined
+  return {
+    ...handle,
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      const target = event.target as Element
+      if (!event.currentTarget.contains(target)) return
+      if (ignoreButtons && target.closest('button')) return
+      start?.(event)
+    },
+  }
 }
 
 function KanbanColumnContent({
@@ -314,7 +338,8 @@ function KanbanColumnContent({
       className={clsx(
         'relative flex h-full shrink-0 flex-col rounded-lg border transition-colors',
         columnSearchHighlightClass(searchActive, overWallpaper),
-        columnDropTargetClass(wrapper.isOver, !!wrapper.dropRejection),
+        // The column in the air is outlined the same way as one a card is over.
+        columnDropTargetClass(wrapper.isOver || !!wrapper.isDragging, !!wrapper.dropRejection),
       )}
     >
       {wrapper.isOver && wrapper.dropRejection && (
@@ -325,20 +350,28 @@ function KanbanColumnContent({
         </div>
       )}
       {bulkInColumn ? (
-        <BulkActionBar
-          items={bulkItems}
-          allItems={threads.map(bulkItemFor)}
-          className="min-h-12 rounded-t-lg border-b border-border bg-transparent"
-        />
+        // Stands in for the header, so it has to carry the column's drag handle too.
+        <div
+          ref={wrapper.setHandleRef}
+          className={wrapper.dragHandle ? 'shrink-0 cursor-grab touch-none active:cursor-grabbing' : 'shrink-0'}
+          {...dragHandleProps(wrapper.dragHandle, true)}
+        >
+          <BulkActionBar
+            items={bulkItems}
+            allItems={threads.map(bulkItemFor)}
+            className="min-h-12 rounded-t-lg border-b border-border bg-transparent"
+          />
+        </div>
       ) : (
         <div
+          ref={wrapper.setHandleRef}
           className={`flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 ${
             wrapper.dragHandle ? 'cursor-grab touch-none active:cursor-grabbing' : ''
           }`}
           title={wrapper.dragHandle ? t('kanban.actions.dragToReorderColumn') : undefined}
           onClick={wrapper.scrollIntoView}
           onContextMenu={openHeaderMenu}
-          {...wrapper.dragHandle}
+          {...dragHandleProps(wrapper.dragHandle)}
         >
           <div className="relative shrink-0">
             <Avatar
@@ -565,10 +598,11 @@ export function SortableColumn({
   threadMenu: ThreadContextMenuController
 }) {
   const key = kanbanBoardColumnKey(boardId, column)
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging, isOver } = useSortable({
-    id: key,
-    data: { type: 'column', column },
-  })
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging, isOver, active } =
+    useSortable({
+      id: key,
+      data: { type: 'column', column },
+    })
   const nodeRef = useRef<HTMLElement | null>(null)
   const setColumnNodeRef = useCallback(
     (node: HTMLElement | null) => {
@@ -592,8 +626,11 @@ export function SortableColumn({
       column={column}
       wrapper={{
         setNodeRef: setColumnNodeRef,
+        setHandleRef: setActivatorNodeRef,
         scrollIntoView: scrollColumnIntoView,
-        isOver,
+        // A column passing over during a reorder is not a drop into this one.
+        isOver: isOver && active?.data.current?.type === 'thread',
+        isDragging,
         dropRejection,
         style,
         dragHandle: { ...attributes, ...listeners },

@@ -313,6 +313,17 @@ export function columnDropTargetClass(isOver: boolean, blocked = false): string 
   return isOver ? 'border-accent bg-accent/10 ring-2 ring-accent/35 dark:bg-accent/15' : ''
 }
 
+// A column only ever changes slots sideways. Left free, a column dragged past
+// the board's bottom edge grows the scroll area and auto-scroll chases it. Cards
+// share the DndContext and still move freely.
+export function restrictColumnDragToHorizontal<T extends { x: number; y: number }>(args: {
+  transform: T
+  active: { data: { current?: Record<string, unknown> } } | null
+}): T {
+  if (args.active?.data.current?.type !== 'column') return args.transform
+  return { ...args.transform, y: 0 }
+}
+
 /**
  * Why a drop was refused, as locale keys — the reason is shown on the column
  * while dragging and toasted if the card is dropped anyway, so it is translated

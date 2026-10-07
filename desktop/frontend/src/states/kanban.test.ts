@@ -16,6 +16,7 @@ import {
   openCorrespondentMail,
   removeKanbanBoard,
   removeKanbanColumnsForFolder,
+  reorderKanbanColumn,
   selectKanbanBoard,
   setKanbanBoardWallpaper,
   switchKanbanColumnFolder,
@@ -565,6 +566,29 @@ describe('switchKanbanColumnFolder', () => {
 
     expect(switchKanbanColumnFolder('b1', { accountId: 'acc1', folderId: 'INBOX' }, 'Sent')).toBe(true)
     expect(kanban$.threads['acc1\nINBOX'].get()).toHaveLength(1)
+  })
+})
+
+describe('reorderKanbanColumn', () => {
+  const inbox = { accountId: 'acc1', folderId: 'INBOX' }
+  const archive = { accountId: 'acc1', folderId: 'Archive' }
+  const sent = { accountId: 'acc1', folderId: 'Sent' }
+  const order = () => settings$.kanbanBoards.get()[0].columns.map((column) => column.folderId)
+
+  beforeEach(() => {
+    settings$.kanbanBoards.set([{ id: 'b1', name: 'Board', columns: [inbox, archive, sent] }])
+  })
+
+  it('moves a column into the slot of the one it was dropped on, in either direction', () => {
+    reorderKanbanColumn('b1', inbox, sent)
+    expect(order()).toEqual(['Archive', 'Sent', 'INBOX'])
+    reorderKanbanColumn('b1', inbox, archive)
+    expect(order()).toEqual(['INBOX', 'Archive', 'Sent'])
+  })
+
+  it('leaves the board alone for a column it does not have', () => {
+    reorderKanbanColumn('b1', inbox, { accountId: 'acc2', folderId: 'INBOX' })
+    expect(order()).toEqual(['INBOX', 'Archive', 'Sent'])
   })
 })
 
