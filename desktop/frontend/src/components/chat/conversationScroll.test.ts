@@ -193,6 +193,24 @@ describe('resolveOpenScroll on an already-open thread', () => {
     ).toEqual({ scrollTop: 3600, pin: null })
   })
 
+  it("follows the reader's own send from wherever they had scrolled to", () => {
+    // Replying from the head of a long message: nowhere near the bottom, and
+    // the reply used to land out of sight below it.
+    expect(reopen({ grew: true, ownSend: true, metrics: metrics(200, 3400) })).toEqual({ scrollTop: 3400, pin: null })
+  })
+
+  it("follows the reader's own send over a saved position and unread above it", () => {
+    expect(
+      reopen({
+        ownSend: true,
+        savedScrollTop: 640,
+        hasUnread: true,
+        firstUnreadOffsetTop: 300,
+        metrics: metrics(640, 3400),
+      }),
+    ).toEqual({ scrollTop: 3400, pin: null })
+  })
+
   it('holds the restored position against bodies still settling', () => {
     // The saved position was measured against settled bodies. Restoring it
     // while they are placeholder-sized and then leaving it unpinned is how a
