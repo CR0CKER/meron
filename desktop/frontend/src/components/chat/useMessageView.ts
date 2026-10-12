@@ -3,7 +3,7 @@ import { accountIdentities, accounts$ } from '../../states/accounts'
 import { getActiveThread } from '../../states/mail'
 import { isDraftFolder } from '../../states/mailFolders'
 import { settings$ } from '../../states/settings'
-import { thread$ } from '../../states/thread'
+import { resolveConversationMode, thread$ } from '../../states/thread'
 import type { ConversationMode } from '../../states/thread'
 import type { Account, Message } from '../../types'
 import {
@@ -16,18 +16,6 @@ import {
 } from './messageHelpers'
 
 export type MessageView = ReturnType<typeof useMessageView>
-
-/** The render mode for an account: the session override when the user flipped
- *  it in the header, otherwise the account setting. */
-export function resolveConversationMode(
-  accounts: Account[],
-  modeOverrides: Record<string, ConversationMode>,
-  accountId: string | undefined,
-): ConversationMode {
-  const account = accountId ? accounts.find((acc) => acc.id === accountId) : null
-  if (!account) return 'plain'
-  return modeOverrides[account.id] ?? ((account.conversation_html ?? true) ? 'html' : 'plain')
-}
 
 /** The render mode the open thread's account is on: the session override when
  *  the user flipped it in the header, otherwise the account setting. Callers
