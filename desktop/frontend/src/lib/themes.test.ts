@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { isValidColor, luminance, toOklch } from './color'
+import { isValidColor, luminance, parseColor, toOklch } from './color'
 import {
   BUILTIN_THEMES,
   DEFAULT_DARK_ID,
@@ -23,6 +23,7 @@ import {
   serializeThemeSource,
   sideNavInkColor,
   whiteLabelAccent,
+  withOpaqueSurface,
   type CustomThemeInput,
 } from './themes'
 
@@ -107,6 +108,22 @@ describe('BUILTIN_THEMES', () => {
     for (const id of ids) expect(isCustomThemeId(id)).toBe(false)
     expect(BUILTIN_THEMES.filter((t) => t.appearance === 'light')).toHaveLength(7)
     expect(BUILTIN_THEMES.filter((t) => t.appearance === 'dark')).toHaveLength(7)
+  })
+})
+
+// Tooltips and floating panels paint the surface (bg-chats) over other content,
+// so it must be opaque in every theme; bgRaised is translucent in dark themes.
+describe('surface opacity', () => {
+  it('keeps the surface opaque in every built-in theme', () => {
+    for (const theme of BUILTIN_THEMES) {
+      expect({ id: theme.id, alpha: parseColor(theme.tokens.bgChats)?.a }).toEqual({ id: theme.id, alpha: 1 })
+    }
+  })
+
+  it('keeps the surface opaque in derived light and dark themes', () => {
+    for (const appearance of ['light', 'dark'] as const) {
+      expect(parseColor(deriveThemeTokens({ ...SAMPLE_INPUT, appearance }).bgChats)?.a).toBe(1)
+    }
   })
 })
 
@@ -300,6 +317,21 @@ describe('sanitizeCustomThemes', () => {
       { ...valid, id: newCustomThemeId(), source: { ...SAMPLE_INPUT, accent: 'tomato' } },
     ])
     expect(out).toHaveLength(1)
+  })
+
+  it('flattens a translucent surface over the background and re-derives the tokens', () => {
+    const source = { ...SAMPLE_INPUT, appearance: 'dark', bgApp: '#000000', surface: 'rgba(255, 255, 255, 0.5)' }
+    const out = sanitizeCustomThemes([{ ...valid, source, tokens: deriveThemeTokens(source as never) }])
+    expect(out).toHaveLength(1)
+    expect(out![0].source.surface).toBe('#808080')
+    expect(out![0].tokens).toEqual(deriveThemeTokens({ ...source, surface: '#808080' } as never))
+    expect(parseColor(out![0].tokens.bgChats)?.a).toBe(1)
+  })
+
+  it('leaves an opaque surface alone and flattens a translucent one', () => {
+    expect(withOpaqueSurface(SAMPLE_INPUT)).toBe(SAMPLE_INPUT)
+    const translucent = { ...SAMPLE_INPUT, bgApp: '#000000', surface: '#ffffff80' }
+    expect(withOpaqueSurface(translucent)).toEqual({ ...translucent, surface: '#808080' })
   })
 
   it('returns null for non-array input', () => {
