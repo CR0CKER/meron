@@ -8,6 +8,8 @@ export type MessageContextMenuState = {
   y: number
   message: Message
   linkUrl?: string
+  // A right-clicked image attachment; the menu then offers save/copy for it.
+  image?: { key: string; filename: string }
   hideOpenInNewTab?: boolean
 }
 

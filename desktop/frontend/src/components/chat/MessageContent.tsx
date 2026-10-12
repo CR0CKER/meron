@@ -70,6 +70,9 @@ export function MessageContent({
                   key={idx}
                   type="button"
                   onClick={() => onOpenImage(galleryOffset + attachmentImages.indexOf(image))}
+                  // Read by the message list's context menu to offer save/copy.
+                  data-media-key={image.key ?? undefined}
+                  data-media-filename={image.filename}
                   className={`block w-full overflow-hidden hover:opacity-90 cursor-pointer ${btnClass}`}
                   title={image.filename}
                 >
@@ -90,7 +93,8 @@ export function MessageContent({
       {/* Video attachments: rendered with native controls, played from disk
           (cached) or straight from the remote URL. The corner button opens the
           source in the system player as a fallback when the in-app webview
-          can't decode the codec (common on Linux/WebKitGTK). */}
+          can't decode the codec (common on Linux/WebKitGTK); the one beside it
+          saves the clip when its bytes are on disk. */}
       {videos.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5">
           {videos.map((video, idx) => (
@@ -99,6 +103,8 @@ export function MessageContent({
                 src={mediaSrc(video)}
                 externalUrl={video.url ?? mediaSrc(video)}
                 externalLabel={t('chat.openExternalPlayer')}
+                onSave={video.key ? () => downloadAttachment(video) : undefined}
+                saveLabel={t('chat.saveFile', { filename: video.filename })}
               />
             </RetryWhenRestored>
           ))}

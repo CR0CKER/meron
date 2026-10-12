@@ -265,7 +265,15 @@ export function ConversationMessageList({
                         }
                       }
                     }
-                    thread$.messageContextMenu.set({ x: event.clientX, y: event.clientY, message, linkUrl })
+                    const target = event.target as Element | null
+                    const imageEl =
+                      target && typeof target.closest === 'function'
+                        ? (target.closest('[data-media-key]') as HTMLElement | null)
+                        : null
+                    const image = imageEl
+                      ? { key: imageEl.dataset.mediaKey!, filename: imageEl.dataset.mediaFilename ?? '' }
+                      : undefined
+                    thread$.messageContextMenu.set({ x: event.clientX, y: event.clientY, message, linkUrl, image })
                   }}
                   className={`rounded-2xl transition-shadow ${traditional ? 'space-y-2' : 'space-y-4'} ${
                     activeSearchId === message.id || jumpMessageId === message.id

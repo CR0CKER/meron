@@ -24,7 +24,7 @@ import {
 } from '../../states/compose'
 import { messageCanReplyAll } from '../../states/composeReply'
 import { printMail } from '../../lib/printMail'
-import { saveMessageAsEml } from '../../states/mail'
+import { copyAttachmentImage, downloadAttachment, saveMessageAsEml } from '../../states/mail'
 import { markMessageReadState, starMessage } from '../../states/mailFlags'
 import { isDraftFolder } from '../../states/mailFolders'
 import { deleteMessage } from '../../states/mailMoves'
@@ -78,6 +78,27 @@ export function MessageContextMenu({
             onClick={() => {
               copyText(state.linkUrl!).catch(() => undefined)
               onClose()
+            }}
+          />
+        </>
+      ) : state.image ? (
+        <>
+          <MenuItem
+            icon={<Download size={13} className="text-accent" />}
+            label={t('chat.actions.saveImage')}
+            onClick={() => {
+              const image = state.image!
+              onClose()
+              void downloadAttachment(image)
+            }}
+          />
+          <MenuItem
+            icon={<Copy size={13} className="text-accent" />}
+            label={t('chat.actions.copyImage')}
+            onClick={() => {
+              const image = state.image!
+              onClose()
+              void copyAttachmentImage(image)
             }}
           />
         </>

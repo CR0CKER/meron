@@ -186,19 +186,34 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
       className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm animate-fade-in select-none"
       onClick={onClose}
     >
-      {/* Top bar: counter + close */}
+      {/* Top bar: counter + save + close */}
       <div className="flex shrink-0 items-center justify-between px-4 py-3 text-white/90">
         <span className="text-xs font-semibold tabular-nums">{total > 1 ? `${index + 1} / ${total}` : ''}</span>
-        <button
-          onClick={(event) => {
-            event.stopPropagation()
-            onClose()
-          }}
-          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15 cursor-pointer transition-colors"
-          title={t('chat.closeEsc')}
-        >
-          <X size={20} />
-        </button>
+        <div className="flex items-center gap-1">
+          {canSave && (
+            <button
+              onClick={(event) => {
+                event.stopPropagation()
+                saveCurrent()
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15 cursor-pointer transition-colors"
+              title={t('chat.saveFile', { filename: current.filename })}
+              aria-label={t('chat.saveFile', { filename: current.filename })}
+            >
+              <Download size={18} />
+            </button>
+          )}
+          <button
+            onClick={(event) => {
+              event.stopPropagation()
+              onClose()
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15 cursor-pointer transition-colors"
+            title={t('chat.closeEsc')}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Image stage */}
