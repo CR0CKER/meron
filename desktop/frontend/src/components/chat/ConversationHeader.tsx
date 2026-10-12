@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Code,
   Copy,
+  Download,
   FileText,
   LoaderCircle,
   Mail,
@@ -29,6 +30,7 @@ import { starThread } from '../../states/mailFlags'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
 import { goToSearchMatch, thread$ } from '../../states/thread'
 import { accounts$ } from '../../states/accounts'
+import { exportThreadsAsEml } from '../../states/emlExport'
 import { isRssAccount } from '../../lib/threadActions'
 import { closeCurrentConversation, kanban$, openCorrespondentMail } from '../../states/kanban'
 import { openComposeTab, openReplyInFullEditor } from '../../states/compose'
@@ -284,19 +286,6 @@ export function ConversationHeader({
                   <FileText size={15} className="shrink-0" /> {t('chat.viewAsPlainText')}
                 </button>
                 <div className="my-1 h-px bg-border" />
-                {!isRSS && (
-                  <MenuItem
-                    icon={<Printer size={15} className="shrink-0" />}
-                    label={t('chat.actions.printThread')}
-                    disabled={printing}
-                    className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium! disabled:opacity-50 disabled:cursor-default disabled:hover:bg-transparent"
-                    onClick={() => {
-                      setActionsMenuOpen(false)
-                      setPrinting(true)
-                      void printThread(activeThread.thread_id).finally(() => setPrinting(false))
-                    }}
-                  />
-                )}
                 {!isRSS && replyAll && (
                   <button
                     onClick={() => {
@@ -332,6 +321,31 @@ export function ConversationHeader({
                     >
                       <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
                     </button>
+                    <div className="my-1 h-px bg-border" />
+                    <MenuItem
+                      icon={<Printer size={15} className="shrink-0" />}
+                      label={t('chat.actions.printThread')}
+                      disabled={printing}
+                      className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium! disabled:opacity-50 disabled:cursor-default disabled:hover:bg-transparent"
+                      onClick={() => {
+                        setActionsMenuOpen(false)
+                        setPrinting(true)
+                        void printThread(activeThread.thread_id).finally(() => setPrinting(false))
+                      }}
+                    />
+                    <MenuItem
+                      icon={<Download size={15} className="shrink-0" />}
+                      label={t('chat.actions.saveAsEml')}
+                      className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium!"
+                      onClick={() => {
+                        setActionsMenuOpen(false)
+                        void exportThreadsAsEml(
+                          [{ threadId: activeThread.thread_id, folderId: activeThread.folder_id }],
+                          activeThread.subject || '',
+                        )
+                      }}
+                    />
+                    <div className="my-1 h-px bg-border" />
                     <button
                       onClick={() => {
                         void deleteThread(activeThread.thread_id)
