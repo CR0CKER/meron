@@ -36,8 +36,10 @@ import {
 } from '../lib/shortcuts'
 import type { Account, ChatWallpaper } from '../types'
 import { normalizeI18nLanguage, resolveI18nLanguageFromWebLocale, type SupportedI18nLanguage } from '../lib/i18n'
+import { setTrayStyle } from '../lib/trayStyle'
 
-// Persisted user settings. This module maps 1:1 to the `settings` DB table: each
+// Core-persisted user settings map to the `settings` DB table; native tray
+// style is loaded separately through tray.getStyle. Each core-backed
 // field is one row, keyed by `DB_KEY`. Persistence is centralized here (a single
 // root listener) so individual fields never wire up their own save logic.
 
@@ -169,6 +171,7 @@ export type Settings = {
    * quitting (Linux and Windows; macOS keeps its own close/quit split).
    */
   closeToTray: boolean
+  monochromeTrayIcon: boolean
   /** Whether to poll for new releases in the background (see states/update.ts). */
   autoUpdateCheck: boolean
   /** Version whose update banner the user dismissed, so it doesn't nag. */
@@ -225,7 +228,7 @@ const DB_KEY = {
   language: 'language',
   shortcutOverrides: 'shortcut_overrides',
   proxy: 'proxy',
-} satisfies Record<keyof Settings, string>
+} satisfies Record<Exclude<keyof Settings, 'monochromeTrayIcon'>, string>
 
 /** Keys to request from `app.prefsGet` on boot. */
 export const SETTINGS_DB_KEYS = Object.values(DB_KEY)
@@ -431,6 +434,8 @@ export const settings$ = observable<Settings>({
   showUnifiedInboxInSideNav: true,
   tasksEnabled: true,
   closeToTray: true,
+  // Boot gets the native saved choice/default before hydrating settings.
+  monochromeTrayIcon: false,
   autoUpdateCheck: true,
   dismissedUpdateVersion: null,
   language: null,
@@ -442,6 +447,12 @@ export const settings$ = observable<Settings>({
 // default matches ours, so only a change (hydration included) needs sending.
 settings$.closeToTray.onChange(({ value }) => {
   void invoke('window.setCloseToTray', { enabled: value }).catch(() => {})
+})
+
+// Native hydration only updates the UI; user changes persist through the
+// ordered native style updater rather than the core settings table.
+settings$.monochromeTrayIcon.onChange(({ value }) => {
+  if (!hydrating) setTrayStyle(value)
 })
 
 // lib/shortcuts resolves chords from a local mirror, so keep it in step with the
@@ -500,7 +511,7 @@ settings$.onChange(({ changes }) => {
   if (hydrating) return
   const seen = new Set<string>()
   for (const change of changes) {
-    const field = change.path[0] as keyof Settings | undefined
+    const field = change.path[0] as keyof typeof DB_KEY | undefined
     if (!field || seen.has(field) || !(field in DB_KEY)) continue
     seen.add(field)
     persistSetting(DB_KEY[field], settings$[field].get())
@@ -982,4 +993,16 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
   // before the Wails bindings existed, so its window.setAppearance was lost,
   // and hydrating a theme identical to the current one fires no onChange.
   applyActiveTheme()
+}
+
+// Native storage owns this setting. Hydration must neither write a core pref
+// nor send a native style command (which would persist a platform default).
+export function hydrateTrayStyle(monochrome: boolean) {
+  const previous = hydrating
+  hydrating = true
+  try {
+    settings$.monochromeTrayIcon.set(monochrome)
+  } finally {
+    hydrating = previous
+  }
 }

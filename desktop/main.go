@@ -19,11 +19,14 @@ var assets embed.FS
 //go:embed build/appicon.png
 var appIconPNG []byte
 
-//go:embed build/trayicon.png
+//go:embed build/tray-color.png
 var trayIconPNG []byte
 
-//go:embed build/trayicon-unread.png
+//go:embed build/tray-color-unread.png
 var trayIconUnreadPNG []byte
+
+//go:embed build/trayicon-mono.png
+var trayIconMonoPNG []byte
 
 //go:embed build/trayicon.ico
 var trayIconICO []byte
