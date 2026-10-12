@@ -13,6 +13,9 @@ import { Gallery } from './Gallery'
 import { ConversationDetailsPanel } from './ConversationDetailsPanel'
 import { EmptyState } from '../empty-state/EmptyState'
 import { QuickReplyComposer } from './QuickReplyComposer'
+import { addQuickReplyAttachments } from './useQuickReply'
+import { DropOverlay } from './DropOverlay'
+import { useFileDrop } from '../../lib/useFileDrop'
 import { ConversationTabs } from './ConversationTabs'
 import { ReaderTabView } from './ReaderTabView'
 import { ConversationHeader } from './ConversationHeader'
@@ -162,6 +165,30 @@ export function MessagePane() {
   const { scrollRef, setScrollTop } = conversationScroll
 
   const contextMenu = useValue(thread$.messageContextMenu)
+
+  // Files dropped anywhere on the open conversation go to the reply as
+  // attachments; feeds have no reply box, and a reader tab in front isn't the
+  // conversation. Files that arrive late (Linux) are for the conversation they
+  // were dropped on, not the one open by then. A drag that may be a link
+  // (Linux) must still reach the reply box, so the overlay is only drawn; the
+  // message bodies' frames, which would swallow the drop, then let it through
+  // to the pane.
+  const {
+    dragging: fileDragging,
+    mayBeLink,
+    dropHandlers: { ref: dropRef, ...dropHandlers },
+  } = useFileDrop(addQuickReplyAttachments, {
+    enabled: !!activeThread && !isRSS && !activeDocumentTab,
+    scope: activeThreadId,
+  })
+  // The conversation element is both the drop area and `conversationRef`.
+  const setConversationElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      conversationRef.current = element
+      dropRef(element)
+    },
+    [dropRef],
+  )
 
   const showMessageInConversation = useCallback((messageId: string) => {
     thread$.pendingScrollMessageId.set(messageId)
@@ -340,13 +367,15 @@ export function MessagePane() {
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <section className="relative flex flex-1 flex-col overflow-hidden bg-chat">
           <div
-            ref={conversationRef}
+            ref={setConversationElement}
             aria-hidden={!!activeDocumentTab}
             className={`relative flex min-h-0 flex-1 flex-col ${
               activeDocumentTab ? 'pointer-events-none invisible' : ''
-            }`}
+            } ${fileDragging && mayBeLink ? '[&_iframe]:pointer-events-none' : ''}`}
+            {...dropHandlers}
           >
             {conversationContent}
+            {fileDragging && <DropOverlay passThrough={mayBeLink} />}
           </div>
           {activeDocumentTab && (
             <div className="absolute inset-0 z-20 flex flex-col bg-chat">

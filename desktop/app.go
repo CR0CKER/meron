@@ -48,6 +48,11 @@ type App struct {
 	lastFileDir  string
 	lastImageDir string
 
+	// The paths of the latest native file drop (Linux), see filedrop.go.
+	fileDropMu   sync.Mutex
+	droppedPaths []string
+	droppedAt    time.Time
+
 	oauthMu          sync.Mutex
 	oauthState       string
 	oauthVerifier    string
@@ -129,6 +134,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.startMCP()
 	a.setupNotificationListener()
 	a.setupResumeListener()
+	a.setupFileDrop(ctx)
 	a.setupAppearanceListener()
 }
 
@@ -212,6 +218,8 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.pickFiles(payload, false, true)
 	case "system.pickImageFiles":
 		return a.pickFiles(payload, true, true)
+	case "system.readDroppedFiles":
+		return a.readDroppedFilesCommand(payload)
 	case "mailto.consumePending":
 		return a.consumePendingMailto(), nil
 	case "app.prefsGet":
