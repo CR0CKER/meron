@@ -1,5 +1,6 @@
 package jp.nonbili.meron.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
@@ -67,13 +69,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,10 +87,16 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -275,6 +283,16 @@ internal fun ThreadScreen(
             ?: (message.id == lastMessageId || message.id in unreadOnArrival || searchMatches.contains(message.id))
     }
     val listState = rememberLazyListState()
+    // The quick reply floats over the end of the list, whose viewport runs on
+    // underneath it. What the reader can see ends at the card's top, so
+    // everything that asks where the viewport ends — read marking, the
+    // keyboard anchor — takes the card's height off first.
+    var replyBarHeightPx by remember { mutableIntStateOf(0) }
+    // The header pinned over a long message, its top gap included; zero while
+    // nothing is pinned.
+    var pinnedHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val showReplyBar = thread != null && !isRss && messages.isNotEmpty()
+    val replyOverlayPx by rememberUpdatedState(if (showReplyBar) replyBarHeightPx else 0)
     var endFollowRequest by remember(thread?.id) { mutableStateOf(0) }
     var followNextLocalSend by remember(thread?.id) { mutableStateOf(false) }
     var keyboardAnchor by remember(thread?.id) { mutableStateOf<Pair<String, Int>?>(null) }
@@ -340,7 +358,7 @@ internal fun ThreadScreen(
                         val info = listState.layoutInfo
                         val messageIndex = currentMessages.indexOfFirst { it.id == messageId }
                         Triple(
-                            info.viewportStartOffset to info.viewportEndOffset,
+                            info.viewportStartOffset to info.viewportEndOffset - replyOverlayPx,
                             info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
                             messageIndex.takeIf { it >= 0 }?.plus(currentHeaderItemCount),
                         )
@@ -478,7 +496,7 @@ internal fun ThreadScreen(
                     firstVisibleIndex = listState.firstVisibleItemIndex,
                     visible = info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
                     totalItemCount = info.totalItemsCount,
-                    viewportEndOffset = info.viewportEndOffset,
+                    viewportEndOffset = info.viewportEndOffset - replyOverlayPx,
                 )
             }.collect { snapshot ->
                 val msgs = currentMessages
@@ -786,10 +804,17 @@ internal fun ThreadScreen(
                     onDismiss = { copyDialogOpen = false },
                 )
             }
+            // Behind the reply card as well as the messages, so the card floats
+            // on the conversation. Not inside the keyboard's padding: the
+            // picture keeps its crop while the keyboard comes and goes.
+            ChatWallpaperBackground(
+                presetId = wallpaperPresetId,
+                customUrl = wallpaperCustomUrl,
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+            )
             Column(
                 Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
                     .padding(innerPadding)
                     .consumeWindowInsets(innerPadding)
                     .imePadding(),
@@ -806,24 +831,39 @@ internal fun ThreadScreen(
                     )
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    ChatWallpaperBackground(
-                        presetId = wallpaperPresetId,
-                        customUrl = wallpaperCustomUrl,
-                        modifier = Modifier.matchParentSize(),
-                    )
                     if (messages.isEmpty()) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
                     } else {
                         val traditional = conversationLayout == ConversationLayout.Traditional
+                        val sidePadding = if (traditional) 8.dp else 12.dp
+                        val edgePadding = if (traditional) 8.dp else 16.dp
+                        // The last message scrolls clear of the reply card,
+                        // whose own top margin is the gap between the two.
+                        val replyBarHeight = with(LocalDensity.current) { replyOverlayPx.toDp() }
+                        // What shows around the card is faded, from a line the
+                        // card itself covers: below its top margin and the
+                        // curve of its corners. So is what shows above the
+                        // pinned header, while there is one.
+                        val fadedBottomPx =
+                            with(LocalDensity.current) { replyOverlayPx - (REPLY_CARD_TOP_MARGIN + REPLY_CARD_RADIUS).roundToPx() }
                         LazyColumn(
-                            Modifier.fillMaxSize().appScrollbar(listState),
+                            Modifier
+                                .fillMaxSize()
+                                .fadedEdges(
+                                    // Down to the middle of the pinned header, which covers where it ends.
+                                    topPx = pinnedHeaderHeightPx / 2,
+                                    bottomPx = fadedBottomPx,
+                                    veil = MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                                ).appScrollbar(listState),
                             state = listState,
                             contentPadding =
                                 PaddingValues(
-                                    horizontal = if (traditional) 8.dp else 12.dp,
-                                    vertical = if (traditional) 8.dp else 16.dp,
+                                    start = sidePadding,
+                                    end = sidePadding,
+                                    top = edgePadding,
+                                    bottom = if (replyOverlayPx > 0) replyBarHeight else edgePadding,
                                 ),
                             verticalArrangement = Arrangement.spacedBy(if (traditional) 6.dp else 10.dp),
                         ) {
@@ -956,14 +996,23 @@ internal fun ThreadScreen(
                             pinnedMessage?.let { message ->
                                 val outgoing = isOutgoing(message, accountEmail)
                                 val textColor = MaterialTheme.colorScheme.onSurface
+                                DisposableEffect(Unit) { onDispose { pinnedHeaderHeightPx = 0 } }
+                                // A card floating on the conversation, drawn
+                                // like the reply card at the other end of it.
                                 Surface(
                                     color = MaterialTheme.colorScheme.surface,
-                                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-                                    shadowElevation = 3.dp,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                    shadowElevation = 1.dp,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .onSizeChanged { pinnedHeaderHeightPx = it.height }
+                                            .padding(start = 8.dp, end = 8.dp, top = 6.dp),
                                 ) {
-                                    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                                         MessageRowHeader(
+                                            compact = true,
                                             message = message,
                                             senderLabel = messageSenderLabel(message, outgoing),
                                             outgoing = outgoing,
@@ -997,47 +1046,51 @@ internal fun ThreadScreen(
                             }
                         }
                     }
-                }
-                if (thread != null && !isRss && messages.isNotEmpty()) {
-                    ReplyBar(
-                        value = quickReplyBody,
-                        onChange = onQuickReplyChange,
-                        attachments = quickReplyAttachments,
-                        failureMessage = quickReplyFailure,
-                        sendShortcutMode = sendShortcutMode,
-                        onAttach = onQuickReplyAttach,
-                        onRemoveAttachment = onRemoveQuickReplyAttachment,
-                        onOpenFullEditor = onOpenFullReply,
-                        onFocusChange = { focused ->
-                            keyboardAnchor =
-                                if (focused) {
-                                    val info = listState.layoutInfo
-                                    bottomVisibleMessageAnchor(
-                                        visible = info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
-                                        headerItemCount = currentHeaderItemCount,
-                                        messageCount = messages.size,
-                                        viewportStartOffset = info.viewportStartOffset,
-                                        viewportEndOffset = info.viewportEndOffset,
-                                    )?.let { anchor -> messages.getOrNull(anchor.messageIndex)?.id?.let { it to anchor.bottomGapPx } }
-                                } else {
-                                    null
-                                }
-                        },
-                        onSend = {
-                            keyboardAnchor = null
-                            // The reader's own reply is followed from wherever
-                            // they had scrolled to, unlike mail that arrives.
-                            followNextLocalSend = true
-                            onSendReply()
-                        },
-                        onRetry = onRetryReply,
-                        hasContent = quickReplyHasContent,
-                        sending = quickReplySending,
-                        fromIdentities = quickReplyFromIdentities,
-                        recipients = quickReplyRecipients,
-                        selectedFrom = quickReplySelectedFrom,
-                        onSelectFrom = onSelectQuickReplyFrom,
-                    )
+                    // Over the list rather than under it: messages scroll on
+                    // behind the card, like desktop's composer.
+                    if (showReplyBar) {
+                        Box(Modifier.align(Alignment.BottomCenter).onSizeChanged { replyBarHeightPx = it.height }) {
+                            ReplyBar(
+                                value = quickReplyBody,
+                                onChange = onQuickReplyChange,
+                                attachments = quickReplyAttachments,
+                                failureMessage = quickReplyFailure,
+                                sendShortcutMode = sendShortcutMode,
+                                onAttach = onQuickReplyAttach,
+                                onRemoveAttachment = onRemoveQuickReplyAttachment,
+                                onOpenFullEditor = onOpenFullReply,
+                                onFocusChange = { focused ->
+                                    keyboardAnchor =
+                                        if (focused) {
+                                            val info = listState.layoutInfo
+                                            bottomVisibleMessageAnchor(
+                                                visible = info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
+                                                headerItemCount = currentHeaderItemCount,
+                                                messageCount = messages.size,
+                                                viewportStartOffset = info.viewportStartOffset,
+                                                viewportEndOffset = info.viewportEndOffset - replyOverlayPx,
+                                            )?.let { anchor -> messages.getOrNull(anchor.messageIndex)?.id?.let { it to anchor.bottomGapPx } }
+                                        } else {
+                                            null
+                                        }
+                                },
+                                onSend = {
+                                    keyboardAnchor = null
+                                    // The reader's own reply is followed from wherever
+                                    // they had scrolled to, unlike mail that arrives.
+                                    followNextLocalSend = true
+                                    onSendReply()
+                                },
+                                onRetry = onRetryReply,
+                                hasContent = quickReplyHasContent,
+                                sending = quickReplySending,
+                                fromIdentities = quickReplyFromIdentities,
+                                recipients = quickReplyRecipients,
+                                selectedFrom = quickReplySelectedFrom,
+                                onSelectFrom = onSelectQuickReplyFrom,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1491,6 +1544,42 @@ internal fun ConversationSearchBar(
     }
 }
 
+private val REPLY_CARD_TOP_MARGIN = 8.dp
+private val REPLY_CARD_RADIUS = 24.dp
+
+/**
+ * Fades the top [topPx] and bottom [bottomPx] of this content into [veil]: the
+ * messages that run on behind the pinned header and the reply card stay
+ * visible around them without their text competing with either. Each fade
+ * starts from nothing, so it has no edge where it shows beside what covers it.
+ *
+ * A fade only, not a blur: blurring means drawing the list into an offscreen
+ * layer, and Android's WebView crashes natively when drawn into one on
+ * GL-pipeline devices (see MailWebView.android.kt).
+ */
+private fun Modifier.fadedEdges(
+    topPx: Int,
+    bottomPx: Int,
+    veil: Color,
+): Modifier =
+    drawWithContent {
+        drawContent()
+        if (topPx > 0) {
+            drawRect(
+                Brush.verticalGradient(listOf(veil, Color.Transparent), endY = topPx.toFloat()),
+                size = Size(size.width, topPx.toFloat()),
+            )
+        }
+        if (bottomPx > 0) {
+            val top = size.height - bottomPx
+            drawRect(
+                Brush.verticalGradient(listOf(Color.Transparent, veil), startY = top, endY = size.height),
+                topLeft = Offset(0f, top),
+                size = Size(size.width, bottomPx.toFloat()),
+            )
+        }
+    }
+
 @Composable
 internal fun ReplyBar(
     value: String,
@@ -1514,13 +1603,24 @@ internal fun ReplyBar(
     selectedFrom: SendIdentity? = null,
     onSelectFrom: (SendIdentity) -> Unit = {},
 ) {
-    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column(
-            Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    // One rounded card floating on the conversation, like desktop's composer:
+    // the text and its controls read as a single box rather than as a field
+    // set into a bar.
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = REPLY_CARD_TOP_MARGIN, bottom = 12.dp),
+        shape = RoundedCornerShape(REPLY_CARD_RADIUS),
+        // The surface the message cards are drawn on, so the card reads as
+        // one of them rather than as a pressed or disabled slab.
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        shadowElevation = 1.dp,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(4.dp)) {
             if (attachments.isNotEmpty()) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyRow(
+                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     items(attachments, key = { it.id }) { attachment ->
                         FilterChip(
                             selected = false,
@@ -1541,7 +1641,7 @@ internal fun ReplyBar(
             }
             if (failureMessage.isNotBlank()) {
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -1558,22 +1658,19 @@ internal fun ReplyBar(
                 }
             }
             val canSend = !sending && hasContent
-            // The text leads and has the bar's full width; everything else
+            // The text leads and has the card's full width; everything else
             // shares the one line under it, so a phone's width goes to the
             // reply rather than to the buttons beside it.
-            TextField(
+            // A bare field rather than Material's, whose 56dp minimum made the
+            // card half as tall again as it needs to be. The padding is inside
+            // the field, so a tap anywhere on the row focuses it.
+            val replyTextStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
+            BasicTextField(
                 value = value,
                 onValueChange = onChange,
-                placeholder = { Text(tr("composer.placeholders.quickMessage")) },
-                shape = RoundedCornerShape(24.dp),
-                colors =
-                    TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    ),
+                textStyle = replyTextStyle,
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                maxLines = 5,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -1586,14 +1683,35 @@ internal fun ReplyBar(
                                 false
                             }
                         },
-                maxLines = 5,
+                decorationBox = { field ->
+                    Box(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 4.dp)) {
+                        if (value.isEmpty()) {
+                            Text(
+                                tr("composer.placeholders.quickMessage"),
+                                style = replyTextStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        field()
+                    }
+                },
             )
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 2.dp, end = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onAttach, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.AttachFile, contentDescription = tr("composer.actions.attachFiles"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.AttachFile,
+                        contentDescription = tr("composer.actions.attachFiles"),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
                 IconButton(onClick = onOpenFullEditor, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.OpenInFull, contentDescription = tr("composer.actions.openFullEditor"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.OpenInFull,
+                        contentDescription = tr("composer.actions.openFullEditor"),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
                 // The recipients sit against the send button and are measured
                 // first — they change from thread to thread — so the send-as

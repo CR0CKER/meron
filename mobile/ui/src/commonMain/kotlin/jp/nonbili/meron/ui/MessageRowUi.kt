@@ -312,6 +312,10 @@ internal fun MessageRowHeader(
     onCopyMessageText: (String, String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onComposeTo: (String) -> Unit,
+    // One row: the sender and the actions, without the recipients line or the
+    // address details it opens. For the copy pinned over a long message, which
+    // sits on top of the text being read.
+    compact: Boolean = false,
 ) {
     var addressesOpen by remember(message.id) { mutableStateOf(false) }
     Row(
@@ -344,7 +348,7 @@ internal fun MessageRowHeader(
                 )
                 // An outgoing message already names its recipients here,
                 // so the details toggle rides beside them.
-                if (outgoing && !isRss) {
+                if (outgoing && !isRss && !compact) {
                     AddressDetailsChevron(addressesOpen, mutedColor) { addressesOpen = !addressesOpen }
                 }
             }
@@ -353,7 +357,7 @@ internal fun MessageRowHeader(
             // answers the sender alone without noticing them — and "me" when
             // it's only us. The chevron here opens the full addresses. A feed
             // item has no recipients, so it gets neither.
-            if (!outgoing && !isRss) {
+            if (!outgoing && !isRss && !compact) {
                 val me = tr("threads.me")
                 val recipients =
                     remember(message.to, message.cc) { formatRecipientSummary(message.to, message.cc) }
