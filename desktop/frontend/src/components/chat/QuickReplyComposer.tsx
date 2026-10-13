@@ -40,50 +40,50 @@ export function QuickReplyComposer() {
     // leans upward to stay off the list's scrollbar beside the box.
     <footer className="px-3.5 pb-3.5 pt-1 flex flex-col items-center justify-center">
       <div className="pointer-events-auto flex flex-col gap-2 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-[0_-6px_12px_0_var(--me-composer-halo,transparent),0_1px_2px_0_rgb(0_0_0/0.05)] focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
-        {/* One line, not two: From and To are both single-address disclosures,
-            and stacking them pushed the box itself down the window. Recipients
-            lead — they are what changes from thread to thread — and the send-as
-            address sits out of the way at the right edge. */}
-        <div className="flex w-full min-w-0 items-center gap-2 empty:hidden">
-          <QuickReplyRecipients />
-          <QuickReplyFrom />
-        </div>
         <QuickReplyAttachments attachments={composerAttachments} />
 
-        <div className="flex items-end gap-2 w-full">
+        {/* The text leads and has the box's full width; everything else shares
+            the one line under it, so a growing reply never strands a control
+            beside it and a narrow pane gives no text width to buttons. */}
+        <textarea
+          ref={textareaRef}
+          value={composer}
+          onChange={(event) => compose$.composer.set(event.target.value)}
+          placeholder={t('composer.placeholders.quickMessage')}
+          rows={1}
+          spellCheck={spellCheck}
+          className="w-full px-1.5 pt-1 max-h-[254px] bg-transparent text-[calc(0.9375rem*var(--me-message-scale))] text-primary resize-none placeholder-secondary border-none outline-none leading-[1.3333]"
+          onKeyDown={handleComposerKeyDown}
+          onPaste={handleComposerPaste}
+        />
+
+        {/* From and To are both single-address disclosures, kept to one line:
+            the recipients sit against the send button, and the send-as address
+            follows the buttons on the left, where it is the first to truncate
+            when the pane narrows — recipients change from thread to thread. */}
+        <div className="flex w-full min-w-0 items-center gap-1">
           <button
             onClick={() => void pickAttachmentFiles()}
-            className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl text-secondary hover:bg-active transition-colors cursor-pointer"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-active hover:text-primary transition-colors cursor-pointer"
             title={t('composer.actions.attachFiles')}
           >
-            <Paperclip size={16} />
+            <Paperclip size={15} />
           </button>
           <button
             onClick={() => openReplyInFullEditor()}
-            className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl text-secondary hover:bg-active transition-colors cursor-pointer"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-active hover:text-primary transition-colors cursor-pointer"
             title={t('composer.actions.openFullEditor')}
           >
-            <Maximize2 size={15} />
+            <Maximize2 size={14} />
           </button>
-
-          {/* One line of text sits centred in the 34px row beside the buttons at any
-            message text size: the padding is what the line height leaves over. */}
-          <textarea
-            ref={textareaRef}
-            value={composer}
-            onChange={(event) => compose$.composer.set(event.target.value)}
-            placeholder={t('composer.placeholders.quickMessage')}
-            rows={1}
-            spellCheck={spellCheck}
-            className="flex-1 py-[max(0px,calc((2.125rem_-_1.25rem_*_var(--me-message-scale))_/_2))] px-1 max-h-[254px] min-h-8.5 bg-transparent text-[calc(0.9375rem*var(--me-message-scale))] text-primary resize-none placeholder-secondary border-none outline-none leading-[1.3333]"
-            onKeyDown={handleComposerKeyDown}
-            onPaste={handleComposerPaste}
-          />
-
+          <QuickReplyFrom />
+          <div className="ml-auto flex min-w-0 shrink items-center">
+            <QuickReplyRecipients />
+          </div>
           <button
             onClick={handleSendReply}
             disabled={!canSend}
-            className={`flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full shadow transition-all ${
+            className={`ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow transition-all ${
               sendingReply
                 ? 'bg-accent text-accent-label cursor-wait'
                 : canSend
