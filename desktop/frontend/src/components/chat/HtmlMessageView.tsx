@@ -28,6 +28,8 @@ interface HtmlMessageViewProps {
    *  baked with the policy in force when the thread was read, so a reveal or a
    *  withdrawn allowance since then has to be applied to its CSP here. */
   allowRemote?: boolean
+  /** A feed article rather than mail: keeps the larger reading size. */
+  article?: boolean
 }
 
 // Renders a single message either as its original email HTML (in a sandboxed
@@ -47,6 +49,7 @@ export function HtmlMessageView({
   attachments,
   viewMode,
   allowRemote = false,
+  article = false,
 }: HtmlMessageViewProps) {
   const { t } = useTranslation()
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
@@ -213,7 +216,7 @@ export function HtmlMessageView({
 
   const handleFrameReady = useCallback(
     (doc: Document) => {
-      applyReaderLayout(doc, messageFont, readerTheme)
+      applyReaderLayout(doc, messageFont, readerTheme, article)
       pendingScrollTop.current = hasAttachments ? (readerScrollPositions.get(positionKey) ?? null) : null
       let observer: ResizeObserver | undefined
       if (hasAttachments) {
@@ -241,15 +244,15 @@ export function HtmlMessageView({
         observer?.disconnect()
       }
     },
-    [messageFont, readerTheme, restoreScrollPosition, restorePendingScroll, hasAttachments, positionKey],
+    [messageFont, readerTheme, article, restoreScrollPosition, restorePendingScroll, hasAttachments, positionKey],
   )
 
   // The frame only re-runs `onReady` when its document is replaced, so repaint
   // the live document when the typography or theme settings change under it.
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument
-    if (doc?.body) applyReaderFont(doc, messageFont)
-  }, [messageFont, html, viewMode])
+    if (doc?.body) applyReaderFont(doc, messageFont, article)
+  }, [messageFont, article, html, viewMode])
 
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument

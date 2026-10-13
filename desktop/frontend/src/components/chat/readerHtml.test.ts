@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { applyReaderLayout, applyReaderTheme } from './readerHtml'
+import { applyReaderFont, applyReaderLayout, applyReaderTheme, DEFAULT_READER_FONT } from './readerHtml'
 import {
   DARKENED_ATTR,
   DEFAULT_READER_THEME,
@@ -61,6 +61,25 @@ describe('messageIsSelfStyled', () => {
     expect(messageIsSelfStyled(parse('<style>td { border-color: #eee; -webkit-text-size-adjust: none }</style>'))).toBe(
       false,
     )
+  })
+})
+
+describe('applyReaderFont', () => {
+  const fontCss = (doc: Document) => doc.getElementById('meron-reader-font')?.textContent ?? ''
+
+  it('gives mail the bubble base size at a specificity any email rule beats', () => {
+    const doc = parse('<p>hi</p>')
+    applyReaderFont(doc, DEFAULT_READER_FONT)
+    expect(fontCss(doc)).toBe(':where(html) { font-size: 14px; line-height: 1.45; }')
+  })
+
+  it('leaves a feed article at the engine size', () => {
+    const doc = parse('<p>hi</p>')
+    applyReaderFont(doc, DEFAULT_READER_FONT, true)
+    expect(doc.getElementById('meron-reader-font')).toBeNull()
+
+    applyReaderFont(doc, { family: 'Georgia', zoom: 1.2 }, true)
+    expect(fontCss(doc)).toBe('body { font-family: Georgia; zoom: 1.2; }')
   })
 })
 

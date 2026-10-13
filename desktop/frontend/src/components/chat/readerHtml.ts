@@ -1,4 +1,4 @@
-import { type MessageFrameFont } from '../../lib/fonts'
+import { BUBBLE_HTML_BASE_PX, type MessageFrameFont } from '../../lib/fonts'
 import { copyText } from '../../lib/native'
 import { usesNativeScrollbars } from '../../lib/nativeScrollbars'
 import {
@@ -308,19 +308,26 @@ export function stripTrackingPixels(html: string): string {
 }
 
 /**
- * Paint a reader frame with the user's message typography. Declarations are
- * only emitted when a preference is actually set, so by default the email's own
- * fonts (and the browser default) render exactly as before. No `!important`
- * either: an email that names its own fonts keeps them. The text size arrives as
- * a body `zoom` so it also moves the emails that size their own text.
+ * Paint a reader frame with the user's message typography. Mail gets the base
+ * size and leading its bubble has, so a message reads the same in a tab as in
+ * the conversation; a feed `article` keeps the engine's larger reading size.
+ * The base sits in `:where()` so anything the email says about its own text
+ * wins. The family and zoom are only emitted when a preference is actually set,
+ * and without `!important`: an email that names its own fonts keeps them. The
+ * text size arrives as a body `zoom` so it also moves the emails that size
+ * their own text.
  */
-export function applyReaderFont(doc: Document, font: MessageFrameFont) {
+export function applyReaderFont(doc: Document, font: MessageFrameFont, article = false) {
   const rules: string[] = []
   if (font.family) rules.push(`font-family: ${font.family};`)
   if (font.zoom !== 1) rules.push(`zoom: ${font.zoom};`)
 
+  const css: string[] = []
+  if (!article) css.push(`:where(html) { font-size: ${BUBBLE_HTML_BASE_PX}px; line-height: 1.45; }`)
+  if (rules.length > 0) css.push(`body { ${rules.join(' ')} }`)
+
   let style = ownStyle(doc, READER_FONT_STYLE_ID)
-  if (rules.length === 0) {
+  if (css.length === 0) {
     style?.remove()
     return
   }
@@ -330,7 +337,7 @@ export function applyReaderFont(doc: Document, font: MessageFrameFont) {
     ownStyleElement(style)
     ;(doc.head ?? doc.documentElement).appendChild(style)
   }
-  style.textContent = `body { ${rules.join(' ')} }`
+  style.textContent = css.join(' ')
 }
 
 // Apply the reader-width layout to a rendered frame document: inject the reader
@@ -341,8 +348,9 @@ export function applyReaderLayout(
   doc: Document,
   font: MessageFrameFont = DEFAULT_READER_FONT,
   theme: ReaderTheme = DEFAULT_READER_THEME,
+  article = false,
 ) {
-  applyReaderFont(doc, font)
+  applyReaderFont(doc, font, article)
   applyReaderTheme(doc, theme)
 
   if (!ownStyle(doc, READER_STYLE_ID)) {

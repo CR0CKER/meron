@@ -137,6 +137,7 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
         attachments={tab.attachments}
         viewMode={tab.viewMode}
         allowRemote={allowRemote}
+        article={isRSS}
       />
       {bottomActions && !isRSS && tab.message && (
         <ReaderActionBar tabId={tab.id} message={tab.message} bodyMissing={!!tab.bodyMissing} />
