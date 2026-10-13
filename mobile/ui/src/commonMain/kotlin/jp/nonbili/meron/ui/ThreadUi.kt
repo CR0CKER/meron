@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1517,33 +1519,6 @@ internal fun ReplyBar(
             Modifier.fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val showRecipients = addressChipItems(recipients.to).isNotEmpty()
-            val showFrom = selectedFrom != null && fromIdentities.size > 1
-            if (showRecipients || showFrom) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (showRecipients) {
-                        ReplyRecipientsRow(
-                            recipients = recipients,
-                            onOpenFullEditor = onOpenFullEditor,
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                    if (showFrom) {
-                        ReplyFromRow(
-                            identities = fromIdentities,
-                            selected = selectedFrom,
-                            onSelect = onSelectFrom,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                    }
-                }
-            }
             if (attachments.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(attachments, key = { it.id }) { attachment ->
@@ -1582,60 +1557,86 @@ internal fun ReplyBar(
                     }
                 }
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val canSend = !sending && hasContent
-                TextField(
-                    value = value,
-                    onValueChange = onChange,
-                    placeholder = { Text(tr("composer.placeholders.quickMessage")) },
-                    shape = RoundedCornerShape(24.dp),
-                    colors =
-                        TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
-                        ),
-                    trailingIcon = {
-                        Row {
-                            IconButton(onClick = onAttach) {
-                                Icon(Icons.Filled.AttachFile, contentDescription = tr("composer.actions.attachFiles"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            val canSend = !sending && hasContent
+            // The text leads and has the bar's full width; everything else
+            // shares the one line under it, so a phone's width goes to the
+            // reply rather than to the buttons beside it.
+            TextField(
+                value = value,
+                onValueChange = onChange,
+                placeholder = { Text(tr("composer.placeholders.quickMessage")) },
+                shape = RoundedCornerShape(24.dp),
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { onFocusChange(it.isFocused) }
+                        .onPreviewKeyEvent { event ->
+                            if (shouldSendFromEditor(event, sendShortcutMode) && canSend) {
+                                onSend()
+                                true
+                            } else {
+                                false
                             }
-                            IconButton(onClick = onOpenFullEditor) {
-                                Icon(Icons.Filled.OpenInFull, contentDescription = tr("composer.actions.openFullEditor"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                maxLines = 5,
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onAttach, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.AttachFile, contentDescription = tr("composer.actions.attachFiles"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onOpenFullEditor, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.OpenInFull, contentDescription = tr("composer.actions.openFullEditor"), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // The recipients sit against the send button and are measured
+                // first — they change from thread to thread — so the send-as
+                // address after the buttons is the one that truncates, down to
+                // a floor that keeps its picker reachable.
+                val showRecipients = addressChipItems(recipients.to).isNotEmpty()
+                val showFrom = selectedFrom != null && fromIdentities.size > 1
+                BoxWithConstraints(Modifier.weight(1f)) {
+                    val recipientsMaxWidth = if (showFrom) (maxWidth - REPLY_FROM_MIN_WIDTH).coerceAtLeast(0.dp) else maxWidth
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            if (showFrom) {
+                                ReplyFromRow(
+                                    identities = fromIdentities,
+                                    selected = selectedFrom,
+                                    onSelect = onSelectFrom,
+                                )
                             }
                         }
-                    },
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .onFocusChanged { onFocusChange(it.isFocused) }
-                            .onPreviewKeyEvent { event ->
-                                if (shouldSendFromEditor(event, sendShortcutMode) && canSend) {
-                                    onSend()
-                                    true
-                                } else {
-                                    false
-                                }
-                            },
-                    maxLines = 5,
-                )
+                        if (showRecipients) {
+                            ReplyRecipientsRow(
+                                recipients = recipients,
+                                onOpenFullEditor = onOpenFullEditor,
+                                modifier = Modifier.widthIn(max = recipientsMaxWidth),
+                            )
+                        }
+                    }
+                }
                 FilledIconButton(
                     onClick = onSend,
                     enabled = canSend,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.padding(start = 4.dp).size(40.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = tr("reply.send"))
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = tr("reply.send"), modifier = Modifier.size(20.dp))
                 }
             }
         }
     }
 }
+
+// The least the send-as address keeps beside long recipients: its label and
+// the dropdown arrow.
+private val REPLY_FROM_MIN_WIDTH = 72.dp
 
 // Who the reply goes to. The bar has no address fields, and a plain reply keeps
 // the Cc while dropping the other To recipients — a recipient set worth
