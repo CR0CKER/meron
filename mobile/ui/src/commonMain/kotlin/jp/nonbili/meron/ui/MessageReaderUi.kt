@@ -418,6 +418,7 @@ internal fun MessageReaderScreen(
                             onOpenUrl = onOpenUrl,
                             onOpenImage = onOpenHtmlImage,
                             fitWideContent = true,
+                            darkSurface = cardColor,
                         )
                     } else {
                         SelectableMessageText(

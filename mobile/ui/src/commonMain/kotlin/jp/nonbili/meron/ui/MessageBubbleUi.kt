@@ -445,6 +445,7 @@ internal fun MessageBubble(
                 showSubject = showSubject,
                 bodyMaxHeight = bodyMaxHeight,
                 chromeInset = chromeInset,
+                surface = bubbleColor,
                 remoteContent = remoteContent,
                 onOpenAttachment = onOpenAttachment,
                 onSaveAttachment = onSaveAttachment,
@@ -631,6 +632,8 @@ internal fun ColumnScope.MessageBodyContent(
     // its own padding for HTML mail (see [HtmlBubbleHorizontalPadding]) and pads
     // the rest of the message back to where it sits in every other bubble.
     chromeInset: Dp = 0.dp,
+    // The bubble or row this sits in: what a darkened HTML body blends onto.
+    surface: Color,
     // Whether this message's remote content may load, and the two ways the
     // reader can change that (see [MessageRemoteContent]).
     remoteContent: MessageRemoteContent,
@@ -679,6 +682,7 @@ internal fun ColumnScope.MessageBodyContent(
                 // renders it at about half size.
                 fitWideContent = LocalAutoFitMessages.current,
                 onNaturalWidth = onHtmlNaturalWidth ?: {},
+                darkSurface = surface,
             )
         }
     } else if (message.bodyMissing) {
@@ -925,6 +929,27 @@ internal fun clampMailBodyHeight(reported: Dp): Dp = reported.coerceIn(0.dp, Mai
  *  the mail rendered beside it, which never sees this process. */
 private fun randomScriptNonce(): String = buildString { repeat(4) { append(Random.nextInt(1, Int.MAX_VALUE).toString(36)) } }
 
+/** `hue-rotate(180deg)` as the matrix the engine applies, row by row. */
+private val HUE_TURN =
+    listOf(
+        floatArrayOf(-0.574f, 1.43f, 0.144f),
+        floatArrayOf(0.426f, 0.43f, 0.144f),
+        floatArrayOf(0.426f, 1.43f, -0.856f),
+    )
+
+/**
+ * The color a darkened body has to be painted with to come out as [surface]:
+ * the darkening filter run backwards, like desktop's darkenedFloor. The filter
+ * can't reach every color — a very saturated surface falls outside what it
+ * produces — and then this is the nearest it gets to, a shade duller than the
+ * surface itself.
+ */
+internal fun darkenedFloor(surface: Color): Color {
+    val channels = floatArrayOf(surface.red, surface.green, surface.blue)
+    val (r, g, b) = HUE_TURN.map { row -> (1f - (row[0] * channels[0] + row[1] * channels[1] + row[2] * channels[2])).coerceIn(0f, 1f) }
+    return Color(r, g, b)
+}
+
 @Composable
 internal fun HtmlMessageBody(
     html: String,
@@ -942,6 +967,9 @@ internal fun HtmlMessageBody(
     fitWideContent: Boolean = false,
     onNaturalWidth: (Dp) -> Unit = {},
     mediaMissing: Int = 0,
+    // What a darkened body turns its white into: the bubble, row or card the
+    // view sits on. Inverted white is black, which caps nothing.
+    darkSurface: Color = Color.Black,
 ) {
     // The WebView can't tell Compose how tall its content is, so a tiny script
     // reports document height through a platform bridge and we size the view to
@@ -993,6 +1021,7 @@ internal fun HtmlMessageBody(
             scriptNonce,
             fitWideContent,
             darkBody,
+            darkSurface,
             bodyFontSize,
             showQuotedLabel,
             hideQuotedLabel,
@@ -1009,12 +1038,16 @@ internal fun HtmlMessageBody(
             val rootClass = listOfNotNull(quoteClass.ifEmpty { null }, "meron-dark".takeIf { darkBody }).joinToString(" ")
             // Inline for the same reason as the height override below: a
             // sender's `html { background }` would otherwise sit, undarkened,
-            // behind the inverted body. Not literally transparent: a body
+            // behind the inverted body. Not left transparent: a body
             // background under a transparent root propagates to the canvas,
             // outside the body's filter, so a mail declaring a white body
-            // stayed white while its text inverted to white on it. One alpha
-            // step is invisible but keeps the background on the body.
-            val rootBackground = if (darkBody) " background: rgba(0, 0, 0, 0.004) !important;" else ""
+            // stayed white while its text inverted to white on it. The root
+            // paints the surface the view sits on, which is what the body's
+            // inverted white comes out as too.
+            val backdrop = darkSurface.copy(alpha = 1f)
+            val rootBackground = if (darkBody) " background: ${backdrop.toHex()} !important;" else ""
+            val floor = darkenedFloor(backdrop)
+            val floorChannels = listOf(floor.red, floor.green, floor.blue).joinToString(", ") { (it * 255).roundToInt().toString() }
             """
             <!doctype html>
             <!-- The self-sizing WebView needs its document boxes to follow the
@@ -1142,9 +1175,7 @@ internal fun HtmlMessageBody(
                    with the hue turned back so links and brand colors stay
                    recognisable. Pictures are inverted a second time to come
                    out as sent (background ones are marked by applyDarkBody
-                   below, which also drops the class for mail designed dark).
-                   The root stays transparent (see above), so the bubble shows
-                   through wherever the mail paints nothing. */
+                   below, which also drops the class for mail designed dark). */
                 html.meron-dark body,
                 html.meron-dark img,
                 html.meron-dark video,
@@ -1155,6 +1186,24 @@ internal fun HtmlMessageBody(
                    already back to its own colors. */
                 html.meron-dark [data-meron-picture] img {
                   filter: none;
+                }
+                /* Inverted white is black, not the surface the view sits on,
+                   so a layer over the body caps how light it gets before the
+                   filter runs: at the color that inverts to that surface (see
+                   darkenedFloor). The layer is the first thing positioned in
+                   the body, above everything in the flow and below whatever
+                   comes after it with a filter of its own -- the pictures,
+                   which a cap on the whole body would tint with the surface
+                   instead. What else paints above it is capped one element at
+                   a time (see capBackgrounds below). */
+                html.meron-dark body::before {
+                  content: '' !important;
+                  display: block !important;
+                  position: absolute !important;
+                  inset: 0 !important;
+                  background: ${floor.toHex()} !important;
+                  mix-blend-mode: darken !important;
+                  pointer-events: none !important;
                 }
               </style>
             </head>
@@ -1524,11 +1573,15 @@ internal fun HtmlMessageBody(
                   // keeps its own colors. Judged the way the desktop frames
                   // do: the page color the core hoisted or the body paints,
                   // else the tone most of the visible text is drawn in.
-                  function colorTone(value) {
+                  function colorParts(value) {
                     var match = /^rgba?\(([^)]*)\)/.exec((value || '').trim());
                     if (!match) return null;
                     var parts = match[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
-                    if (parts.length < 3 || (parts.length > 3 && parts[3] < 0.6)) return null;
+                    return parts.length < 3 ? null : parts;
+                  }
+                  function colorTone(value) {
+                    var parts = colorParts(value);
+                    if (!parts || (parts.length > 3 && parts[3] < 0.6)) return null;
                     var lum = (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
                     return lum > 0.55 ? 'light' : 'dark';
                   }
@@ -1585,6 +1638,33 @@ internal fun HtmlMessageBody(
                       el.setAttribute('data-meron-picture', '');
                     }
                   }
+                  // The layer over the body (see the meron-dark rules) caps
+                  // what is in the flow, but a positioned box paints above that
+                  // layer, and so does everything inside one: its white would
+                  // invert to black, not to the surface. Such a background is
+                  // held to the floor on the element itself; the pictures are
+                  // turned back to their own colors, which a cap would then
+                  // show through.
+                  var darkFloor = [$floorChannels];
+                  function capBackgrounds() {
+                    var all = document.body.querySelectorAll('*');
+                    // Written once the walk has read every element: a write in
+                    // between would have the engine resolve the document's
+                    // styles again for the next read.
+                    var capped = [];
+                    for (var i = 0; i < all.length; i++) {
+                      var el = all[i];
+                      if (el.matches('img, video, [data-meron-picture], [data-meron-picture] *')) continue;
+                      var color = colorParts(getComputedStyle(el).backgroundColor);
+                      if (!color || color[3] === 0) continue;
+                      if (color[0] <= darkFloor[0] && color[1] <= darkFloor[1] && color[2] <= darkFloor[2]) continue;
+                      var channels = [0, 1, 2].map(function (c) { return Math.min(color[c], darkFloor[c]); });
+                      capped.push([el, 'rgba(' + channels.join(', ') + ', ' + (color.length > 3 ? color[3] : 1) + ')']);
+                    }
+                    capped.forEach(function (pair) {
+                      pair[0].style.setProperty('background-color', pair[1], 'important');
+                    });
+                  }
                   // The sanitiser drops <body>, so the core hoists its colors
                   // into metas. They go back on every mail, dark rendering or
                   // not, and as the pair they are: white text written for a
@@ -1615,6 +1695,7 @@ internal fun HtmlMessageBody(
                       return;
                     }
                     markBackgroundPictures();
+                    capBackgrounds();
                   }
                   dropForeignViewports();
                   groupConsecutiveImages();

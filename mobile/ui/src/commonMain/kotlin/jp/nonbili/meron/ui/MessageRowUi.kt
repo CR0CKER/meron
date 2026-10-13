@@ -155,6 +155,7 @@ internal fun MessageRow(
                     // Uncapped: a full-width reading view shows the whole
                     // message and the conversation list does the scrolling.
                     bodyMaxHeight = Dp.Unspecified,
+                    surface = MaterialTheme.colorScheme.surface,
                     remoteContent = remoteContent,
                     onOpenAttachment = onOpenAttachment,
                     onSaveAttachment = onSaveAttachment,
