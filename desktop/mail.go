@@ -640,7 +640,7 @@ func (a *App) saveAttachment(payload map[string]any) (any, error) {
 		filename = filepath.Base(src)
 	}
 
-	dest, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+	dest, err := saveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
 		Title:                "Save attachment",
 		DefaultFilename:      filename,
 		CanCreateDirectories: true,
@@ -852,7 +852,7 @@ func (a *App) saveMessageEml(payload map[string]any) (any, error) {
 	}
 
 	subject, _ := payload["subject"].(string)
-	dest, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+	dest, err := saveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
 		Title:                "Save message",
 		DefaultFilename:      emlFilename(subject),
 		CanCreateDirectories: true,

@@ -109,7 +109,7 @@ func (a *App) exportEml(payload map[string]any) (any, error) {
 		options.DefaultFilename = safeFilenameBase(name, "messages") + ".zip"
 		options.Filters = []wailsRuntime.FileFilter{{DisplayName: "Zip archive (*.zip)", Pattern: "*.zip"}}
 	}
-	dest, err := wailsRuntime.SaveFileDialog(a.ctx, options)
+	dest, err := saveFileDialog(a.ctx, options)
 	if err != nil {
 		return nil, err
 	}
