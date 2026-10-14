@@ -267,7 +267,7 @@ describe('resolveResizeScrollTop', () => {
   const resize = (over: Partial<Parameters<typeof resolveResizeScrollTop>[0]> = {}) =>
     resolveResizeScrollTop({
       metrics: metrics(0, 4000),
-      previousScrollHeight: 4000,
+      previous: metrics(0, 4000),
       containerOffsetTop: CONTAINER_TOP,
       pinned: null,
       ...over,
@@ -286,27 +286,32 @@ describe('resolveResizeScrollTop', () => {
     expect(
       resize({
         pinned: { offsetTop: 1900, offset: -ANCHOR_GAP_PX },
-        previousScrollHeight: 2000,
+        previous: metrics(2000 - VIEWPORT, 2000),
         metrics: metrics(2000 - VIEWPORT, 6000),
       }),
     ).toBe(1900 - CONTAINER_TOP - ANCHOR_GAP_PX)
   })
 
   it('sticks to the bottom for a reader who was already there', () => {
-    expect(resize({ previousScrollHeight: 4000, metrics: metrics(4000 - VIEWPORT, 5000) })).toBe(5000)
+    expect(resize({ previous: metrics(4000 - VIEWPORT, 4000), metrics: metrics(4000 - VIEWPORT, 5000) })).toBe(5000)
   })
 
   it('does not yank back a reader who scrolled up', () => {
     expect(
-      resize({ previousScrollHeight: 4000, metrics: metrics(4000 - VIEWPORT - BOTTOM_STICK_PX - 1, 5000) }),
+      resize({ previous: metrics(4000 - VIEWPORT - BOTTOM_STICK_PX - 1, 4000), metrics: metrics(3039, 5000) }),
     ).toBeNull()
   })
 
-  it('measures the distance from the bottom before the resize, not after', () => {
-    // Content that grew far below the fold must not count as "the reader is
-    // near the bottom" just because they were before it appeared.
-    expect(resize({ previousScrollHeight: 4000, metrics: metrics(4000 - VIEWPORT, 40000) })).toBe(40000)
-    expect(resize({ previousScrollHeight: 40000, metrics: metrics(4000 - VIEWPORT, 40000) })).toBeNull()
+  it('does not yank back a reader who scrolled up only a little', () => {
+    // A body above the view mounting as the reader scrolls towards it. The
+    // browser's bottom anchoring has already moved the view by the growth.
+    expect(
+      resize({ previous: metrics(4000 - VIEWPORT - 100, 4000), metrics: metrics(4000 - VIEWPORT - 100 + 300, 4300) }),
+    ).toBeNull()
+  })
+
+  it('leaves a reader at the bottom alone when nothing grew', () => {
+    expect(resize({ previous: metrics(4000 - VIEWPORT, 4000), metrics: metrics(4000 - VIEWPORT, 4000) })).toBeNull()
   })
 })
 

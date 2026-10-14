@@ -13,6 +13,10 @@ export const ANCHOR_GAP_PX = 12
  *  content growing underneath keeps it there. */
 export const BOTTOM_STICK_PX = 160
 
+/** How close to the end the view has to be for content resizing under it to
+ *  keep it there: at the end, give or take sub-pixel rounding. */
+export const BOTTOM_FOLLOW_PX = 2
+
 /** How long after positioning the view keeps re-anchoring to its target while
  *  asynchronously measured bodies settle. Mirrors THREAD_OPEN_ANCHOR_WINDOW_MS
  *  on mobile. */
@@ -162,18 +166,18 @@ export function isAtBottom(metrics: ScrollMetrics, scrollHeight = metrics.scroll
 }
 
 /**
- * Where a content resize should leave the view. `previousScrollHeight` is the
- * height measured before this resize, which is what isAtBottom is asked
- * against. Returns null to leave the scroll position alone.
+ * Where a content resize should leave the view. `previous` is the view as it
+ * was before this resize: the position the reader last left it at, against
+ * the height it had then. Returns null to leave the scroll position alone.
  */
 export function resolveResizeScrollTop({
   metrics,
-  previousScrollHeight,
+  previous,
   containerOffsetTop,
   pinned,
 }: {
   metrics: ScrollMetrics
-  previousScrollHeight: number
+  previous: ScrollMetrics
   containerOffsetTop: number
   /** Measured position of the pinned message, or null when nothing is pinned. */
   pinned: { offsetTop: number; offset: number } | null
@@ -185,8 +189,12 @@ export function resolveResizeScrollTop({
   }
   // Keep the view pinned to the bottom only when it already was (content grew
   // under the fold, e.g. images loading after open). A reader scrolled up — to
-  // star or reread something — must not be yanked back down.
-  if (!isAtBottom(metrics, previousScrollHeight)) return null
+  // star or reread something — must not be yanked back down, however little:
+  // not the stick distance a newly arrived message is judged by, since bodies
+  // above the view mount and re-measure as the reader scrolls towards them,
+  // and every one of those resizes would undo the scroll that brought them in.
+  if (bottomScrollTop(previous) - previous.scrollTop > BOTTOM_FOLLOW_PX) return null
+  if (metrics.scrollHeight <= previous.scrollHeight) return null
   return metrics.scrollHeight
 }
 

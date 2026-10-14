@@ -35,7 +35,19 @@ export function QuickReplyComposer() {
     // of its own, so the conversation runs on behind it and messages scroll off
     // under the box; MessagePane fades what shows around it.
     <footer className="px-3 pb-3 pt-1 flex flex-col items-center justify-center">
-      <div className="pointer-events-auto flex flex-col gap-1 w-full bg-chats p-2 rounded-2xl border border-border/40 shadow-float focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
+      <div
+        onMouseDown={(event) => {
+          // A press on the box's bare padding or the gaps of the control row
+          // goes to the text, keeping its caret; controls, and the menus and
+          // previews portalled out of the box, keep their own presses.
+          const target = event.target as HTMLElement
+          if (!event.currentTarget.contains(target)) return
+          if (target.closest('button, a, input, textarea, select, [role], [tabindex]')) return
+          event.preventDefault()
+          textareaRef.current?.focus()
+        }}
+        className="pointer-events-auto flex flex-col gap-1 w-full bg-chats p-2 rounded-2xl border border-border/40 shadow-float focus-within:ring-1 focus-within:ring-accent transition-all duration-150"
+      >
         <QuickReplyAttachments attachments={composerAttachments} />
 
         {/* The text leads and has the box's full width; everything else shares
@@ -57,7 +69,7 @@ export function QuickReplyComposer() {
             the recipients sit against the send button, and the send-as address
             follows the buttons on the left, where it is the first to truncate
             when the pane narrows — recipients change from thread to thread. */}
-        <div className="flex w-full min-w-0 items-center gap-1">
+        <div className="-mb-1 flex w-full min-w-0 items-center gap-1">
           <button
             onClick={() => void pickAttachmentFiles()}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-active hover:text-primary transition-colors cursor-pointer"

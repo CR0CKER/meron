@@ -17,7 +17,6 @@ import {
   resolveResizeScrollTop,
   scrollReleasesPin,
   type ScrollAnchor,
-  type ScrollGeometry,
   type ScrollMetrics,
   visibleBounds,
 } from './conversationScroll'
@@ -73,7 +72,6 @@ export function useConversationScroll(
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
   const messagesWrapperRef = useRef<HTMLDivElement | null>(null)
-  const lastScrollHeightRef = useRef(0)
   // Content height as of the last position we know the reader's view was
   // measured against — their own scrolling, or our own anchoring. A message
   // arriving is judged against this rather than against the height it just
@@ -91,6 +89,7 @@ export function useConversationScroll(
   // arrived" apart from "read state changed" so we don't yank the user's scroll.
   const positionedThreadRef = useRef('')
   const messageCountRef = useRef(0)
+  const newestMessageIdRef = useRef('')
   // Message the last positioning landed on. While set, the ResizeObserver below
   // re-anchors to it (instead of snapping to the bottom) so bodies growing from
   // their placeholder height don't push it out of view. Thread-open and direct-
@@ -115,9 +114,10 @@ export function useConversationScroll(
   // already had).
   const ownScrollPendingRef = useRef(false)
   const ownScrollForgetTimerRef = useRef(0)
-  // Container geometry as of the last positioning, resize pass or scroll event
-  // — see scrollReleasesPin.
-  const settledGeometryRef = useRef<ScrollGeometry | null>(null)
+  // The view as of the last positioning, resize pass or scroll event — what a
+  // scroll event is measured against (scrollReleasesPin) and where the reader
+  // left the view before a resize (resolveResizeScrollTop).
+  const settledGeometryRef = useRef<ScrollMetrics | null>(null)
 
   const applyScrollTop = useCallback((container: HTMLElement, scrollTop: number) => {
     const previousScrollTop = container.scrollTop
@@ -199,11 +199,23 @@ export function useConversationScroll(
    *  once: called before the change, it pins the message at the top of the
    *  viewport where it is, until the reader scrolls. Collapsing, a position
    *  deep inside that message no longer exists, so its summary is brought to
-   *  the top instead. */
+   *  the top instead. A reader at the end of the thread is reading the newest
+   *  message, which no menu action collapses, so that one is held instead:
+   *  holding whatever summary line happened to sit at the top would carry a
+   *  short thread off to its beginning as everything above the newest opens. */
   const holdTopMessage = useCallback(
     (collapsing: boolean) => {
       const container = scrollRef.current
-      const anchor = container && readScrollAnchor(container)
+      if (!container) return
+      if (isAtBottom(readScrollMetrics(container))) {
+        const elements = container.querySelectorAll<HTMLElement>('[data-message-id]')
+        const newest = elements.item(elements.length - 1)
+        if (newest?.dataset.messageId) {
+          pinMessage(newest.dataset.messageId, container.scrollTop - (newest.offsetTop - container.offsetTop), true)
+          return
+        }
+      }
+      const anchor = readScrollAnchor(container)
       if (!anchor) return
       pinMessage(anchor.messageId, collapsing ? Math.min(anchor.offset, -ANCHOR_GAP_PX) : anchor.offset, true)
     },
@@ -389,7 +401,7 @@ export function useConversationScroll(
     const wrapper = messagesWrapperRef.current
     if (activeTab !== '' || !container || !wrapper || !activeThreadId) return
 
-    lastScrollHeightRef.current = container.scrollHeight
+    settledGeometryRef.current = readScrollMetrics(container)
 
     const observer = new ResizeObserver(() => {
       const pin = pinnedRef.current
@@ -398,7 +410,7 @@ export function useConversationScroll(
         : null
       const scrollTop = resolveResizeScrollTop({
         metrics: readScrollMetrics(container),
-        previousScrollHeight: lastScrollHeightRef.current,
+        previous: settledGeometryRef.current ?? readScrollMetrics(container),
         containerOffsetTop: container.offsetTop,
         pinned: pinned && pin ? { offsetTop: pinned.offsetTop, offset: pin.offset } : null,
       })
@@ -406,7 +418,6 @@ export function useConversationScroll(
         applyScrollTop(container, scrollTop)
       }
       if (pinned && !pin?.persistent) armPinRelease()
-      lastScrollHeightRef.current = container.scrollHeight
       viewedScrollHeightRef.current = container.scrollHeight
       settledGeometryRef.current = readScrollMetrics(container)
       maybeMarkRead()
@@ -440,6 +451,7 @@ export function useConversationScroll(
       if (target) {
         positionedThreadRef.current = activeThreadId
         messageCountRef.current = messages.length
+        newestMessageIdRef.current = messages[messages.length - 1]?.id ?? ''
         pendingScrollRestoreRef.current.delete(activeThreadId)
         pinMessage(pendingScrollMessageId)
         applyScrollTop(container, anchorScrollTop(target.offsetTop, container.offsetTop))
@@ -455,8 +467,13 @@ export function useConversationScroll(
     }
 
     const isNewThread = positionedThreadRef.current !== activeThreadId
-    const grew = messages.length > messageCountRef.current
+    // Only a new newest message is mail arriving. Older history prepended by
+    // scrolling towards the top grows the count too, and following it would
+    // throw the reader who just scrolled up back to the bottom.
+    const newestMessageId = messages[messages.length - 1]?.id ?? ''
+    const grew = messages.length > messageCountRef.current && newestMessageId !== newestMessageIdRef.current
     messageCountRef.current = messages.length
+    newestMessageIdRef.current = newestMessageId
     let savedAnchor: SavedScrollAnchor | null = null
     let savedScrollTop: number | null = null
     if (pendingScrollRestoreRef.current.delete(activeThreadId)) {

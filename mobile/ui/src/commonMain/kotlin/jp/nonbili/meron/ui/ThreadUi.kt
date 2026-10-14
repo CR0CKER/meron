@@ -124,6 +124,7 @@ import jp.nonbili.meron.shared.threadIdIsRss
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -365,6 +366,48 @@ internal fun ThreadScreen(
                     }
                 listState.interactionSource.interactions.first { it is DragInteraction.Start }
                 follower.cancel()
+            }
+        }
+    }
+    // Expand all / collapse all with the reader at the end of the thread. The
+    // list holds the item at the top of the screen, which in a short thread is
+    // the first summary line, so everything above the newest message opening
+    // would carry the reader off to the start. They were reading the newest
+    // message, which neither action collapses: hold the end instead, while the
+    // bodies settle, unless the reader drags or a message anchor (a summary
+    // tapped open) takes the list over.
+    var endHoldRequest by remember(thread?.id) { mutableStateOf(0) }
+    LaunchedEffect(endHoldRequest) {
+        if (endHoldRequest == 0) return@LaunchedEffect
+        anchorItem = null
+        withTimeoutOrNull(THREAD_OPEN_ANCHOR_WINDOW_MS) {
+            coroutineScope {
+                val holder =
+                    launch {
+                        // Null once an anchor is set, which ends the hold.
+                        snapshotFlow {
+                            if (anchorItem != null) null else listState.layoutInfo.visibleItemsInfo.map { it.index to it.size }
+                        }.distinctUntilChanged()
+                            .takeWhile { it != null }
+                            .collect {
+                                if (!listState.canScrollForward) return@collect
+                                val last = listState.layoutInfo.totalItemsCount - 1
+                                if (last < 0) return@collect
+                                // To the newest message's top, then on to the
+                                // end: its bottom is what was on screen.
+                                listState.scrollToItem(last)
+                                val info = listState.layoutInfo
+                                val lastSize = info.visibleItemsInfo.lastOrNull()?.size ?: 0
+                                listState.scrollBy((lastSize + info.viewportEndOffset).toFloat())
+                            }
+                    }
+                val dragWatch =
+                    launch {
+                        listState.interactionSource.interactions.first { it is DragInteraction.Start }
+                        holder.cancel()
+                    }
+                holder.join()
+                dragWatch.cancel()
             }
         }
     }
@@ -740,7 +783,9 @@ internal fun ThreadScreen(
                                             releaseFocusBeforeToggle()
                                             // The list keeps the message at the top of
                                             // the screen where it is as the rows
-                                            // around it change height.
+                                            // around it change height — or, for a
+                                            // reader at the end, the end.
+                                            if (!listState.canScrollForward) endHoldRequest += 1
                                             expandOverrides = emptyMap()
                                             expandAll = expand
                                         },

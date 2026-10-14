@@ -352,7 +352,9 @@ func sidecarCallTimeout(method string) time.Duration {
 	case "backup.export", "backup.import":
 		return 30 * time.Second
 	// A batch is a handful of full messages, attachments included.
-	case "messages.saveRawBatch":
+	// A copy downloads every message in the thread in full, then APPENDs each
+	// one to the target.
+	case "messages.saveRawBatch", "messages.copy":
 		return 2 * time.Minute
 	case "messages.exportUids":
 		return 30 * time.Second
