@@ -64,7 +64,7 @@ export const thread$ = observable({
   expandAll: null as { expanded: boolean; seq: number } | null,
   // What the menu's expand-all / collapse-all item would do now. Published by
   // ConversationMessageList; null where there is nothing to offer (the chat
-  // layout, a thread of one message).
+  // layout, a thread of one message that is already open).
   expandAllAction: null as 'expand' | 'collapse' | null,
   // Per-account override of the conversation render mode for this session.
   conversationModeOverrides: {} as Record<string, ConversationMode>,

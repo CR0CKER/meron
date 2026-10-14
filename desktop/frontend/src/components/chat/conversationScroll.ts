@@ -4,8 +4,10 @@
 // view should land. Both conversation layouts (chat bubbles and the traditional
 // rows) share the hook, so they share these rules.
 
-/** Breathing room left above a message the view anchors to. */
-export const ANCHOR_GAP_PX = 24
+/** Breathing room left above a message the view anchors to: the list's own top
+ *  padding (ConversationMessageList's pt-3), so a message brought to the top
+ *  sits where the first one does. */
+export const ANCHOR_GAP_PX = 12
 
 /** Below this distance from the bottom the view counts as "at the bottom", and
  *  content growing underneath keeps it there. */

@@ -224,11 +224,13 @@ export function MessageRow({
           scrolls past, so the collapse toggle stays within reach. The card
           carries no padding of its own: the header has to be a flush child so
           it pins from the card's very top. The negative offset cancels the
-          scroller's pt-6 — a sticky box pins to the scroller's content box, so
-          top-0 would park the header a padding's width down the viewport —
-          less the gap a pinned header keeps from the edge. Pinned, it is a card floating on the
-          conversation, drawn like the composer at the other end of it, and
-          what shows above it is faded. It is also one row there — the sender
+          scroller's top padding — a sticky box pins to the scroller's content
+          box, so top-0 would park the header a padding's width down the
+          viewport — less the gap a pinned header keeps from the edge. At rest
+          a hairline is all that parts it from the body, which is the same
+          card; the shadow is for when it rides over the text. Pinned,
+          it is a card floating on the conversation, drawn like the composer at
+          the other end of it, and what shows above it is faded. It is also one row there — the sender
           and the actions, without the recipients or the details they open —
           since it sits on top of the text being read. The wrapper keeps the
           resting header's height (usePinnedHeader), so only the card inside
@@ -238,7 +240,7 @@ export function MessageRow({
           recipients fold away rather than leave the layout. */}
       {/* Where the header rests, raised by that gap (usePinnedHeader). */}
       <div ref={pinnedRestRef} className="pointer-events-none absolute -top-1.5 left-0 h-px w-px" />
-      <div ref={pinnedRef} className="group/pinned sticky -top-4.5 z-20 data-[stuck]:pointer-events-none">
+      <div ref={pinnedRef} className="group/pinned sticky -top-1.5 z-20 data-[stuck]:pointer-events-none">
         {/* From the scroller's edge down to the middle of the resting header's
             height, which the pinned one still covers. */}
         <div className="absolute inset-x-0 -top-1.5 hidden h-[calc(50%+0.375rem)] bg-linear-to-b from-chat/80 to-transparent group-data-[stuck]/pinned:block" />
@@ -258,7 +260,7 @@ export function MessageRow({
             }
           }}
           title={t('chat.collapseMessage')}
-          className="pointer-events-auto relative flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 shadow-[0_2px_4px_-2px_rgba(15,23,42,0.12)] ring-border/60 transition-[border-radius,padding] duration-150 group-data-[stuck]/pinned:rounded-xl group-data-[stuck]/pinned:border-b-transparent group-data-[stuck]/pinned:py-1.5 group-data-[stuck]/pinned:ring-1"
+          className="pointer-events-auto relative flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 ring-border/60 transition-[border-radius,padding,box-shadow] duration-150 group-data-[stuck]/pinned:rounded-xl group-data-[stuck]/pinned:border-b-transparent group-data-[stuck]/pinned:py-1.5 group-data-[stuck]/pinned:shadow-[0_2px_6px_-2px_rgb(0_0_0/0.12)] group-data-[stuck]/pinned:ring-1"
         >
           <Avatar
             name={view.avatarName}

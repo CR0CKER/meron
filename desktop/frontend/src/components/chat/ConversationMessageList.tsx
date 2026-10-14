@@ -150,11 +150,14 @@ export function ConversationMessageList({
     return message.id === lastMessageId || unreadOnArrivalRef.current.has(message.id) || searchMatchSet.has(message.id)
   }
   const expandAllAction =
-    !traditional || showThreadLoading || messages.length < 2
+    !traditional || showThreadLoading
       ? null
       : messages.some((message) => !isExpanded(message))
         ? 'expand'
-        : 'collapse'
+        : // Collapsing all leaves the newest open, which is all a thread of one has.
+          messages.length > 1
+          ? 'collapse'
+          : null
   useEffect(() => {
     thread$.expandAllAction.set(expandAllAction)
   }, [expandAllAction])
@@ -234,11 +237,13 @@ export function ConversationMessageList({
             onUserScrollIntent()
           }
         }}
-        // MessageRow's pinned header offsets itself against this pt-6; keep
-        // the two in step. The end pads past the composer floating over the
-        // list (MessagePane), so the newest message clears it; the rest of
-        // the list runs on behind it.
-        className="message-scroll flex-1 overflow-y-auto px-4 pt-6 pb-[calc(1.5rem+var(--me-composer-overlap,0px))] space-y-4 z-10 relative"
+        // The padding round the messages lines them up with the composer's
+        // box. MessageRow's pinned header offsets itself against the top
+        // padding; keep the two in step. The end pads past the
+        // composer floating over the list (MessagePane), so the newest message
+        // clears it — by the same gap, less the pt-1 the composer's footer
+        // already puts above its box; the rest of the list runs on behind it.
+        className="message-scroll flex-1 overflow-y-auto px-3 pt-3 pb-[calc(0.5rem+var(--me-composer-overlap,0px))] space-y-4 z-10 relative"
       >
         {showThreadLoading && (
           <div className="flex h-full items-center justify-center">

@@ -295,10 +295,16 @@ internal fun ThreadScreen(
     // What the menu's expand-all / collapse-all item would do now: true to
     // expand, false to collapse, null where there is nothing to offer.
     val expandAllAction: Boolean? =
-        if (conversationLayout != ConversationLayout.Traditional || messages.size < 2) {
-            null
-        } else {
-            messages.any { !isMessageExpanded(it) }
+        when {
+            conversationLayout != ConversationLayout.Traditional -> null
+
+            messages.any { !isMessageExpanded(it) } -> true
+
+            // Collapsing all leaves the newest open, which is all a thread of
+            // one has.
+            messages.size > 1 -> false
+
+            else -> null
         }
     val listState = rememberLazyListState()
     // The quick reply floats over the end of the list, whose viewport runs on
@@ -777,7 +783,7 @@ internal fun ThreadScreen(
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text(if (preferHtml) "View as plain text" else "View as HTML") },
+                                        text = { Text(if (preferHtml) tr("chat.viewAsPlainText") else tr("chat.viewAsHtml")) },
                                         leadingIcon = { Icon(Icons.Filled.Code, contentDescription = null) },
                                         onClick = {
                                             overflowOpen = false

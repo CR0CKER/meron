@@ -29,6 +29,7 @@ import { useTranslation } from '../../lib/i18n'
 import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
 import { starThread } from '../../states/mailFlags'
+import { isDraftFolder, isTrashFolderId } from '../../states/mailFolders'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
 import { goToSearchMatch, setAllMessagesExpanded, thread$ } from '../../states/thread'
 import { accounts$ } from '../../states/accounts'
@@ -43,6 +44,8 @@ import { Avatar } from '../avatar/Avatar'
 import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
+import { targetWithin } from '../menu/useDismissOnOutside'
+import { ThreadMoveCopyItems } from '../threads/ThreadMoveCopyItems'
 import { ConversationSubject } from './ConversationSubject'
 import { useConversationMode } from './useMessageView'
 
@@ -83,6 +86,8 @@ export function ConversationHeader({
   useEffect(() => {
     if (!actionsMenuOpen) return
     const onDown = (event: MouseEvent) => {
+      // The move and copy flyouts are portalled out of the menu but belong to it.
+      if (targetWithin(event.target, '[data-thread-context-menu]')) return
       if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
         setActionsMenuOpen(false)
       }
@@ -119,6 +124,9 @@ export function ConversationHeader({
     setSenderMenu({ x: event.clientX, y: event.clientY })
   }
 
+  // The same wording, and the same permanence in Trash, as the thread list's menu.
+  const inTrash = isTrashFolderId(activeThread.account_id, activeThread.folder_id)
+  const inDrafts = isDraftFolder(activeThread.folder_id, activeThread.account_id)
   const closeActionMenus = () => {
     setActionsMenuOpen(false)
     thread$.conversationMenu.set(null)
@@ -198,6 +206,14 @@ export function ConversationHeader({
           >
             <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
           </button>
+          <ThreadMoveCopyItems
+            threadId={activeThread.thread_id}
+            accountId={activeThread.account_id}
+            folderId={activeThread.folder_id}
+            close={closeActionMenus}
+            itemClassName="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium!"
+            iconSize={15}
+          />
           <div className="my-1 h-px bg-border" />
           <MenuItem
             icon={<Printer size={15} className="shrink-0" />}
@@ -225,12 +241,17 @@ export function ConversationHeader({
           <div className="my-1 h-px bg-border" />
           <button
             onClick={() => {
-              void deleteThread(activeThread.thread_id)
+              void deleteThread(activeThread.thread_id, { permanent: inTrash })
               closeActionMenus()
             }}
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400 cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/25"
           >
-            <Trash2 size={15} className="shrink-0" /> {t('threads.actions.moveToTrash')}
+            <Trash2 size={15} className="shrink-0" />
+            {inTrash
+              ? t('threads.actions.deleteForever')
+              : inDrafts
+                ? t('threads.actions.discardDraft')
+                : t('threads.actions.moveToTrash')}
           </button>
         </>
       )}

@@ -224,6 +224,10 @@ describe('ConversationMessageList expand all', () => {
     act(() => settings$.conversationLayout.set('traditional'))
     view.rerender(withScroll({}, list([messages[1]])))
     expect(thread$.expandAllAction.peek()).toBeNull()
+
+    // Collapsed by hand, the one message can still be expanded from the menu.
+    fireEvent.click(view.container.querySelector('[title="Collapse message"]')!)
+    expect(thread$.expandAllAction.peek()).toBe('expand')
   })
 
   it('opens the thread menu for a right-click off the messages only', () => {

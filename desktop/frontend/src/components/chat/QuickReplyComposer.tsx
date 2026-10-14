@@ -34,8 +34,8 @@ export function QuickReplyComposer() {
     // The footer floats over the message list (MessagePane) and paints nothing
     // of its own, so the conversation runs on behind it and messages scroll off
     // under the box; MessagePane fades what shows around it.
-    <footer className="px-3.5 pb-3.5 pt-1 flex flex-col items-center justify-center">
-      <div className="pointer-events-auto flex flex-col gap-2 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0/0.05)] focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
+    <footer className="px-3 pb-3 pt-1 flex flex-col items-center justify-center">
+      <div className="pointer-events-auto flex flex-col gap-1 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0/0.05)] focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
         <QuickReplyAttachments attachments={composerAttachments} />
 
         {/* The text leads and has the box's full width; everything else shares
@@ -48,7 +48,7 @@ export function QuickReplyComposer() {
           placeholder={t('composer.placeholders.quickMessage')}
           rows={1}
           spellCheck={spellCheck}
-          className="w-full px-1.5 pt-1 max-h-[254px] bg-transparent text-[calc(0.9375rem*var(--me-message-scale))] text-primary resize-none placeholder-secondary border-none outline-none leading-[1.3333]"
+          className="w-full px-1.5 max-h-[254px] bg-transparent text-[calc(0.9375rem*var(--me-message-scale))] text-primary resize-none placeholder-secondary border-none outline-none leading-[1.3333]"
           onKeyDown={handleComposerKeyDown}
           onPaste={handleComposerPaste}
         />
