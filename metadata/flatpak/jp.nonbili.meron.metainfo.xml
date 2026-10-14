@@ -63,6 +63,22 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.4.4" date="2026-10-14">
+      <description>
+        <ul>
+          <li>Attach files dropped onto a conversation or the composer</li>
+          <li>Save images and videos from the gallery and inline in a conversation</li>
+          <li>Toggle a conversation between HTML and plain text with H</li>
+          <li>Add Save as .eml to the conversation menu</li>
+          <li>Monochrome tray icon that follows the menu bar</li>
+          <li>Add expand all / collapse all, and thread menu on right-click</li>
+          <li>Float quick reply with single-row controls and shrink pinned header to one row</li>
+          <li>Darken message bodies to the surface they sit on, not black</li>
+          <li>Always scroll the conversation to a reply the reader just sent</li>
+          <li>Name folders by their last path segment in column titles</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.3" date="2026-10-09">
       <description>
         <ul>
