@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Code,
   Copy,
   Download,
@@ -28,7 +30,7 @@ import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
 import { starThread } from '../../states/mailFlags'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
-import { goToSearchMatch, thread$ } from '../../states/thread'
+import { goToSearchMatch, setAllMessagesExpanded, thread$ } from '../../states/thread'
 import { accounts$ } from '../../states/accounts'
 import { exportThreadsAsEml } from '../../states/emlExport'
 import { isRssAccount } from '../../lib/threadActions'
@@ -69,6 +71,8 @@ export function ConversationHeader({
   const threadSearch = useValue(thread$.search)
   const threadSearchOpen = useValue(thread$.searchOpen)
   const mediaOpen = useValue(thread$.mediaOpen)
+  const conversationMenu = useValue(thread$.conversationMenu)
+  const expandAllAction = useValue(thread$.expandAllAction)
   const normalizedThreadSearch = threadSearch.trim().toLowerCase()
 
   const [printing, setPrinting] = useState(false)
@@ -114,6 +118,124 @@ export function ConversationHeader({
     event.preventDefault()
     setSenderMenu({ x: event.clientX, y: event.clientY })
   }
+
+  const closeActionMenus = () => {
+    setActionsMenuOpen(false)
+    thread$.conversationMenu.set(null)
+  }
+  // The thread's actions, shown both under the header's button and, for a
+  // right-click on the blank part of the conversation, at the pointer.
+  const actionItems = (
+    <>
+      <button
+        onClick={() => {
+          if (account) thread$.conversationModeOverrides[account.id].set('html')
+          closeActionMenus()
+        }}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${
+          conversationMode === 'html' ? 'font-semibold text-accent' : 'font-medium text-primary'
+        }`}
+      >
+        <Code size={15} className="shrink-0" /> {t('chat.viewAsHtml')}
+      </button>
+      <button
+        onClick={() => {
+          if (account) thread$.conversationModeOverrides[account.id].set('plain')
+          closeActionMenus()
+        }}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${
+          conversationMode === 'plain' ? 'font-semibold text-accent' : 'font-medium text-primary'
+        }`}
+      >
+        <FileText size={15} className="shrink-0" /> {t('chat.viewAsPlainText')}
+      </button>
+      {expandAllAction && (
+        <button
+          onClick={() => {
+            setAllMessagesExpanded(expandAllAction === 'expand')
+            closeActionMenus()
+          }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+        >
+          {expandAllAction === 'expand' ? (
+            <ChevronsUpDown size={15} className="shrink-0" />
+          ) : (
+            <ChevronsDownUp size={15} className="shrink-0" />
+          )}
+          {expandAllAction === 'expand' ? t('chat.expandAll') : t('chat.collapseAll')}
+        </button>
+      )}
+      <div className="my-1 h-px bg-border" />
+      {!isRSS && replyAll && (
+        <button
+          onClick={() => {
+            openReplyInFullEditor({ replyAll: true })
+            closeActionMenus()
+          }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+        >
+          <ReplyAll size={15} className="shrink-0" /> {t('chat.actions.replyAll')}
+        </button>
+      )}
+      <button
+        onClick={() => {
+          void starThread(activeThread.thread_id, !activeThread.starred)
+          closeActionMenus()
+        }}
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+      >
+        <Star size={15} className={`shrink-0 ${activeThread.starred ? 'fill-amber-500 text-amber-500' : ''}`} />
+        {activeThread.starred ? t('chat.unstar') : t('chat.star')}
+      </button>
+      {!isRSS && (
+        <>
+          <button
+            onClick={() => {
+              void archiveThread(activeThread.thread_id)
+              closeActionMenus()
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+          >
+            <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
+          </button>
+          <div className="my-1 h-px bg-border" />
+          <MenuItem
+            icon={<Printer size={15} className="shrink-0" />}
+            label={t('chat.actions.printThread')}
+            disabled={printing}
+            className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium! disabled:opacity-50 disabled:cursor-default disabled:hover:bg-transparent"
+            onClick={() => {
+              closeActionMenus()
+              setPrinting(true)
+              void printThread(activeThread.thread_id).finally(() => setPrinting(false))
+            }}
+          />
+          <MenuItem
+            icon={<Download size={15} className="shrink-0" />}
+            label={t('chat.actions.saveAsEml')}
+            className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium!"
+            onClick={() => {
+              closeActionMenus()
+              void exportThreadsAsEml(
+                [{ threadId: activeThread.thread_id, folderId: activeThread.folder_id }],
+                activeThread.subject || '',
+              )
+            }}
+          />
+          <div className="my-1 h-px bg-border" />
+          <button
+            onClick={() => {
+              void deleteThread(activeThread.thread_id)
+              closeActionMenus()
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400 cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/25"
+          >
+            <Trash2 size={15} className="shrink-0" /> {t('threads.actions.moveToTrash')}
+          </button>
+        </>
+      )}
+    </>
+  )
 
   return (
     <>
@@ -263,105 +385,25 @@ export function ConversationHeader({
             />
             {actionsMenuOpen && (
               <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border border-border bg-chats p-1 shadow-xl">
-                <button
-                  onClick={() => {
-                    if (account) thread$.conversationModeOverrides[account.id].set('html')
-                    setActionsMenuOpen(false)
-                  }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${
-                    conversationMode === 'html' ? 'font-semibold text-accent' : 'font-medium text-primary'
-                  }`}
-                >
-                  <Code size={15} className="shrink-0" /> {t('chat.viewAsHtml')}
-                </button>
-                <button
-                  onClick={() => {
-                    if (account) thread$.conversationModeOverrides[account.id].set('plain')
-                    setActionsMenuOpen(false)
-                  }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs cursor-pointer hover:bg-hover ${
-                    conversationMode === 'plain' ? 'font-semibold text-accent' : 'font-medium text-primary'
-                  }`}
-                >
-                  <FileText size={15} className="shrink-0" /> {t('chat.viewAsPlainText')}
-                </button>
-                <div className="my-1 h-px bg-border" />
-                {!isRSS && replyAll && (
-                  <button
-                    onClick={() => {
-                      openReplyInFullEditor({ replyAll: true })
-                      setActionsMenuOpen(false)
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
-                  >
-                    <ReplyAll size={15} className="shrink-0" /> {t('chat.actions.replyAll')}
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    void starThread(activeThread.thread_id, !activeThread.starred)
-                    setActionsMenuOpen(false)
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
-                >
-                  <Star
-                    size={15}
-                    className={`shrink-0 ${activeThread.starred ? 'fill-amber-500 text-amber-500' : ''}`}
-                  />
-                  {activeThread.starred ? t('chat.unstar') : t('chat.star')}
-                </button>
-                {!isRSS && (
-                  <>
-                    <button
-                      onClick={() => {
-                        void archiveThread(activeThread.thread_id)
-                        setActionsMenuOpen(false)
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
-                    >
-                      <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
-                    </button>
-                    <div className="my-1 h-px bg-border" />
-                    <MenuItem
-                      icon={<Printer size={15} className="shrink-0" />}
-                      label={t('chat.actions.printThread')}
-                      disabled={printing}
-                      className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium! disabled:opacity-50 disabled:cursor-default disabled:hover:bg-transparent"
-                      onClick={() => {
-                        setActionsMenuOpen(false)
-                        setPrinting(true)
-                        void printThread(activeThread.thread_id).finally(() => setPrinting(false))
-                      }}
-                    />
-                    <MenuItem
-                      icon={<Download size={15} className="shrink-0" />}
-                      label={t('chat.actions.saveAsEml')}
-                      className="h-auto! gap-2.5! px-3! py-2 text-xs! font-medium!"
-                      onClick={() => {
-                        setActionsMenuOpen(false)
-                        void exportThreadsAsEml(
-                          [{ threadId: activeThread.thread_id, folderId: activeThread.folder_id }],
-                          activeThread.subject || '',
-                        )
-                      }}
-                    />
-                    <div className="my-1 h-px bg-border" />
-                    <button
-                      onClick={() => {
-                        void deleteThread(activeThread.thread_id)
-                        setActionsMenuOpen(false)
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400 cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/25"
-                    >
-                      <Trash2 size={15} className="shrink-0" /> {t('threads.actions.moveToTrash')}
-                    </button>
-                  </>
-                )}
+                {actionItems}
               </div>
             )}
           </div>
         </div>
       </header>
+      {conversationMenu && (
+        <FloatingContextMenu
+          x={conversationMenu.x}
+          y={conversationMenu.y}
+          onClose={() => thread$.conversationMenu.set(null)}
+          overlay
+          overlayClassName="fixed inset-0 z-[60]"
+          className="fixed z-[61] w-52 rounded-xl border border-border bg-chats p-1 shadow-xl"
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {actionItems}
+        </FloatingContextMenu>
+      )}
       {senderMenu && !isRSS && (
         <FloatingContextMenu
           x={senderMenu.x}

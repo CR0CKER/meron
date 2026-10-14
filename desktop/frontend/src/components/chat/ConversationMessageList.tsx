@@ -73,6 +73,8 @@ export function ConversationMessageList({
     // Brings a message's header to the top of the viewport, pinned while its
     // body grows. Used when the reader expands a collapsed message.
     scrollMessageToTop: onScrollMessageToTop,
+    // Holds the reader's place while every message expands or collapses.
+    holdTopMessage: onHoldTopMessage,
     // Releases expansion anchoring before input that intentionally moves the view.
     releasePinForUserScroll: onUserScrollIntent,
   } = useContext(ConversationScrollContext)!
@@ -95,6 +97,22 @@ export function ConversationMessageList({
     setExpandOverrides({})
     unreadOnArrivalRef.current = new Set()
   }, [activeThreadId])
+
+  // Expand all / collapse all, from the thread's menu: the default below gives
+  // way to it, and so does every message toggled before. Heard as it is set
+  // rather than on the render it causes, which is the last moment the view can
+  // still be read for the place to hold.
+  const expandAll = useValue(thread$.expandAll)
+  useEffect(
+    () =>
+      thread$.expandAll.onChange(({ value }) => {
+        if (!value) return
+        onHoldTopMessage(!value.expanded)
+        pendingExpandedMessageIdRef.current = ''
+        setExpandOverrides({})
+      }),
+    [onHoldTopMessage],
+  )
 
   useLayoutEffect(() => {
     if (!jumpMessageId) return
@@ -126,8 +144,21 @@ export function ConversationMessageList({
     if (message.id === activeSearchId) return true
     const override = expandOverrides[message.id]
     if (override !== undefined) return override
+    // Collapsing all still leaves the newest open: a thread of nothing but
+    // summary lines has nothing to read, and it is the one a reply answers.
+    if (expandAll) return expandAll.expanded || message.id === lastMessageId
     return message.id === lastMessageId || unreadOnArrivalRef.current.has(message.id) || searchMatchSet.has(message.id)
   }
+  const expandAllAction =
+    !traditional || showThreadLoading || messages.length < 2
+      ? null
+      : messages.some((message) => !isExpanded(message))
+        ? 'expand'
+        : 'collapse'
+  useEffect(() => {
+    thread$.expandAllAction.set(expandAllAction)
+  }, [expandAllAction])
+  useEffect(() => () => thread$.expandAllAction.set(null), [])
   const setExpanded = (messageId: string, expanded: boolean) => {
     pendingExpandedMessageIdRef.current = expanded ? messageId : ''
     setExpandOverrides((current) => ({ ...current, [messageId]: expanded }))
@@ -173,6 +204,14 @@ export function ConversationMessageList({
     <div
       style={wallpaperStyle}
       onMouseLeave={() => thread$.hoveredLink.set(null)}
+      // A right-click that lands on no message is for the thread: its actions
+      // menu, where the pointer is. A message answers its own (below), and
+      // leaves the browser's menu alone over selected text.
+      onContextMenu={(event) => {
+        if ((event.target as Element | null)?.closest?.('[data-message-id]')) return
+        event.preventDefault()
+        thread$.conversationMenu.set({ x: event.clientX, y: event.clientY })
+      }}
       className={`flex-1 flex flex-col min-h-0 relative ${wallpaperClassName}`}
     >
       <div

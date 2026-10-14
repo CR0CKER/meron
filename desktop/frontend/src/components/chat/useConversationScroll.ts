@@ -195,6 +195,21 @@ export function useConversationScroll(
     [],
   )
 
+  /** Keeps the reader's place through every message expanding or collapsing at
+   *  once: called before the change, it pins the message at the top of the
+   *  viewport where it is, until the reader scrolls. Collapsing, a position
+   *  deep inside that message no longer exists, so its summary is brought to
+   *  the top instead. */
+  const holdTopMessage = useCallback(
+    (collapsing: boolean) => {
+      const container = scrollRef.current
+      const anchor = container && readScrollAnchor(container)
+      if (!anchor) return
+      pinMessage(anchor.messageId, collapsing ? Math.min(anchor.offset, -ANCHOR_GAP_PX) : anchor.offset, true)
+    },
+    [pinMessage],
+  )
+
   /** Brings a message's header to the top of the viewport, pinned so a body
    *  still growing from its placeholder height doesn't push it back out of
    *  view. Used when the reader expands a collapsed message: expanding in place
@@ -521,9 +536,17 @@ export function useConversationScroll(
       maybeMarkRead,
       setScrollTop,
       scrollMessageToTop,
+      holdTopMessage,
       releasePinForUserScroll,
     }),
-    [handleConversationScroll, maybeMarkRead, setScrollTop, scrollMessageToTop, releasePinForUserScroll],
+    [
+      handleConversationScroll,
+      maybeMarkRead,
+      setScrollTop,
+      scrollMessageToTop,
+      holdTopMessage,
+      releasePinForUserScroll,
+    ],
   )
 }
 

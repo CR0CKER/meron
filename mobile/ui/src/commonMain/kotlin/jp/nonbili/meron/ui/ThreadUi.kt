@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -263,6 +265,10 @@ internal fun ThreadScreen(
     // Traditional layout only: message ids the user has explicitly expanded or
     // collapsed, overriding the default below. Reset when the thread changes.
     var expandOverrides by remember(thread?.id) { mutableStateOf(emptyMap<String, Boolean>()) }
+    // The reader's last expand-all or collapse-all from the menu, null until
+    // used. Every message without a toggle of its own follows it, earlier ones
+    // loaded afterwards included.
+    var expandAll by remember(thread?.id) { mutableStateOf<Boolean?>(null) }
     // Which messages were unread when they first appeared. Scroll-driven read
     // marking clears `unread` while the user reads, so a default derived from
     // the live flag would collapse an open message out from under them — and
@@ -280,8 +286,20 @@ internal fun ThreadScreen(
         // collapsed summary would hide the very text that was searched for.
         if (message.id == activeSearchId) return true
         return expandOverrides[message.id]
+            // Collapsing all still leaves the newest open: a thread of nothing
+            // but summary lines has nothing to read, and it is the one a reply
+            // answers.
+            ?: expandAll?.let { it || message.id == lastMessageId }
             ?: (message.id == lastMessageId || message.id in unreadOnArrival || searchMatches.contains(message.id))
     }
+    // What the menu's expand-all / collapse-all item would do now: true to
+    // expand, false to collapse, null where there is nothing to offer.
+    val expandAllAction: Boolean? =
+        if (conversationLayout != ConversationLayout.Traditional || messages.size < 2) {
+            null
+        } else {
+            messages.any { !isMessageExpanded(it) }
+        }
     val listState = rememberLazyListState()
     // The quick reply floats over the end of the list, whose viewport runs on
     // underneath it. What the reader can see ends at the card's top, so
@@ -702,6 +720,26 @@ internal fun ThreadScreen(
                                         detailsOpen = true
                                     },
                                 )
+                                expandAllAction?.let { expand ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (expand) tr("chat.expandAll") else tr("chat.collapseAll")) },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (expand) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            overflowOpen = false
+                                            releaseFocusBeforeToggle()
+                                            // The list keeps the message at the top of
+                                            // the screen where it is as the rows
+                                            // around it change height.
+                                            expandOverrides = emptyMap()
+                                            expandAll = expand
+                                        },
+                                    )
+                                }
                                 if (!isRss) {
                                     DropdownMenuItem(
                                         text = { Text(tr("chat.actions.printThread")) },

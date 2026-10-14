@@ -54,6 +54,18 @@ export const thread$ = observable({
   hoveredLink: null as string | null,
   // The open right-click / "more" menu for a message; null when closed.
   messageContextMenu: null as MessageContextMenuState | null,
+  // The thread's actions menu opened at the pointer, by a right-click on the
+  // blank part of the conversation; null when closed. The header owns the menu.
+  conversationMenu: null as { x: number; y: number } | null,
+  // Traditional layout: the reader's last expand-all or collapse-all in the open
+  // thread. Every message without a toggle of its own follows it, earlier ones
+  // loaded afterwards included. `seq` makes every request a change, so asking
+  // again for what is already in force still resets the messages toggled since.
+  expandAll: null as { expanded: boolean; seq: number } | null,
+  // What the menu's expand-all / collapse-all item would do now. Published by
+  // ConversationMessageList; null where there is nothing to offer (the chat
+  // layout, a thread of one message).
+  expandAllAction: null as 'expand' | 'collapse' | null,
   // Per-account override of the conversation render mode for this session.
   conversationModeOverrides: {} as Record<string, ConversationMode>,
 })
@@ -69,6 +81,10 @@ export function goToSearchMatch(direction: -1 | 1) {
   if (matchCount === 0) return
   const next = thread$.activeSearchIndex.peek() + direction
   thread$.activeSearchIndex.set(next < 0 ? matchCount - 1 : next >= matchCount ? 0 : next)
+}
+
+export function setAllMessagesExpanded(expanded: boolean) {
+  thread$.expandAll.set({ expanded, seq: (thread$.expandAll.peek()?.seq ?? 0) + 1 })
 }
 
 export function revealRemote(messageId: string) {
@@ -88,6 +104,8 @@ export function resetThreadView() {
   thread$.galleryIndex.set(null)
   thread$.hoveredLink.set(null)
   thread$.messageContextMenu.set(null)
+  thread$.conversationMenu.set(null)
+  thread$.expandAll.set(null)
 }
 
 /** The render mode for an account: the session override when the user flipped
