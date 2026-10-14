@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { AlertCircle, ChevronDown, ExternalLink, Loader2, MoreHorizontal, Paperclip, Star } from 'lucide-react'
@@ -22,6 +22,42 @@ function collapsedPreview(message: Message): string {
   return raw.slice(0, COLLAPSED_PREVIEW_CHARS)
 }
 
+// How far below the scroller's top edge a pinned header rides. The header's
+// sticky offset and the fade above it (-top-4.5 and -top-1.5 below) are this
+// gap in Tailwind's units.
+const PINNED_HEADER_GAP_PX = 6
+
+/**
+ * Marks an expanded message's header with `data-stuck` while it is pinned over
+ * its body, which CSS alone can't tell from resting at the top of its card. The
+ * attribute is set on the element directly: scrolling a long message past is
+ * no reason to render it again.
+ */
+function usePinnedHeader(expanded: boolean) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const header = ref.current
+    const scroller = header?.closest('.message-scroll')
+    if (!header || !scroller || typeof IntersectionObserver === 'undefined') return
+    // The scroller's top edge is drawn in to just under where a pinned header
+    // rides, so the header is cut by it exactly while it is pinned — or pushed
+    // off by the end of its message, which looks the same.
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const edge = entry.rootBounds?.top ?? 0
+        header.toggleAttribute('data-stuck', entry.intersectionRatio < 1 && entry.boundingClientRect.top < edge)
+      },
+      { root: scroller, rootMargin: `-${PINNED_HEADER_GAP_PX + 1}px 0px 0px 0px`, threshold: 1 },
+    )
+    observer.observe(header)
+    return () => {
+      observer.disconnect()
+      header.removeAttribute('data-stuck')
+    }
+  }, [expanded])
+  return ref
+}
+
 /**
  * One message in the traditional conversation layout: a full-width card that
  * collapses to a single summary line, the way classic mail clients stack a
@@ -41,14 +77,15 @@ export function MessageRow({
 }) {
   const { t } = useTranslation()
   const [metaOpen, setMetaOpen] = useState(false)
-  // The overlay below only reaches as far as the list, which clips itself under
-  // the composer (index.css, .message-scroll) and its fixed children with it; a
-  // click anywhere else in the window has to close the panel from here.
+  // The overlay below is stacked with the list, so it lies under the composer
+  // floating over it (MessagePane); a click that the overlay does not catch
+  // has to close the panel from here.
   useDismissOnOutside(
     metaOpen,
     (target) => targetWithin(target, '.message-scroll'),
     () => setMetaOpen(false),
   )
+  const pinnedRef = usePinnedHeader(expanded)
   const view = useMessageView(message)
   const {
     outgoing,
@@ -178,122 +215,129 @@ export function MessageRow({
       {/* The header sticks to the top of the scroller while a long message
           scrolls past, so the collapse toggle stays within reach. The card
           carries no padding of its own: the header has to be a flush child so
-          it pins to the very top, and its own border and shadow keep it apart
-          from the body sliding underneath. The negative offset cancels the
-          scroller's pt-6: a sticky box pins to the scroller's content box, so
-          top-0 would park the header a padding's width down the viewport and
-          let the body scroll past above it. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={collapseFromHeader}
-        onKeyDown={(event) => {
-          // Only the header itself: Enter and Space on a control inside it
-          // (details, open in a tab, the actions menu) bubble up here, and
-          // collapsing the message out from under the key that just activated
-          // one of them is not what the reader asked for.
-          if (event.target !== event.currentTarget) return
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onToggleExpanded()
-          }
-        }}
-        title={t('chat.collapseMessage')}
-        className="sticky -top-6 z-20 flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 shadow-[0_2px_4px_-2px_rgba(15,23,42,0.12)]"
-      >
-        <Avatar
-          name={view.avatarName}
-          email={view.avatarEmail}
-          src={view.avatarSrc}
-          size={32}
-          className="mt-0.5 shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className="truncate text-[0.84375rem] font-semibold text-primary">{senderName}</span>
-            <span className="truncate text-[0.71875rem] text-secondary/80">{message.from_addr}</span>
-          </div>
-          {/* The details toggle trails the recipients, the way the chat bubble
+          it pins from the card's very top. The negative offset cancels the
+          scroller's pt-6 — a sticky box pins to the scroller's content box, so
+          top-0 would park the header a padding's width down the viewport —
+          less the gap a pinned header keeps from the edge
+          (PINNED_HEADER_GAP_PX). Pinned, it is a card floating on the
+          conversation, drawn like the composer at the other end of it, and
+          what shows above it is faded. */}
+      <div ref={pinnedRef} className="group/pinned sticky -top-4.5 z-20">
+        {/* From the scroller's edge down to the middle of the header, which
+            covers where it ends. */}
+        <div className="absolute inset-x-0 -top-1.5 hidden h-[calc(50%+0.375rem)] bg-linear-to-b from-chat/80 to-transparent group-data-[stuck]/pinned:block" />
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={collapseFromHeader}
+          onKeyDown={(event) => {
+            // Only the header itself: Enter and Space on a control inside it
+            // (details, open in a tab, the actions menu) bubble up here, and
+            // collapsing the message out from under the key that just activated
+            // one of them is not what the reader asked for.
+            if (event.target !== event.currentTarget) return
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onToggleExpanded()
+            }
+          }}
+          title={t('chat.collapseMessage')}
+          className="relative flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 shadow-[0_2px_4px_-2px_rgba(15,23,42,0.12)] ring-border/60 transition-[border-radius] duration-150 group-data-[stuck]/pinned:rounded-xl group-data-[stuck]/pinned:border-b-transparent group-data-[stuck]/pinned:ring-1"
+        >
+          <Avatar
+            name={view.avatarName}
+            email={view.avatarEmail}
+            src={view.avatarSrc}
+            size={32}
+            className="mt-0.5 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="truncate text-[0.84375rem] font-semibold text-primary">{senderName}</span>
+              <span className="truncate text-[0.71875rem] text-secondary/80">{message.from_addr}</span>
+            </div>
+            {/* The details toggle trails the recipients, the way the chat bubble
               puts it right after the header line it expands. */}
-          <div className="flex min-w-0 items-center gap-1">
-            {allRecipientSummary && (
-              <span
-                className="truncate text-[0.71875rem] text-secondary/80"
-                title={[toRaw, ccRaw].filter(Boolean).join(', ')}
-              >
-                {t('chat.toRecipients', { recipients: allRecipientSummary })}
-              </span>
-            )}
-            {/* A feed item has no recipients, so the details panel could only
+            <div className="flex min-w-0 items-center gap-1">
+              {allRecipientSummary && (
+                <span
+                  className="truncate text-[0.71875rem] text-secondary/80"
+                  title={[toRaw, ccRaw].filter(Boolean).join(', ')}
+                >
+                  {t('chat.toRecipients', { recipients: allRecipientSummary })}
+                </span>
+              )}
+              {/* A feed item has no recipients, so the details panel could only
                 repeat the feed name the header already shows. */}
-            {!isRSS && (
-              <button
-                type="button"
+              {!isRSS && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setMetaOpen((open) => !open)
+                  }}
+                  title={metaOpen ? t('chat.hideDetails') : t('chat.showDetails')}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
+                >
+                  <ChevronDown size={12} className={`transition-transform ${metaOpen ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 text-[0.65625rem] text-secondary/80">
+            {draftBadge}
+            {message.has_attachments && <Paperclip size={12} />}
+            {message.starred && <Star size={12} className="fill-amber-500 text-amber-500" />}
+            <BlockedRemoteButton
+              messageId={message.id}
+              blocked={view.blockedRemote}
+              hiddenRemoteCount={view.hiddenRemoteCount}
+              senderAddress={view.outgoing ? '' : view.senderAddress}
+              size={15}
+            />
+            <span title={fullStamp}>{stamp}</span>
+            {statusIcon}
+            <button
+              type="button"
+              title={isDraft ? t('chat.actions.openDraft') : t('threads.actions.openInNewTab')}
+              aria-label={isDraft ? t('chat.actions.openDraft') : t('threads.actions.openInNewTab')}
+              onClick={openMessageOrDraftTab}
+              className="flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
+            >
+              <ExternalLink size={12} />
+            </button>
+            <button
+              type="button"
+              title={t('common.more')}
+              aria-label={t('chat.moreMessageActions')}
+              onClick={openActionsMenu}
+              className="flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          </div>
+          {metaOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
                 onClick={(event) => {
                   event.stopPropagation()
-                  setMetaOpen((open) => !open)
+                  setMetaOpen(false)
                 }}
-                title={metaOpen ? t('chat.hideDetails') : t('chat.showDetails')}
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
+              />
+              <div
+                data-header-panel
+                className="absolute left-0 top-full z-50 mt-1 max-h-[260px] w-[460px] max-w-[calc(100vw-48px)] space-y-2 overflow-y-auto rounded-lg border border-border bg-chats p-3 text-secondary shadow-xl select-text"
               >
-                <ChevronDown size={12} className={`transition-transform ${metaOpen ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </div>
+                <AddressRow label={t('composer.fields.from')} rawList={fromRaw} />
+                {toRaw && <AddressRow label={t('composer.fields.to')} rawList={toRaw} />}
+                {ccRaw && <AddressRow label={t('composer.fields.cc')} rawList={ccRaw} />}
+                {bccRaw && <AddressRow label={t('composer.fields.bcc')} rawList={bccRaw} />}
+                {replyToDiffers && <AddressRow label={t('chat.replyTo')} rawList={replyToRaw!} />}
+              </div>
+            </>
+          )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 text-[0.65625rem] text-secondary/80">
-          {draftBadge}
-          {message.has_attachments && <Paperclip size={12} />}
-          {message.starred && <Star size={12} className="fill-amber-500 text-amber-500" />}
-          <BlockedRemoteButton
-            messageId={message.id}
-            blocked={view.blockedRemote}
-            hiddenRemoteCount={view.hiddenRemoteCount}
-            senderAddress={view.outgoing ? '' : view.senderAddress}
-            size={15}
-          />
-          <span title={fullStamp}>{stamp}</span>
-          {statusIcon}
-          <button
-            type="button"
-            title={isDraft ? t('chat.actions.openDraft') : t('threads.actions.openInNewTab')}
-            aria-label={isDraft ? t('chat.actions.openDraft') : t('threads.actions.openInNewTab')}
-            onClick={openMessageOrDraftTab}
-            className="flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
-          >
-            <ExternalLink size={12} />
-          </button>
-          <button
-            type="button"
-            title={t('common.more')}
-            aria-label={t('chat.moreMessageActions')}
-            onClick={openActionsMenu}
-            className="flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-black/[0.05] hover:text-primary dark:hover:bg-white/[0.08] cursor-pointer transition-colors"
-          >
-            <MoreHorizontal size={13} />
-          </button>
-        </div>
-        {metaOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={(event) => {
-                event.stopPropagation()
-                setMetaOpen(false)
-              }}
-            />
-            <div
-              data-header-panel
-              className="absolute left-0 top-full z-50 mt-1 max-h-[260px] w-[460px] max-w-[calc(100vw-48px)] space-y-2 overflow-y-auto rounded-lg border border-border bg-chats p-3 text-secondary shadow-xl select-text"
-            >
-              <AddressRow label={t('composer.fields.from')} rawList={fromRaw} />
-              {toRaw && <AddressRow label={t('composer.fields.to')} rawList={toRaw} />}
-              {ccRaw && <AddressRow label={t('composer.fields.cc')} rawList={ccRaw} />}
-              {bccRaw && <AddressRow label={t('composer.fields.bcc')} rawList={bccRaw} />}
-              {replyToDiffers && <AddressRow label={t('chat.replyTo')} rawList={replyToRaw!} />}
-            </div>
-          </>
-        )}
       </div>
 
       <div className="px-4 pb-3 pt-2.5">

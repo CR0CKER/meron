@@ -197,8 +197,8 @@ export function ConversationMessageList({
         }}
         // MessageRow's pinned header offsets itself against this pt-6; keep
         // the two in step. The end pads past the composer floating over the
-        // list (MessagePane), so the newest message clears it; index.css
-        // (.message-scroll) keeps the rest of the list out from under it.
+        // list (MessagePane), so the newest message clears it; the rest of
+        // the list runs on behind it.
         className="message-scroll flex-1 overflow-y-auto px-4 pt-6 pb-[calc(1.5rem+var(--me-composer-overlap,0px))] space-y-4 z-10 relative"
       >
         {showThreadLoading && (

@@ -32,14 +32,10 @@ export function QuickReplyComposer() {
 
   return (
     // The footer floats over the message list (MessagePane) and paints nothing
-    // of its own, so the wallpaper runs on behind it; the list clips itself away
-    // under the box (index.css, .message-scroll), leaving messages to scroll off
-    // behind its rounded corners. The halo above the box fades them out just
-    // before they reach it — only where MessagePane gives it the colour of a
-    // plain background, since over a wallpaper it would show as a smudge. It
-    // leans upward to stay off the list's scrollbar beside the box.
+    // of its own, so the conversation runs on behind it and messages scroll off
+    // under the box; MessagePane fades what shows around it.
     <footer className="px-3.5 pb-3.5 pt-1 flex flex-col items-center justify-center">
-      <div className="pointer-events-auto flex flex-col gap-2 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-[0_-6px_12px_0_var(--me-composer-halo,transparent),0_1px_2px_0_rgb(0_0_0/0.05)] focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
+      <div className="pointer-events-auto flex flex-col gap-2 w-full bg-chats p-2 rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0/0.05)] focus-within:ring-1 focus-within:ring-accent transition-all duration-150">
         <QuickReplyAttachments attachments={composerAttachments} />
 
         {/* The text leads and has the box's full width; everything else shares

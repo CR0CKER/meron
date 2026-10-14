@@ -335,13 +335,17 @@ export function MessagePane() {
       </ConversationScrollContext>
 
       {!isRSS && (
-        <div
-          ref={composerRef}
-          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 ${
-            conversationWallpaper.className === 'wallpaper-preset-plain' ? '[--me-composer-halo:var(--me-bg-chat)]' : ''
-          }`}
-        >
-          <QuickReplyComposer />
+        <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+          {/* What shows around the box is faded, from a line the box itself
+              covers: below the footer's pt-1 and the curve of its rounded-2xl
+              corners. It stops short of the right edge (the footer's px-3.5,
+              inside the list's own px-4) to stay off the list's scrollbar, and
+              takes the pointer so the slivers of messages under it can't be
+              clicked. */}
+          <div className="pointer-events-auto absolute bottom-0 left-0 right-3.5 top-5 bg-linear-to-b from-transparent to-chat/80" />
+          <div className="relative">
+            <QuickReplyComposer />
+          </div>
         </div>
       )}
     </>

@@ -33,9 +33,9 @@ interface MessageBubbleProps {
 export function MessageBubble({ message, galleryOffset }: MessageBubbleProps) {
   const { t } = useTranslation()
   const [metaOpen, setMetaOpen] = useState(false)
-  // The overlay below only reaches as far as the list, which clips itself under
-  // the composer (index.css, .message-scroll) and its fixed children with it; a
-  // click anywhere else in the window has to close the panel from here.
+  // The overlay below is stacked with the list, so it lies under the composer
+  // floating over it (MessagePane); a click that the overlay does not catch
+  // has to close the panel from here.
   useDismissOnOutside(
     metaOpen,
     (target) => targetWithin(target, '.message-scroll'),
