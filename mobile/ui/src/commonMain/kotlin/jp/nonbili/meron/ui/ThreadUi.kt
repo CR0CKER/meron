@@ -1047,7 +1047,7 @@ internal fun ThreadScreen(
                                     color = MaterialTheme.colorScheme.surface,
                                     shape = RoundedCornerShape(16.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                                    shadowElevation = 1.dp,
+                                    shadowElevation = FLOATING_CARD_ELEVATION,
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
@@ -1591,6 +1591,10 @@ internal fun ConversationSearchBar(
 private val REPLY_CARD_TOP_MARGIN = 8.dp
 private val REPLY_CARD_RADIUS = 24.dp
 
+// The reply card and the pinned header ride over the conversation, so they
+// sit higher than the bubbles (3.dp) that scroll under them.
+private val FLOATING_CARD_ELEVATION = 4.dp
+
 /**
  * Fades the top [topPx] and bottom [bottomPx] of this content into [veil]: the
  * messages that run on behind the pinned header and the reply card stay
@@ -1657,7 +1661,7 @@ internal fun ReplyBar(
         // one of them rather than as a pressed or disabled slab.
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        shadowElevation = 1.dp,
+        shadowElevation = FLOATING_CARD_ELEVATION,
     ) {
         Column(Modifier.fillMaxWidth().padding(4.dp)) {
             if (attachments.isNotEmpty()) {

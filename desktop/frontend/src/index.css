@@ -39,6 +39,8 @@
 
   --shadow-bubble-in: var(--me-bubble-shadow-in);
   --shadow-bubble-out: var(--me-bubble-shadow-out);
+  --shadow-float: var(--me-float-shadow);
+  --shadow-card: var(--me-card-shadow);
 
   /* Inter has no CJK glyphs, so CJK codepoints fall through to --font-cjk. That
      var is switched per active locale via :lang() below — naming the regional
@@ -103,6 +105,17 @@
   --me-composer-border: #dde3df;
   --me-bubble-shadow-in: 0 2px 8px -2px rgba(27, 33, 30, 0.08), 0 1px 3px -1px rgba(27, 33, 30, 0.04);
   --me-bubble-shadow-out: 0 2px 8px -2px rgba(14, 122, 88, 0.12), 0 1px 3px -1px rgba(14, 122, 88, 0.06);
+  /* A message card at rest in the list: barely there, the border does the work. */
+  --me-card-shadow:
+    0 1px 3px 0 color-mix(in srgb, var(--me-text-primary) 10%, transparent),
+    0 1px 2px -1px color-mix(in srgb, var(--me-text-primary) 10%, transparent);
+  /* What floats over the conversation (the quick reply, a pinned message
+     header). Tinted with the theme's text color, and cast upward too: that is
+     the edge messages scroll out from under the quick reply. */
+  --me-float-shadow:
+    0 4px 16px -4px color-mix(in srgb, var(--me-text-primary) 12%, transparent),
+    0 1px 3px -1px color-mix(in srgb, var(--me-text-primary) 6%, transparent),
+    0 -2px 8px -4px color-mix(in srgb, var(--me-text-primary) 6%, transparent);
   --me-frame-shadow: 0 0 20px rgba(0, 0, 0, 0.11);
   --me-frame-border-width: 0px;
   --me-wallpaper-overlay: color-mix(in srgb, var(--me-bg-chat) 50%, transparent);
@@ -136,6 +149,9 @@
   --me-composer-border: #29352f;
   --me-bubble-shadow-in: 0 4px 12px -3px rgba(0, 0, 0, 0.3), 0 1px 4px -2px rgba(0, 0, 0, 0.2);
   --me-bubble-shadow-out: 0 4px 12px -3px rgba(0, 0, 0, 0.4), 0 1px 4px -2px rgba(0, 0, 0, 0.3);
+  --me-card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --me-float-shadow:
+    0 6px 20px -4px rgba(0, 0, 0, 0.45), 0 1px 4px -2px rgba(0, 0, 0, 0.3), 0 -2px 8px -4px rgba(0, 0, 0, 0.3);
   --me-frame-shadow: none;
   --me-frame-border-width: 1px;
   --me-wallpaper-overlay: color-mix(in srgb, var(--me-bg-chat) 55%, transparent);

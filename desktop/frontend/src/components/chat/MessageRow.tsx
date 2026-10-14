@@ -219,7 +219,7 @@ export function MessageRow({
   }
 
   return (
-    <div className="group/message-row relative w-full rounded-xl border border-border/40 bg-chats shadow-sm">
+    <div className="group/message-row relative w-full rounded-xl border border-border/40 bg-chats shadow-card">
       {/* The header sticks to the top of the scroller while a long message
           scrolls past, so the collapse toggle stays within reach. The card
           carries no padding of its own: the header has to be a flush child so
@@ -260,7 +260,7 @@ export function MessageRow({
             }
           }}
           title={t('chat.collapseMessage')}
-          className="pointer-events-auto relative flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 ring-border/60 transition-[border-radius,padding,box-shadow] duration-150 group-data-[stuck]/pinned:rounded-xl group-data-[stuck]/pinned:border-b-transparent group-data-[stuck]/pinned:py-1.5 group-data-[stuck]/pinned:shadow-[0_2px_6px_-2px_rgb(0_0_0/0.12)] group-data-[stuck]/pinned:ring-1"
+          className="pointer-events-auto relative flex cursor-pointer items-start gap-2.5 rounded-t-xl border-b border-border/40 bg-chats px-4 py-2.5 ring-border/40 transition-[border-radius,padding,box-shadow] duration-150 group-data-[stuck]/pinned:rounded-xl group-data-[stuck]/pinned:border-b-transparent group-data-[stuck]/pinned:py-1.5 group-data-[stuck]/pinned:shadow-float group-data-[stuck]/pinned:ring-1"
         >
           <Avatar
             name={view.avatarName}
