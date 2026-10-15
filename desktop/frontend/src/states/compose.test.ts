@@ -3892,6 +3892,16 @@ describe('revealMessageRemote', () => {
     expect(tab?.bodyHtml).toBe('<p>Downloaded body</p>')
   })
 
+  it("keeps a reader tab's read and star flags in step with the conversation", () => {
+    openMessageTab(message({ id: 'flagged-reader', unread: false, starred: false }))
+    mail$.messages.set([message({ id: 'flagged-reader', unread: true, starred: true })])
+    // The conversation is left: the tab keeps what it last saw there.
+    mail$.messages.set([])
+    const tab = compose$.tabs.get().find((tab) => tab.messageId === 'flagged-reader')
+    expect(tab?.message?.unread).toBe(true)
+    expect(tab?.message?.starred).toBe(true)
+  })
+
   it('marks an open reader tab so a thread switch cannot re-block it', () => {
     openMessageTab(message({ id: 'm1', body_html: '<p>hi</p>' }))
     openMessageTab(message({ id: 'm2', body_html: '<p>other</p>' }))

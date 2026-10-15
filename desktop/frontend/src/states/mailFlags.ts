@@ -635,7 +635,13 @@ export async function starMessage(message: Message, starred: boolean) {
   if (!message?.id || !message.thread_id) return
 
   const nextMessages = mail$.messages.get().map((item) => (item.id === message.id ? { ...item, starred } : item))
-  const threadStarred = nextMessages.some((item) => item.thread_id === message.thread_id && item.starred)
+  // A message starred from outside its conversation (a reader tab that outlived
+  // it, a starred-list row) has no loaded siblings to count: starring it stars
+  // the thread, and clearing it is taken as clearing the thread's last star.
+  const messageLoaded = nextMessages.some((item) => item.id === message.id)
+  const threadStarred = messageLoaded
+    ? nextMessages.some((item) => item.thread_id === message.thread_id && item.starred)
+    : starred
 
   mail$.messages.set(nextMessages)
   // The starred folder lists a thread only while some message in it is starred,

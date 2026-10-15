@@ -184,22 +184,29 @@ compose$.tabs.onChange(({ value: tabs }) => {
   }
 })
 
-// Keep pending reader snapshots in sync when background body fetching completes.
+// Keep reader snapshots in sync with the loaded conversation: the body when
+// background fetching completes, and the read and star flags whenever they
+// change there, so the tab's menu still toggles the right way once that
+// conversation is no longer loaded.
 mail$.messages.onChange(({ value: messages }) => {
-  const loaded = new Map(messages.filter((message) => !message.body_missing).map((message) => [message.id, message]))
+  const byId = new Map(messages.map((message) => [message.id, message]))
   for (const [index, tab] of compose$.tabs.peek().entries()) {
-    if (tab.kind !== 'reader' || !tab.bodyMissing) continue
-    const message = loaded.get(tab.messageId)
+    if (tab.kind !== 'reader') continue
+    const message = byId.get(tab.messageId)
     if (!message) continue
-    compose$.tabs[index].assign({
-      body: message.body,
-      bodyHtml: message.body_html,
-      bodyMissing: false,
-      attachments: message.attachments,
-      // The bottom bar forwards from this: without the body it would send
-      // an empty forward with none of the attachments the reader now shows.
-      message,
-    })
+    if (tab.bodyMissing && !message.body_missing) {
+      compose$.tabs[index].assign({
+        body: message.body,
+        bodyHtml: message.body_html,
+        bodyMissing: false,
+        attachments: message.attachments,
+        // The bottom bar forwards from this: without the body it would send
+        // an empty forward with none of the attachments the reader now shows.
+        message,
+      })
+    } else if (tab.message && (tab.message.unread !== message.unread || tab.message.starred !== message.starred)) {
+      compose$.tabs[index].assign({ message: { ...tab.message, unread: message.unread, starred: message.starred } })
+    }
   }
 })
 
@@ -926,6 +933,16 @@ export function revealMessageRemote(messageId: string) {
     compose$.tabs
       .get()
       .map((tab) => (tab.kind === 'reader' && tab.messageId === messageId ? { ...tab, revealRemote: true } : tab)),
+  )
+}
+
+/** Keeps a reader tab's copy of its message in step with a change made from
+ *  the tab, for when the thread it came from is no longer loaded. */
+export function patchTabMessage(id: string, patch: Partial<Message>) {
+  compose$.tabs.set(
+    compose$.tabs
+      .get()
+      .map((tab) => (tab.id === id && tab.message ? { ...tab, message: { ...tab.message, ...patch } } : tab)),
   )
 }
 

@@ -274,7 +274,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
     >
       {onResizeStart && (
         <div
-          className="absolute right-0 top-0 z-20 hidden h-full w-2 translate-x-1 cursor-col-resize min-[769px]:block"
+          className="absolute right-0 top-0 z-30 hidden h-full w-2 translate-x-1 cursor-col-resize min-[769px]:block"
           onPointerDown={onResizeStart}
           title={t('layout.resizeThreadList')}
         >

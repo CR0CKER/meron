@@ -1103,3 +1103,8 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   height: 0;
   pointer-events: none;
 }
+
+/* While a pane is dragged wider or narrower (lib/paneResize). */
+.pane-resizing iframe {
+  pointer-events: none;
+}

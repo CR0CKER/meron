@@ -30,7 +30,7 @@ describe('reader videos', () => {
     })
   }
 
-  it('replaces the frame when attachments change without changing the HTML', () => {
+  it('keeps one self-sizing frame when attachments change without changing the HTML', () => {
     const props = {
       scrollKey: 'switch-layout',
       title: 'Feed',
@@ -43,13 +43,22 @@ describe('reader videos', () => {
     const bodyFrame = view.container.querySelector('iframe')!
 
     view.rerender(<HtmlMessageView {...props} attachments={attachments} />)
-    const attachmentFrame = view.container.querySelector('iframe')!
-    expect(attachmentFrame).not.toBe(bodyFrame)
-    expect(attachmentFrame.getAttribute('scrolling')).toBe('no')
+    expect(view.container.querySelector('iframe')).toBe(bodyFrame)
+  })
 
-    view.rerender(<HtmlMessageView {...props} />)
-    expect(view.container.querySelector('iframe')).not.toBe(attachmentFrame)
-    expect(view.container.querySelector('iframe')!.getAttribute('scrolling')).toBe('auto')
+  it('scrolls the header with the body', () => {
+    const view = render(
+      <HtmlMessageView
+        scrollKey="header"
+        title="Feed"
+        html="<p>Caption</p>"
+        text="Caption"
+        viewMode="html"
+        header={<h1>Subject</h1>}
+      />,
+    )
+    const scroller = view.container.querySelector('iframe')!.parentElement!.parentElement!
+    expect(scroller.contains(view.getByText('Subject'))).toBe(true)
   })
 
   it('anchors hovered URLs outside the attachment scroll container', () => {

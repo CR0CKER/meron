@@ -6,15 +6,19 @@ const MAX_THREAD_LIST_WIDTH = 560
 const MIN_KANBAN_PANE_WIDTH = 25
 const MAX_KANBAN_PANE_WIDTH = 60
 
+// A pointer over a message frame moves within the frame's own document, out of
+// this window's sight, so the frames stop taking the pointer for the drag.
 function beginDrag(onMove: (event: PointerEvent) => void) {
   const onUp = () => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
+    document.body.classList.remove('pane-resizing')
   }
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
+  document.body.classList.add('pane-resizing')
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
 }

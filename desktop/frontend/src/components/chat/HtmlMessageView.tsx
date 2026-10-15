@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Attachment } from '../../types'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
 import { LinkHoverPreview } from './LinkHoverPreview'
 import { mediaSrc, readerAttachmentImages, readerAttachmentVideos } from './messageHelpers'
-import { applyReaderFont, applyReaderLayout, applyReaderTheme, stripTrackingPixels } from './readerHtml'
+import {
+  applyReaderFont,
+  applyReaderLayout,
+  applyReaderMediaHeight,
+  applyReaderTheme,
+  pinViewportHeights,
+  stripTrackingPixels,
+} from './readerHtml'
 import { applyRemoteContentPolicy } from './remoteContentCsp'
 import { useMessageFrameFont } from './useMessageFrameFont'
 import { useReaderTheme } from './useFrameTheme'
 import { VideoAttachment } from './VideoAttachment'
 import { useTranslation } from '../../lib/i18n'
-import { frameMetrics, measureFrameHeight } from './frameHeight'
+import { frameMetrics, MIN_FRAME_HEIGHT, measureFrameHeight } from './frameHeight'
 
 const readerScrollPositions = new Map<string, number>()
 
@@ -30,6 +37,10 @@ interface HtmlMessageViewProps {
   allowRemote?: boolean
   /** A feed article rather than mail: keeps the larger reading size. */
   article?: boolean
+  /** Scrolls with the body, above it: the message's subject and addresses. */
+  header?: ReactNode
+  /** Scrolls with the body, below it: room to clear floating controls. */
+  footer?: ReactNode
 }
 
 // Renders a single message either as its original email HTML (in a sandboxed
@@ -50,6 +61,8 @@ export function HtmlMessageView({
   viewMode,
   allowRemote = false,
   article = false,
+  header,
+  footer,
 }: HtmlMessageViewProps) {
   const { t } = useTranslation()
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
@@ -73,7 +86,7 @@ export function HtmlMessageView({
     [attachments, html, viewMode, allowRemote],
   )
   const hasAttachments = attachmentImages.length > 0 || attachmentVideos.length > 0
-  const [frameHeight, setFrameHeight] = useState(20)
+  const [frameHeight, setFrameHeight] = useState(MIN_FRAME_HEIGHT)
   const videoPlayers = attachmentVideos.length > 0 && (
     <div className="flex flex-col gap-2">
       {attachmentVideos.map((video, index) => (
@@ -118,29 +131,19 @@ export function HtmlMessageView({
   // restore too, even when the iframe's measured height stays the same.
   useLayoutEffect(() => {
     const content = contentRef.current
-    if (!hasAttachments || viewMode !== 'html' || !html || !content) return
+    if (viewMode !== 'html' || !html || !content) return
     const observer = new ResizeObserver(restorePendingScroll)
     observer.observe(content)
     return () => observer.disconnect()
-  }, [hasAttachments, html, viewMode, restorePendingScroll])
+  }, [html, viewMode, restorePendingScroll])
 
   const saveScrollPosition = useCallback(() => {
     if (pendingScrollTop.current !== null) return
-    if (viewMode === 'plain' || !html || hasAttachments) {
-      const container = textRef.current
-      if (container) readerScrollPositions.set(positionKey, container.scrollTop)
-      return
-    }
+    const container = textRef.current
+    if (container) readerScrollPositions.set(positionKey, container.scrollTop)
+  }, [positionKey])
 
-    const win = iframeRef.current?.contentWindow
-    const doc = iframeRef.current?.contentDocument
-    const top = win?.scrollY ?? doc?.documentElement.scrollTop ?? doc?.body.scrollTop
-    if (typeof top === 'number') {
-      readerScrollPositions.set(positionKey, top)
-    }
-  }, [html, positionKey, viewMode, hasAttachments])
-
-  const handleAttachmentScroll = useCallback(() => {
+  const handleFrameScroll = useCallback(() => {
     const container = textRef.current
     if (!container) return
     if (pendingScrollTop.current !== null) {
@@ -155,22 +158,15 @@ export function HtmlMessageView({
 
   const restoreScrollPosition = useCallback(() => {
     const top = readerScrollPositions.get(positionKey)
-    if (top === undefined) return
-
-    if (viewMode === 'plain' || !html || hasAttachments) {
-      const container = textRef.current
-      if (container) container.scrollTop = top
-      return
-    }
-
-    iframeRef.current?.contentWindow?.scrollTo(0, top)
-  }, [html, positionKey, viewMode, hasAttachments])
+    const container = textRef.current
+    if (top !== undefined && container) container.scrollTop = top
+  }, [positionKey])
 
   useLayoutEffect(() => {
     return saveScrollPosition
   }, [saveScrollPosition])
 
-  useLayoutEffect(cancelPendingScroll, [positionKey, html, hasAttachments, cancelPendingScroll])
+  useLayoutEffect(cancelPendingScroll, [positionKey, html, cancelPendingScroll])
 
   const sanitizedHtml = useMemo(
     () => (html ? applyRemoteContentPolicy(stripTrackingPixels(html), allowRemote) : html),
@@ -217,34 +213,47 @@ export function HtmlMessageView({
   const handleFrameReady = useCallback(
     (doc: Document) => {
       applyReaderLayout(doc, messageFont, readerTheme, article)
-      pendingScrollTop.current = hasAttachments ? (readerScrollPositions.get(positionKey) ?? null) : null
-      let observer: ResizeObserver | undefined
-      if (hasAttachments) {
-        // The reader and its attachments share one scroll container. Measure
-        // the body instead of letting the iframe fill the remaining viewport.
-        for (const element of [doc.documentElement, doc.body]) {
-          element.style.setProperty('height', 'auto', 'important')
-          element.style.setProperty('min-height', '0', 'important')
-          element.style.setProperty('overflow', 'hidden', 'important')
-        }
-        let overflowExtent = 0
-        const measure = () => {
-          const measurement = measureFrameHeight(frameMetrics(doc), overflowExtent)
-          overflowExtent = measurement.overflowExtent
-          setFrameHeight(measurement.height)
-        }
-        measure()
-        observer = new ResizeObserver(measure)
-        observer.observe(doc.documentElement)
-        observer.observe(doc.body)
+      pendingScrollTop.current = readerScrollPositions.get(positionKey) ?? null
+      // The header, the body and its attachments share one scroll container,
+      // so the frame is sized to its body instead of filling the viewport. It
+      // still scrolls sideways: a table too wide to shrink would otherwise be
+      // clipped where the outer scroller can't reach.
+      for (const element of [doc.documentElement, doc.body]) {
+        element.style.setProperty('height', 'auto', 'important')
+        element.style.setProperty('min-height', '0', 'important')
       }
-      const frame = requestAnimationFrame(hasAttachments ? restorePendingScroll : restoreScrollPosition)
+      doc.documentElement.style.setProperty('overflow-x', 'auto', 'important')
+      doc.documentElement.style.setProperty('overflow-y', 'hidden', 'important')
+      pinViewportHeights(doc, window.innerHeight)
+      const fitMedia = () => applyReaderMediaHeight(doc, window.innerHeight)
+      fitMedia()
+      window.addEventListener('resize', fitMedia)
+      let overflowExtent = 0
+      const measure = () => {
+        const measurement = measureFrameHeight(frameMetrics(doc), overflowExtent)
+        overflowExtent = measurement.overflowExtent
+        setFrameHeight(measurement.height)
+      }
+      measure()
+      const observer = new ResizeObserver(measure)
+      observer.observe(doc.documentElement)
+      observer.observe(doc.body)
+      // A picture taken out of flow grows the scroll area without resizing
+      // either box, so each one that loads, and the whole document's load, is
+      // measured for too. `load` doesn't bubble; the capture phase sees it.
+      const frameWindow = doc.defaultView
+      doc.addEventListener('load', measure, true)
+      frameWindow?.addEventListener('load', measure)
+      const frame = requestAnimationFrame(restorePendingScroll)
       return () => {
         cancelAnimationFrame(frame)
-        observer?.disconnect()
+        observer.disconnect()
+        doc.removeEventListener('load', measure, true)
+        frameWindow?.removeEventListener('load', measure)
+        window.removeEventListener('resize', fitMedia)
       }
     },
-    [messageFont, readerTheme, article, restoreScrollPosition, restorePendingScroll, hasAttachments, positionKey],
+    [messageFont, readerTheme, article, restorePendingScroll, positionKey],
   )
 
   // The frame only re-runs `onReady` when its document is replaced, so repaint
@@ -265,10 +274,20 @@ export function HtmlMessageView({
     return saveScrollPosition
   }, [html, restoreScrollPosition, saveScrollPosition, viewMode])
 
+  const gallery = galleryIndex !== null && galleryItems[galleryIndex] && (
+    <Gallery
+      items={galleryItems}
+      index={galleryIndex}
+      onIndexChange={setGalleryIndex}
+      onClose={() => setGalleryIndex(null)}
+    />
+  )
+
   if (viewMode === 'plain' || !html) {
     return (
-      <div ref={textRef} onScroll={saveScrollPosition} className="relative flex-1 overflow-y-auto bg-chat px-6 py-6">
-        <div className="mx-auto max-w-[680px] space-y-5">
+      <div ref={textRef} onScroll={saveScrollPosition} className="relative min-h-0 flex-1 overflow-y-auto bg-chat">
+        {header}
+        <div className="max-w-[760px] space-y-5 px-5 pb-10 pt-6">
           {attachmentImages.length > 0 && (
             <AttachmentImageGrid images={attachmentImages} onOpen={openAttachmentImage} />
           )}
@@ -277,14 +296,8 @@ export function HtmlMessageView({
             {text || (attachmentImages.length > 0 || attachmentVideos.length > 0 ? '' : '(no content)')}
           </div>
         </div>
-        {galleryIndex !== null && galleryItems[galleryIndex] && (
-          <Gallery
-            items={galleryItems}
-            index={galleryIndex}
-            onIndexChange={setGalleryIndex}
-            onClose={() => setGalleryIndex(null)}
-          />
-        )}
+        {footer}
+        {gallery}
       </div>
     )
   }
@@ -295,28 +308,27 @@ export function HtmlMessageView({
       style={{ backgroundColor: readerTheme.pageBg }}
       onMouseLeave={() => setHoveredLink(null)}
     >
-      <div
-        ref={textRef}
-        className={`flex min-h-0 flex-1 flex-col ${hasAttachments ? 'overflow-y-auto' : ''}`}
-        onScroll={hasAttachments ? handleAttachmentScroll : undefined}
-      >
-        <div ref={contentRef} className={`flex min-h-0 flex-col ${hasAttachments ? 'shrink-0' : 'flex-1'}`}>
+      <div ref={textRef} className="min-h-0 flex-1 overflow-y-auto" onScroll={handleFrameScroll}>
+        <div ref={contentRef} className="flex flex-col">
+          {header}
           <HtmlFrame
-            key={hasAttachments ? 'with-attachments' : 'body-only'}
             ref={iframeRef}
             html={sanitizedHtml ?? ''}
             title={title}
-            className={`${hasAttachments ? 'shrink-0' : 'flex-1'} w-full border-0`}
-            style={{ backgroundColor: readerTheme.pageBg, ...(hasAttachments ? { height: frameHeight } : {}) }}
-            scrolling={hasAttachments ? 'no' : 'auto'}
+            className="w-full shrink-0 border-0"
+            style={{ backgroundColor: readerTheme.pageBg, height: frameHeight }}
             onFrameClick={handleFrameClick}
             onReady={handleFrameReady}
             onLinkHover={setHoveredLink}
-            onScroll={saveScrollPosition}
+            forwardContextMenu="except-images"
+            // The frame starts out a placeholder's height and sizes itself to
+            // the body, so it can't wait on a slow picture to be measured; the
+            // observers track what the pictures add.
+            readyWhenParsed
           />
           {hasAttachments && (
-            <div className="shrink-0 px-6 pb-6">
-              <div className="mx-auto max-w-[680px] space-y-5">
+            <div className="shrink-0 px-5 pb-6">
+              <div className="max-w-[720px] space-y-5">
                 {attachmentImages.length > 0 && (
                   <AttachmentImageGrid images={attachmentImages} onOpen={openAttachmentImage} />
                 )}
@@ -324,17 +336,11 @@ export function HtmlMessageView({
               </div>
             </div>
           )}
+          {footer}
         </div>
       </div>
       <LinkHoverPreview url={hoveredLink} />
-      {galleryIndex !== null && galleryItems[galleryIndex] && (
-        <Gallery
-          items={galleryItems}
-          index={galleryIndex}
-          onIndexChange={setGalleryIndex}
-          onClose={() => setGalleryIndex(null)}
-        />
-      )}
+      {gallery}
     </div>
   )
 }

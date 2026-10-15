@@ -53,7 +53,7 @@ const readerCss = (v: (name: string) => string, nativeScrollbars: boolean) => `
   body {
     box-sizing: border-box;
     max-width: 760px;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 24px 20px 40px !important;
     color: var(${v('text')}, #0f172a);
     overflow-wrap: anywhere;
@@ -63,10 +63,9 @@ const readerCss = (v: (name: string) => string, nativeScrollbars: boolean) => `
   }
   img, video {
     display: inline-block;
-    width: auto !important;
     max-width: 100% !important;
     height: auto !important;
-    max-height: 48vh;
+    max-height: var(${v('media-max-height')}, 48vh);
     object-fit: contain;
   }
   img {
@@ -307,6 +306,19 @@ export function stripTrackingPixels(html: string): string {
   }
 }
 
+// The reader's column, which the tab's header is aligned to: at the left,
+// 760px wide with 20px sides, on screen. The text size is a zoom on the body,
+// which scales the body's own box too, so its width and padding are divided by
+// it to stay put while the email's text grows. Set on the body itself, where
+// it also outranks the email's own rules.
+function applyReaderColumn(body: HTMLElement, zoom: number) {
+  const px = (value: number) => `${value / zoom}px`
+  body.style.setProperty('box-sizing', 'border-box', 'important')
+  body.style.setProperty('max-width', px(760), 'important')
+  body.style.setProperty('margin', '0', 'important')
+  body.style.setProperty('padding', `${px(24)} ${px(20)} ${px(40)}`, 'important')
+}
+
 /**
  * Paint a reader frame with the user's message typography. Mail gets the base
  * size and leading its bubble has, so a message reads the same in a tab as in
@@ -318,6 +330,7 @@ export function stripTrackingPixels(html: string): string {
  * their own text.
  */
 export function applyReaderFont(doc: Document, font: MessageFrameFont, article = false) {
+  if (doc.body) applyReaderColumn(doc.body, font.zoom)
   const rules: string[] = []
   if (font.family) rules.push(`font-family: ${font.family};`)
   if (font.zoom !== 1) rules.push(`zoom: ${font.zoom};`)
@@ -391,12 +404,66 @@ export function applyReaderLayout(
     wrapper.appendChild(button)
   }
 
+  const mediaMaxHeight = `var(${frameVar(frameVarPrefix(doc), 'media-max-height')}, 48vh)`
+  // Media keeps the width the email gives it (an avatar drawn at 20px from a
+  // larger picture) and is only capped to the reader's width and the window's
+  // height, its height following to keep its shape, as in the bubbles.
   for (const media of doc.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img,video')) {
-    media.removeAttribute('width')
-    media.removeAttribute('height')
-    media.style.setProperty('width', 'auto', 'important')
     media.style.setProperty('max-width', '100%', 'important')
     media.style.setProperty('height', 'auto', 'important')
-    media.style.setProperty('max-height', '48vh', 'important')
+    media.style.setProperty('max-height', mediaMaxHeight, 'important')
   }
+}
+
+const VIEWPORT_HEIGHT_LENGTH = /(-?(?:\d+\.?\d*|\.\d+))[dsl]?vh\b/g
+
+function pinStyleViewportHeights(style: CSSStyleDeclaration, viewportHeight: number) {
+  for (let index = 0; index < style.length; index++) {
+    const name = style[index]
+    const value = style.getPropertyValue(name)
+    if (!value.includes('vh')) continue
+    const pinned = value.replace(
+      VIEWPORT_HEIGHT_LENGTH,
+      (_, amount: string) => `${Math.round((parseFloat(amount) * viewportHeight) / 100)}px`,
+    )
+    style.setProperty(name, pinned, style.getPropertyPriority(name))
+  }
+}
+
+function pinRuleViewportHeights(rules: CSSRuleList, viewportHeight: number) {
+  for (const rule of Array.from(rules)) {
+    const style = (rule as CSSStyleRule).style
+    if (style) pinStyleViewportHeights(style, viewportHeight)
+    const nested = (rule as CSSGroupingRule).cssRules
+    if (nested) pinRuleViewportHeights(nested, viewportHeight)
+  }
+}
+
+// A frame sized to its content is its own viewport, so a block the email sizes
+// in `vh` (a full-height hero) would fill the frame, grow it by the body's
+// padding, and fill it again without end. Its `vh` lengths are taken as the
+// window's instead, where the email is actually seen, once, as it is shown.
+export function pinViewportHeights(doc: Document, viewportHeight: number) {
+  for (const sheet of Array.from(doc.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue
+    }
+    pinRuleViewportHeights(rules, viewportHeight)
+  }
+  for (const element of doc.querySelectorAll<HTMLElement>('[style*="vh"]')) {
+    pinStyleViewportHeights(element.style, viewportHeight)
+  }
+}
+
+// A frame sized to its content has its own height for a viewport, so `vh`
+// there would grow with every image it caps. Cap media at a share of the
+// window the frame is shown in instead; call again when that window resizes.
+export function applyReaderMediaHeight(doc: Document, viewportHeight: number) {
+  doc.documentElement.style.setProperty(
+    frameVar(frameVarPrefix(doc), 'media-max-height'),
+    `${Math.round(viewportHeight * 0.48)}px`,
+  )
 }

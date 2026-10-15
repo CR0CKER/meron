@@ -8,6 +8,7 @@ import {
   Link2,
   Mail,
   MailOpen,
+  Reply,
   ReplyAll,
   Printer,
   SquarePen,
@@ -42,6 +43,10 @@ export function MessageContextMenu({
   headerOnly = false,
   onClose,
   onSelectMessage,
+  onMessageChange,
+  onReply,
+  onPrint,
+  onDeleted,
 }: {
   state: MessageContextMenuState
   isRSS: boolean
@@ -50,6 +55,16 @@ export function MessageContextMenu({
   headerOnly?: boolean
   onClose: () => void
   onSelectMessage?: (message: Message) => void
+  /** Hears the read and star changes the menu makes once they succeed, for a
+   * holder of its own copy of the message (a reader tab), which the thread's
+   * update can miss. */
+  onMessageChange?: (patch: Partial<Message>) => void
+  /** Offers Reply, where no quick reply sits under the message (a reader tab). */
+  onReply?: () => void
+  /** Prints in place of the default, for a caller that knows more about it
+   * (a reader tab and the remote content it shows). */
+  onPrint?: () => void
+  onDeleted?: () => void
 }) {
   const { t } = useTranslation()
   const isDraft = isDraftFolder(state.message.folder_id, state.message.account_id)
@@ -166,7 +181,11 @@ export function MessageContextMenu({
             onClick={() => {
               const message = state.message
               onClose()
-              void markMessageReadState(message, message.unread)
+              // Only once it took: a failed change is rolled back in the
+              // conversation, and a copy patched ahead would keep it.
+              void markMessageReadState(message, message.unread).then(() =>
+                onMessageChange?.({ unread: !message.unread }),
+              )
             }}
           />
           <MenuItem
@@ -177,9 +196,19 @@ export function MessageContextMenu({
             onClick={() => {
               const message = state.message
               onClose()
-              void starMessage(message, !message.starred)
+              void starMessage(message, !message.starred).then(() => onMessageChange?.({ starred: !message.starred }))
             }}
           />
+          {onReply && !isDraft && !isRSS && (
+            <MenuItem
+              icon={<Reply size={13} className="text-accent" />}
+              label={t('chat.actions.reply')}
+              onClick={() => {
+                onClose()
+                onReply()
+              }}
+            />
+          )}
           {!isDraft && !isRSS && messageCanReplyAll(state.message) && (
             <MenuItem
               icon={<ReplyAll size={13} className="text-accent" />}
@@ -230,7 +259,8 @@ export function MessageContextMenu({
               label={t('chat.actions.print')}
               onClick={() => {
                 onClose()
-                void printMail(state.message)
+                if (onPrint) onPrint()
+                else void printMail(state.message)
               }}
             />
           )}
@@ -242,7 +272,9 @@ export function MessageContextMenu({
               onClick={() => {
                 const message = state.message
                 onClose()
-                void deleteMessage(message)
+                void deleteMessage(message).then((deleted) => {
+                  if (deleted) onDeleted?.()
+                })
               }}
             />
           )}

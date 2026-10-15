@@ -54,7 +54,7 @@ export function KanbanConversationPane({
       {phase !== 'exiting' && (
         <>
           <div
-            className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1 cursor-col-resize"
+            className="absolute left-0 top-0 z-30 h-full w-2 -translate-x-1 cursor-col-resize"
             onPointerDown={onResizeStart}
             title={resizeTitle}
           >
