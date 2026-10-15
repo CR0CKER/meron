@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -72,6 +76,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -96,15 +101,24 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import jp.nonbili.meron.shared.DraftAttachment
 import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.MessageAttachment
@@ -316,6 +330,8 @@ internal fun ThreadScreen(
     // The header pinned over a long message, its top gap included; zero while
     // nothing is pinned.
     var pinnedHeaderHeightPx by remember { mutableIntStateOf(0) }
+    // The conversation, captured for the frosted bands at either end of it.
+    val hazeState = rememberHazeState()
     val showReplyBar = thread != null && !isRss && messages.isNotEmpty()
     val replyOverlayPx by rememberUpdatedState(if (showReplyBar) replyBarHeightPx else 0)
     var endFollowRequest by remember(thread?.id) { mutableStateOf(0) }
@@ -696,177 +712,204 @@ internal fun ThreadScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Column(Modifier.clickable { detailsOpen = true }) {
-                            Text(
-                                thread?.subject?.ifBlank { "(no subject)" } ?: "Conversation",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            val subtitle = threadHeaderSubtitle(messages, isRss)
-                            if (subtitle.isNotBlank()) {
+                        FloatingBarChip(RoundedCornerShape(50), Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                            Column(
+                                Modifier.fillMaxSize().clickable { detailsOpen = true }.padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
                                 Text(
-                                    subtitle,
+                                    thread?.subject?.ifBlank { "(no subject)" } ?: "Conversation",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium,
                                 )
+                                val subtitle = threadHeaderSubtitle(messages, isRss)
+                                if (subtitle.isNotBlank()) {
+                                    Text(
+                                        subtitle,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("buttons.back"))
+                        FloatingBarChip(CircleShape, Modifier.padding(start = 4.dp).width(FLOATING_BAR_CHIP_HEIGHT)) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("buttons.back"))
+                            }
                         }
                     },
                     actions = {
-                        if (printing) CircularProgressIndicator(Modifier.size(20.dp))
-                        IconButton(onClick = onToggleStar) {
-                            Icon(
-                                if (thread?.starred == true) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                contentDescription = tr("chat.star"),
-                                tint = if (thread?.starred == true) chat.star else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { overflowOpen = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = tr("chat.moreActions"))
+                        FloatingBarChip(RoundedCornerShape(50), Modifier.padding(end = 4.dp)) {
+                            if (printing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp))
+                            IconButton(onClick = onToggleStar) {
+                                Icon(
+                                    if (thread?.starred == true) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                    contentDescription = tr("chat.star"),
+                                    tint = if (thread?.starred == true) chat.star else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                            DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(if (isRss) tr("feeds.actions.deleteFeed") else tr("threads.actions.archiveThread")) },
-                                    leadingIcon = { Icon(if (isRss) Icons.Filled.Delete else Icons.Filled.Archive, contentDescription = null) },
-                                    onClick = {
-                                        overflowOpen = false
-                                        onArchive()
-                                    },
-                                )
-                                if (onAddToTasks != null) {
-                                    DropdownMenuItem(
-                                        text = { Text(tr("tasks.addFromMessage")) },
-                                        leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
-                                        onClick = {
-                                            overflowOpen = false
-                                            onAddToTasks()
-                                        },
-                                    )
+                            Box {
+                                IconButton(onClick = { overflowOpen = true }) {
+                                    Icon(Icons.Filled.MoreVert, contentDescription = tr("chat.moreActions"))
                                 }
-                                DropdownMenuItem(
-                                    text = { Text(tr("chat.searchThread")) },
-                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                                    onClick = {
-                                        overflowOpen = false
-                                        searchOpen = !searchOpen
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (isRss) tr("chat.feedDetails") else tr("chat.conversationDetails")) },
-                                    leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
-                                    onClick = {
-                                        overflowOpen = false
-                                        detailsOpen = true
-                                    },
-                                )
-                                expandAllAction?.let { expand ->
+                                DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                                     DropdownMenuItem(
-                                        text = { Text(if (expand) tr("chat.expandAll") else tr("chat.collapseAll")) },
-                                        leadingIcon = {
-                                            Icon(
-                                                if (expand) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess,
-                                                contentDescription = null,
-                                            )
-                                        },
+                                        text = { Text(if (isRss) tr("feeds.actions.deleteFeed") else tr("threads.actions.archiveThread")) },
+                                        leadingIcon = { Icon(if (isRss) Icons.Filled.Delete else Icons.Filled.Archive, contentDescription = null) },
                                         onClick = {
                                             overflowOpen = false
-                                            releaseFocusBeforeToggle()
-                                            // The list keeps the message at the top of
-                                            // the screen where it is as the rows
-                                            // around it change height — or, for a
-                                            // reader at the end, the end.
-                                            if (!listState.canScrollForward) endHoldRequest += 1
-                                            expandOverrides = emptyMap()
-                                            expandAll = expand
+                                            onArchive()
                                         },
                                     )
-                                }
-                                if (!isRss) {
-                                    DropdownMenuItem(
-                                        text = { Text(tr("chat.actions.printThread")) },
-                                        leadingIcon = { Icon(Icons.Filled.Print, contentDescription = null) },
-                                        trailingIcon = { if (printing) CircularProgressIndicator(Modifier.size(16.dp)) },
-                                        enabled = !printing && thread != null,
-                                        onClick = {
-                                            overflowOpen = false
-                                            printing = true
-                                            val subject = thread?.subject.orEmpty()
-                                            printScope.launch {
-                                                try {
-                                                    printThread(subject, loadPrintMessages())
-                                                } catch (error: kotlinx.coroutines.CancellationException) {
-                                                    throw error
-                                                } catch (_: Exception) {
-                                                    onPrintError(printError)
-                                                } finally {
-                                                    printing = false
-                                                }
-                                            }
-                                        },
-                                    )
-                                    // Hidden when the reply target has no other
-                                    // recipients: a reply-all identical to the
-                                    // reply is a second name for the same action.
-                                    if (canReplyAllToThread) {
+                                    if (onAddToTasks != null) {
                                         DropdownMenuItem(
-                                            text = { Text(tr("chat.actions.replyAll")) },
-                                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.ReplyAll, contentDescription = null) },
+                                            text = { Text(tr("tasks.addFromMessage")) },
+                                            leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
                                             onClick = {
                                                 overflowOpen = false
-                                                onReplyAll()
+                                                onAddToTasks()
                                             },
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text(if (preferHtml) tr("chat.viewAsPlainText") else tr("chat.viewAsHtml")) },
-                                        leadingIcon = { Icon(Icons.Filled.Code, contentDescription = null) },
+                                        text = { Text(tr("chat.searchThread")) },
+                                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                                         onClick = {
                                             overflowOpen = false
-                                            onPreferHtmlChange(!preferHtml)
+                                            searchOpen = !searchOpen
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text(tr("threads.actions.moveTo")) },
-                                        leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                                        text = { Text(if (isRss) tr("chat.feedDetails") else tr("chat.conversationDetails")) },
+                                        leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
                                         onClick = {
                                             overflowOpen = false
-                                            moveDialogOpen = true
+                                            detailsOpen = true
                                         },
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text(tr("threads.actions.copyTo")) },
-                                        leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
-                                        onClick = {
-                                            overflowOpen = false
-                                            copyDialogOpen = true
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(deleteLabel, color = MaterialTheme.colorScheme.error) },
-                                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                                        onClick = {
-                                            overflowOpen = false
-                                            onDelete()
-                                        },
-                                    )
+                                    expandAllAction?.let { expand ->
+                                        DropdownMenuItem(
+                                            text = { Text(if (expand) tr("chat.expandAll") else tr("chat.collapseAll")) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (expand) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            onClick = {
+                                                overflowOpen = false
+                                                releaseFocusBeforeToggle()
+                                                // The list keeps the message at the top of
+                                                // the screen where it is as the rows
+                                                // around it change height — or, for a
+                                                // reader at the end, the end.
+                                                if (!listState.canScrollForward) endHoldRequest += 1
+                                                expandOverrides = emptyMap()
+                                                expandAll = expand
+                                            },
+                                        )
+                                    }
+                                    if (!isRss) {
+                                        DropdownMenuItem(
+                                            text = { Text(tr("chat.actions.printThread")) },
+                                            leadingIcon = { Icon(Icons.Filled.Print, contentDescription = null) },
+                                            trailingIcon = { if (printing) CircularProgressIndicator(Modifier.size(16.dp)) },
+                                            enabled = !printing && thread != null,
+                                            onClick = {
+                                                overflowOpen = false
+                                                printing = true
+                                                val subject = thread?.subject.orEmpty()
+                                                printScope.launch {
+                                                    try {
+                                                        printThread(subject, loadPrintMessages())
+                                                    } catch (error: kotlinx.coroutines.CancellationException) {
+                                                        throw error
+                                                    } catch (_: Exception) {
+                                                        onPrintError(printError)
+                                                    } finally {
+                                                        printing = false
+                                                    }
+                                                }
+                                            },
+                                        )
+                                        // Hidden when the reply target has no other
+                                        // recipients: a reply-all identical to the
+                                        // reply is a second name for the same action.
+                                        if (canReplyAllToThread) {
+                                            DropdownMenuItem(
+                                                text = { Text(tr("chat.actions.replyAll")) },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ReplyAll, contentDescription = null) },
+                                                onClick = {
+                                                    overflowOpen = false
+                                                    onReplyAll()
+                                                },
+                                            )
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text(if (preferHtml) tr("chat.viewAsPlainText") else tr("chat.viewAsHtml")) },
+                                            leadingIcon = { Icon(Icons.Filled.Code, contentDescription = null) },
+                                            onClick = {
+                                                overflowOpen = false
+                                                onPreferHtmlChange(!preferHtml)
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(tr("threads.actions.moveTo")) },
+                                            leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                                            onClick = {
+                                                overflowOpen = false
+                                                moveDialogOpen = true
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(tr("threads.actions.copyTo")) },
+                                            leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                                            onClick = {
+                                                overflowOpen = false
+                                                copyDialogOpen = true
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(deleteLabel, color = MaterialTheme.colorScheme.error) },
+                                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                            onClick = {
+                                                overflowOpen = false
+                                                onDelete()
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
                     },
+                    // See-through: the conversation scrolls on under the bar,
+                    // between its floating chips, and under the status bar.
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
                 )
             },
             snackbarHost = { SnackbarHost(snackbarHost) },
         ) { innerPadding ->
+            val layoutDirection = LocalLayoutDirection.current
+            val barHeight = innerPadding.calculateTopPadding()
+            // The list runs up under the app bar, except while the search bar
+            // sits between them.
+            val underBar = if (searchOpen) 0.dp else barHeight
+            val underBarPx = with(LocalDensity.current) { underBar.roundToPx() }
+            // And down under the navigation bar, below the reply card, which
+            // itself stays above it.
+            val navBarHeight = innerPadding.calculateBottomPadding()
+            val contentPadding =
+                PaddingValues(
+                    start = innerPadding.calculateStartPadding(layoutDirection),
+                    top = barHeight - underBar,
+                    end = innerPadding.calculateEndPadding(layoutDirection),
+                )
             if (moveDialogOpen && thread != null) {
                 MoveThreadDialog(
                     thread = thread,
@@ -899,12 +942,12 @@ internal fun ThreadScreen(
             ChatWallpaperBackground(
                 presetId = wallpaperPresetId,
                 customUrl = wallpaperCustomUrl,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier.fillMaxSize().padding(contentPadding).hazeSource(hazeState, zIndex = 0f),
             )
             Column(
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(contentPadding)
                     .consumeWindowInsets(innerPadding)
                     .imePadding(),
             ) {
@@ -931,28 +974,19 @@ internal fun ThreadScreen(
                         // The last message scrolls clear of the reply card,
                         // whose own top margin is the gap between the two.
                         val replyBarHeight = with(LocalDensity.current) { replyOverlayPx.toDp() }
-                        // What shows around the card is faded, from a line the
-                        // card itself covers: below its top margin and the
-                        // curve of its corners. So is what shows above the
-                        // pinned header, while there is one.
-                        val fadedBottomPx =
-                            with(LocalDensity.current) { replyOverlayPx - (REPLY_CARD_TOP_MARGIN + REPLY_CARD_RADIUS).roundToPx() }
                         LazyColumn(
                             Modifier
                                 .fillMaxSize()
-                                .fadedEdges(
-                                    // Down to the middle of the pinned header, which covers where it ends.
-                                    topPx = pinnedHeaderHeightPx / 2,
-                                    bottomPx = fadedBottomPx,
-                                    veil = MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                                ).appScrollbar(listState),
+                                .hazeSource(hazeState, zIndex = 1f)
+                                .appScrollbar(listState),
                             state = listState,
                             contentPadding =
                                 PaddingValues(
                                     start = sidePadding,
                                     end = sidePadding,
-                                    top = edgePadding,
-                                    bottom = if (replyOverlayPx > 0) replyBarHeight else edgePadding,
+                                    top = underBar + edgePadding,
+                                    // The reply card's measured height takes in the navigation bar.
+                                    bottom = if (replyOverlayPx > 0) replyBarHeight else navBarHeight + edgePadding,
                                 ),
                             verticalArrangement = Arrangement.spacedBy(if (traditional) 6.dp else 10.dp),
                         ) {
@@ -1057,6 +1091,42 @@ internal fun ThreadScreen(
                                 Spacer(Modifier.height(1.dp))
                             }
                         }
+                        // What scrolls on under the status bar and the app bar,
+                        // down to the middle of the pinned header while there
+                        // is one, is frosted; so is what shows around the reply
+                        // card and under the navigation bar, from a line the
+                        // card itself covers: below its top margin and the
+                        // curve of its corners. Over the list, under the pinned
+                        // header and the card.
+                        val fadePx = with(LocalDensity.current) { 16.dp.toPx() }
+                        val topBandPx =
+                            when {
+                                // Its measured height takes in the bar it sits below.
+                                pinnedHeaderHeightPx > 0 -> underBarPx + (pinnedHeaderHeightPx - underBarPx) / 2
+
+                                else -> underBarPx
+                            }
+                        val bottomBandPx =
+                            if (replyOverlayPx > 0) {
+                                with(LocalDensity.current) { replyOverlayPx - (REPLY_CARD_TOP_MARGIN + REPLY_CARD_RADIUS).roundToPx() }
+                            } else {
+                                with(LocalDensity.current) { navBarHeight.roundToPx() }
+                            }
+                        FrostedBand(
+                            hazeState,
+                            heightPx = topBandPx,
+                            // Soft where it ends in the open; the pinned header covers its end otherwise.
+                            fadeAtBottomPx = if (pinnedHeaderHeightPx > 0) 0f else fadePx,
+                            // A little heavier: the status bar's icons sit on it.
+                            tintAlpha = 0.4f,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        )
+                        FrostedBand(
+                            hazeState,
+                            heightPx = bottomBandPx,
+                            fadeAtTopPx = fadePx,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
                         // Reading a message taller than the screen scrolls its
                         // header away, and with it the tap target that collapses
                         // the message again. Float a copy of that header at the
@@ -1068,14 +1138,15 @@ internal fun ThreadScreen(
                             // Recomputed on every recomposition so the derived
                             // state below never reads a stale expansion map.
                             val expandedFlags by rememberUpdatedState(messages.map(::isMessageExpanded))
-                            val pinnedIndex by remember(headerItemCount, messages.size) {
+                            val pinnedIndex by remember(headerItemCount, messages.size, underBarPx) {
                                 derivedStateOf {
                                     val info = listState.layoutInfo
                                     pinnedHeaderMessageIndex(
                                         visible = info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
                                         headerItemCount = headerItemCount,
                                         messageCount = expandedFlags.size,
-                                        viewportStartOffset = info.viewportStartOffset,
+                                        // The bottom of the app bar, not the top of the screen.
+                                        viewportStartOffset = info.viewportStartOffset + underBarPx,
                                         minRemainingPx = minRemainingPx,
                                         expanded = { index -> expandedFlags.getOrElse(index) { false } },
                                     )
@@ -1097,7 +1168,7 @@ internal fun ThreadScreen(
                                         Modifier
                                             .fillMaxWidth()
                                             .onSizeChanged { pinnedHeaderHeightPx = it.height }
-                                            .padding(start = 8.dp, end = 8.dp, top = 6.dp),
+                                            .padding(start = 8.dp, end = 8.dp, top = underBar + 6.dp),
                                 ) {
                                     Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                                         MessageRowHeader(
@@ -1138,7 +1209,15 @@ internal fun ThreadScreen(
                     // Over the list rather than under it: messages scroll on
                     // behind the card, like desktop's composer.
                     if (showReplyBar) {
-                        Box(Modifier.align(Alignment.BottomCenter).onSizeChanged { replyBarHeightPx = it.height }) {
+                        // With the keyboard up, the list already stops the
+                        // navigation bar's height into it, so the same padding
+                        // puts the card right on top of the keyboard.
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .onSizeChanged { replyBarHeightPx = it.height }
+                                .padding(bottom = navBarHeight),
+                        ) {
                             ReplyBar(
                                 value = quickReplyBody,
                                 onChange = onQuickReplyChange,
@@ -1156,7 +1235,7 @@ internal fun ThreadScreen(
                                                 visible = info.visibleItemsInfo.map { ListItemGeometry(it.index, it.offset, it.size) },
                                                 headerItemCount = currentHeaderItemCount,
                                                 messageCount = messages.size,
-                                                viewportStartOffset = info.viewportStartOffset,
+                                                viewportStartOffset = info.viewportStartOffset + underBarPx,
                                                 viewportEndOffset = info.viewportEndOffset - replyOverlayPx,
                                             )?.let { anchor -> messages.getOrNull(anchor.messageIndex)?.id?.let { it to anchor.bottomGapPx } }
                                         } else {
@@ -1639,6 +1718,26 @@ private val REPLY_CARD_RADIUS = 24.dp
 // The reply card and the pinned header ride over the conversation, so they
 // sit higher than the bubbles (3.dp) that scroll under them.
 private val FLOATING_CARD_ELEVATION = 4.dp
+private val FLOATING_BAR_CHIP_HEIGHT = 48.dp
+
+// One of the thread app bar's controls, floating on the conversation that
+// scrolls on under the bar, drawn like the cards at either end of it.
+@Composable
+private fun FloatingBarChip(
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = shape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        shadowElevation = FLOATING_CARD_ELEVATION,
+        modifier = modifier.height(FLOATING_BAR_CHIP_HEIGHT),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, content = content)
+    }
+}
 
 /**
  * Fades the top [topPx] and bottom [bottomPx] of this content into [veil]: the
@@ -1650,28 +1749,49 @@ private val FLOATING_CARD_ELEVATION = 4.dp
  * layer, and Android's WebView crashes natively when drawn into one on
  * GL-pipeline devices (see MailWebView.android.kt).
  */
-private fun Modifier.fadedEdges(
-    topPx: Int,
-    bottomPx: Int,
-    veil: Color,
-): Modifier =
-    drawWithContent {
-        drawContent()
-        if (topPx > 0) {
-            drawRect(
-                Brush.verticalGradient(listOf(veil, Color.Transparent), endY = topPx.toFloat()),
-                size = Size(size.width, topPx.toFloat()),
-            )
+@Composable
+private fun FrostedBand(
+    hazeState: HazeState,
+    heightPx: Int,
+    modifier: Modifier = Modifier,
+    fadeAtTopPx: Float = 0f,
+    fadeAtBottomPx: Float = 0f,
+    // Strong enough to keep lines of text from reading as text, light
+    // enough that they still show moving underneath.
+    tintAlpha: Float = 0.3f,
+) {
+    if (heightPx <= 0) return
+    val background = MaterialTheme.colorScheme.background
+    val style =
+        remember(background, heightPx, fadeAtTopPx, fadeAtBottomPx, tintAlpha) {
+            val height = heightPx.toFloat()
+            HazeBlurStyle {
+                backgroundColor(background)
+                blurRadius(12.dp)
+                noiseFactor(0f)
+                colorEffects(listOf(HazeColorEffect.tint(background.copy(alpha = tintAlpha))))
+                // Where blurring is unavailable (before Android 12); Haze
+                // strengthens it to make up for the missing blur.
+                fallbackColorEffect(HazeColorEffect.tint(background.copy(alpha = 0.7f)))
+                if (fadeAtTopPx > 0f || fadeAtBottomPx > 0f) {
+                    mask(
+                        Brush.verticalGradient(
+                            0f to if (fadeAtTopPx > 0f) Color.Transparent else Color.Black,
+                            (fadeAtTopPx / height).coerceIn(0f, 0.5f) to Color.Black,
+                            (1f - fadeAtBottomPx / height).coerceIn(0.5f, 1f) to Color.Black,
+                            1f to if (fadeAtBottomPx > 0f) Color.Transparent else Color.Black,
+                        ),
+                    )
+                }
+            }
         }
-        if (bottomPx > 0) {
-            val top = size.height - bottomPx
-            drawRect(
-                Brush.verticalGradient(listOf(Color.Transparent, veil), startY = top, endY = size.height),
-                topLeft = Offset(0f, top),
-                size = Size(size.width, bottomPx.toFloat()),
-            )
-        }
-    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(with(LocalDensity.current) { heightPx.toDp() })
+            .hazeBlur(HazeInput.Sources(hazeState), style),
+    )
+}
 
 @Composable
 internal fun ReplyBar(

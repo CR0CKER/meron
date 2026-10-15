@@ -62,7 +62,7 @@ def javaString = { String value -> "\"" + value.replace("\\", "\\\\").replace("\
 
 android {
     namespace "jp.nonbili.meron"
-    compileSdk 36
+    compileSdk 37
 
     buildFeatures {
         buildConfig true
