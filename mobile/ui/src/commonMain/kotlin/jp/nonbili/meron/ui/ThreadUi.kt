@@ -711,32 +711,9 @@ internal fun ThreadScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = {
-                        FloatingBarChip(RoundedCornerShape(50), Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-                            Column(
-                                Modifier.fillMaxSize().clickable { detailsOpen = true }.padding(horizontal = 16.dp),
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                Text(
-                                    thread?.subject?.ifBlank { "(no subject)" } ?: "Conversation",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                val subtitle = threadHeaderSubtitle(messages, isRss)
-                                if (subtitle.isNotBlank()) {
-                                    Text(
-                                        subtitle,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    },
+                    // The subject is at the top of the list instead, in full;
+                    // the bar keeps only its floating buttons.
+                    title = {},
                     navigationIcon = {
                         FloatingBarChip(CircleShape, Modifier.padding(start = 4.dp).width(FLOATING_BAR_CHIP_HEIGHT)) {
                             IconButton(onClick = onBack) {
@@ -990,9 +967,8 @@ internal fun ThreadScreen(
                                 ),
                             verticalArrangement = Arrangement.spacedBy(if (traditional) 6.dp else 10.dp),
                         ) {
-                            // The app bar clips the subject to one line, so repeat it
-                            // in full at the top of the list. It scrolls away with the
-                            // messages; the bar title stays as the fallback.
+                            // The subject, in full, at the top of the list. It
+                            // scrolls away with the messages.
                             item {
                                 Text(
                                     (thread?.subject ?: "").ifBlank { tr("threads.noSubject") },
@@ -1718,39 +1694,52 @@ private val REPLY_CARD_RADIUS = 24.dp
 // The reply card and the pinned header ride over the conversation, so they
 // sit higher than the bubbles (3.dp) that scroll under them.
 private val FLOATING_CARD_ELEVATION = 4.dp
-private val FLOATING_BAR_CHIP_HEIGHT = 48.dp
+internal val FLOATING_BAR_CHIP_HEIGHT = 48.dp
 
-// One of the thread app bar's controls, floating on the conversation that
-// scrolls on under the bar, drawn like the cards at either end of it.
+// A card floating on content that scrolls on under it, drawn like the reply
+// card and the pinned header.
 @Composable
-private fun FloatingBarChip(
+internal fun FloatingCard(
     shape: Shape,
     modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit,
+    content: @Composable () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = shape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
         shadowElevation = FLOATING_CARD_ELEVATION,
-        modifier = modifier.height(FLOATING_BAR_CHIP_HEIGHT),
-    ) {
+        modifier = modifier,
+        content = content,
+    )
+}
+
+// One of an app bar's controls, floating on the content that scrolls on under
+// the bar.
+@Composable
+internal fun FloatingBarChip(
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    FloatingCard(shape, modifier.height(FLOATING_BAR_CHIP_HEIGHT)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, content = content)
     }
 }
 
 /**
- * Fades the top [topPx] and bottom [bottomPx] of this content into [veil]: the
- * messages that run on behind the pinned header and the reply card stay
- * visible around them without their text competing with either. Each fade
- * starts from nothing, so it has no edge where it shows beside what covers it.
+ * Frosts what [hazeState]'s sources draw behind this band: content scrolling on
+ * under the system bars and the floating controls stays visible as movement
+ * without its text competing with them. [fadeAtTopPx] and [fadeAtBottomPx]
+ * soften an edge that shows in the open.
  *
- * A fade only, not a blur: blurring means drawing the list into an offscreen
- * layer, and Android's WebView crashes natively when drawn into one on
- * GL-pipeline devices (see MailWebView.android.kt).
+ * The sources are drawn into an offscreen layer, which MailWebView.android.kt
+ * notes crashes Android's WebView natively on some GL-pipeline devices. A Pixel
+ * 3a on Skia GL renders HTML bodies into it fine; fall back to a plain veil if
+ * reports say otherwise.
  */
 @Composable
-private fun FrostedBand(
+internal fun FrostedBand(
     hazeState: HazeState,
     heightPx: Int,
     modifier: Modifier = Modifier,

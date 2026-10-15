@@ -11,17 +11,6 @@ import jp.nonbili.meron.shared.ThreadSummary
 import jp.nonbili.meron.shared.folderIsDrafts
 import jp.nonbili.meron.shared.folderIsTrash
 
-// One-line header subtitle. The bubbles already name their sender and the list
-// itself shows how many there are, so only RSS feeds carry a subtitle: the
-// latest item's date.
-internal fun threadHeaderSubtitle(
-    messages: List<MessageBody>,
-    isRss: Boolean,
-): String {
-    if (messages.isEmpty() || !isRss) return ""
-    return formatInboxTimestamp(messages.maxOf { it.dateEpochSeconds })
-}
-
 // How long after open the list keeps re-anchoring to the target message while
 // asynchronously measured bubbles (HTML bodies in WebViews) settle.
 internal const val THREAD_OPEN_ANCHOR_WINDOW_MS = 2_000L
