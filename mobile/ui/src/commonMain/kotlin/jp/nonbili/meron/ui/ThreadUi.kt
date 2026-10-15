@@ -1268,6 +1268,7 @@ internal fun ThreadScreen(
             MessageReaderScreen(
                 message = reader,
                 preferHtml = preferHtml,
+                isRss = isRss,
                 actionsEnabled = !isRss,
                 remoteContent = remoteContentFor(reader),
                 onBack = { readerMessage = null },

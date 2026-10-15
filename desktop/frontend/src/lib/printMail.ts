@@ -1,6 +1,6 @@
 import { invoke } from './bridge'
 import { CONVERSATION_PAGE_SIZE } from './pagination'
-import { htmlToText } from './html'
+import { mailHtmlToText } from './html'
 import { t } from './i18n'
 import { formatFullTimestamp, htmlReferencesMedia } from '../components/chat/messageHelpers'
 import { showToast, ui$ } from '../states/ui'
@@ -56,14 +56,7 @@ export function mailPrintText(mail: Message | MessageTab): string {
   ].filter(Boolean)
   let body = (message ? mail.body_missing : mail.bodyMissing) ? t('chat.couldNotPrintMessage') : mail.body
   if (!body) {
-    const html = new DOMParser().parseFromString((message ? mail.body_html : mail.bodyHtml) || '', 'text/html')
-    html
-      .querySelectorAll('script, style, img, iframe, object, embed, link, video, audio, source')
-      .forEach((el) => el.remove())
-    html.querySelectorAll('*').forEach((el) => {
-      for (const attribute of Array.from(el.attributes)) el.removeAttribute(attribute.name)
-    })
-    body = htmlToText(html.body.innerHTML)
+    body = mailHtmlToText((message ? mail.body_html : mail.bodyHtml) || '')
   }
   const attachments = printAttachmentNames(mail)
   return `${rows.join('\n')}\n\n${body}${attachments.length ? `\n\n${t('chat.attachments')}:\n${attachments.join('\n')}` : ''}`

@@ -3,6 +3,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  FilePen,
   Forward,
   Globe,
   Link2,
@@ -15,6 +16,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
+import { mailHtmlToText } from '../../lib/html'
 import { useTranslation } from '../../lib/i18n'
 import {
   openMessageTab,
@@ -233,12 +235,22 @@ export function MessageContextMenu({
           )}
           {!isDraft && !isRSS && !headerOnly && (
             <MenuItem
-              icon={<Copy size={13} className="text-accent" />}
+              icon={<FilePen size={13} className="text-accent" />}
               label={t('chat.actions.editAsNewMessage')}
               onClick={() => {
                 const message = state.message
                 onClose()
                 void editAsNewMessage(message)
+              }}
+            />
+          )}
+          {!headerOnly && !state.message.body_missing && (
+            <MenuItem
+              icon={<Copy size={13} className="text-accent" />}
+              label={t('chat.copyMessageText')}
+              onClick={() => {
+                copyText(messagePlainText(state.message)).catch(() => undefined)
+                onClose()
               }}
             />
           )}
@@ -282,4 +294,10 @@ export function MessageContextMenu({
       )}
     </FloatingContextMenu>
   )
+}
+
+/** The message as plain text: its text body, or the rich body's text when it has none. */
+function messagePlainText(message: Message): string {
+  if (message.body.trim()) return message.body
+  return message.body_html ? mailHtmlToText(message.body_html).trim() : ''
 }

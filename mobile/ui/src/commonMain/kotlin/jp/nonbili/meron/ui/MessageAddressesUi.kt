@@ -11,8 +11,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -141,6 +145,7 @@ private fun AddressChip(
             if (item.email.isNotBlank()) {
                 DropdownMenuItem(
                     text = { Text(tr("chat.copyFullAddress")) },
+                    leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                     onClick = {
                         menuOpen = false
                         onCopy(label, item.full)
@@ -149,6 +154,7 @@ private fun AddressChip(
             }
             DropdownMenuItem(
                 text = { Text(tr("chat.copyEmailAddress")) },
+                leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                 onClick = {
                     menuOpen = false
                     onCopy(emailLabel, email)
@@ -157,6 +163,7 @@ private fun AddressChip(
             if (email.contains("@")) {
                 DropdownMenuItem(
                     text = { Text(tr("composer.actions.newMessage")) },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                     onClick = {
                         menuOpen = false
                         onComposeTo(email)

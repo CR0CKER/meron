@@ -30,8 +30,6 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -86,6 +84,7 @@ import kotlinx.coroutines.launch
 internal fun MessageReaderScreen(
     message: MessageBody,
     preferHtml: Boolean,
+    isRss: Boolean,
     actionsEnabled: Boolean,
     remoteContent: MessageRemoteContent,
     onBack: () -> Unit,
@@ -107,11 +106,6 @@ internal fun MessageReaderScreen(
     onOpenHtmlImage: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
 ) {
-    val printMessage = rememberPrintMessage(preferHtml, remoteContent.allowRemote)
-    val messageTextLabel = tr("chat.messageText")
-    val subjectLabel = tr("composer.fields.subject")
-    val messageIdLabel = tr("chat.messageId")
-    val noSubjectLabel = tr("threads.noSubject")
     var menuOpen by remember(message.id) { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
@@ -259,75 +253,25 @@ internal fun MessageReaderScreen(
                             IconButton(onClick = { menuOpen = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = tr("chat.moreMessageActions"))
                             }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(tr("chat.actions.print")) },
-                                    enabled = !message.bodyMissing,
-                                    onClick = {
-                                        menuOpen = false
-                                        printMessage(message)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(tr("chat.copyMessageText")) },
-                                    onClick = {
-                                        menuOpen = false
-                                        onCopy(messageTextLabel, messagePlainText(message))
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(tr("chat.copySubject")) },
-                                    onClick = {
-                                        menuOpen = false
-                                        onCopy(subjectLabel, message.subject.ifBlank { noSubjectLabel })
-                                    },
-                                )
-                                if (message.messageId.isNotBlank()) {
-                                    DropdownMenuItem(
-                                        text = { Text(tr("chat.copyMessageId")) },
-                                        onClick = {
-                                            menuOpen = false
-                                            onCopy(messageIdLabel, message.messageId)
-                                        },
-                                    )
-                                }
-                                if (actionsEnabled && !bottomActions) {
-                                    if (canReplyAllToMessage(message)) {
-                                        DropdownMenuItem(
-                                            text = { Text(tr("chat.actions.replyAll")) },
-                                            onClick = {
-                                                menuOpen = false
-                                                onReplyAllToMessage(message)
-                                            },
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(tr("chat.actions.forward")) },
-                                        onClick = {
-                                            menuOpen = false
-                                            onForward(message)
-                                        },
-                                    )
-                                }
-                                if (actionsEnabled) {
-                                    DropdownMenuItem(
-                                        text = { Text(tr("chat.actions.editAsNewMessage")) },
-                                        onClick = {
-                                            menuOpen = false
-                                            onEditAsNew(message)
-                                        },
-                                    )
-                                }
-                                if (actionsEnabled && !bottomActions) {
-                                    DropdownMenuItem(
-                                        text = { Text(tr("chat.actions.deleteMessage"), color = MaterialTheme.colorScheme.error) },
-                                        onClick = {
-                                            menuOpen = false
-                                            onDelete(message)
-                                        },
-                                    )
-                                }
-                            }
+                            MessageActionsMenu(
+                                expanded = menuOpen,
+                                onDismiss = { menuOpen = false },
+                                preferHtml = preferHtml,
+                                allowRemote = remoteContent.allowRemote,
+                                message = message,
+                                isRss = isRss,
+                                actionsEnabled = actionsEnabled,
+                                onForward = onForward,
+                                onReplyAllToMessage = onReplyAllToMessage,
+                                canReplyAllToMessage = canReplyAllToMessage,
+                                onEditAsNew = onEditAsNew,
+                                onToggleRead = null,
+                                onToggleStarred = null,
+                                onDelete = onDelete,
+                                onCopyMessageText = onCopy,
+                                onOpenUrl = onOpenUrl,
+                                mailActionsInBar = bottomActions,
+                            )
                         }
                     },
                     // See-through, like the thread's: the message scrolls on
@@ -400,7 +344,7 @@ internal fun MessageReaderScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
-                        message.subject.ifBlank { noSubjectLabel },
+                        message.subject.ifBlank { tr("threads.noSubject") },
                         modifier = Modifier.padding(horizontal = 4.dp),
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.headlineSmall,
