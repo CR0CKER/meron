@@ -1374,6 +1374,11 @@ private fun MeronMobileScreenContent(
                         sendShortcutMode = next
                         saveSendShortcutMode(prefs, next)
                     },
+                    quoteReplies = quoteReplies,
+                    onToggleQuoteReplies = {
+                        quoteReplies = !quoteReplies
+                        saveAppBoolean(prefs, QUOTE_REPLIES_PREF, quoteReplies)
+                    },
                     conversationLayout = conversationLayout,
                     onToggleConversationLayout = {
                         val next = conversationLayout.next()

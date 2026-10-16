@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitScreen
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Inbox
@@ -168,6 +169,8 @@ internal fun SettingsScreen(
     onToggleTasks: () -> Unit,
     sendShortcutMode: SendShortcutMode,
     onToggleSendShortcut: () -> Unit,
+    quoteReplies: Boolean,
+    onToggleQuoteReplies: () -> Unit,
     conversationLayout: ConversationLayout,
     onToggleConversationLayout: () -> Unit,
     messageFontScale: Int,
@@ -394,6 +397,8 @@ internal fun SettingsScreen(
                 SettingsComposerPage(
                     sendShortcutMode = sendShortcutMode,
                     onToggleSendShortcut = onToggleSendShortcut,
+                    quoteReplies = quoteReplies,
+                    onToggleQuoteReplies = onToggleQuoteReplies,
                     appSignatureHtml = appSignatureHtml,
                     onSaveAppSignature = onSaveAppSignature,
                     modifier = Modifier.fillMaxSize(),
@@ -1125,6 +1130,8 @@ internal fun SettingsMessagesPage(
 internal fun SettingsComposerPage(
     sendShortcutMode: SendShortcutMode,
     onToggleSendShortcut: () -> Unit,
+    quoteReplies: Boolean,
+    onToggleQuoteReplies: () -> Unit,
     appSignatureHtml: String,
     onSaveAppSignature: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1138,6 +1145,15 @@ internal fun SettingsComposerPage(
                 title = tr("settings.composer.sendMessageWith"),
                 onClick = onToggleSendShortcut,
                 trailing = { Text(sendShortcutMode.label(), color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.Filled.FormatQuote,
+                title = tr("settings.composer.quoteReplies"),
+                hint = tr("settings.composer.quoteRepliesHint"),
+                checked = quoteReplies,
+                onToggle = onToggleQuoteReplies,
             )
         }
 

@@ -153,6 +153,10 @@ internal const val CHAT_FULL_MESSAGES_PREF = "chat_full_messages_v1"
 /** Whether the message reader puts reply, forward and delete in a bottom bar
  *  where they are easier to reach, instead of only in the top overflow menu. */
 internal const val READER_BOTTOM_ACTIONS_PREF = "reader_bottom_actions_v1"
+
+/** Whether replies carry the message they answer, quoted under the reply text.
+ *  Off by default: replies read as chat messages. */
+internal const val QUOTE_REPLIES_PREF = "quote_replies_v1"
 internal const val NOTIFICATION_BANNER_DISMISSED_PREF = "notification_banner_dismissed_v1"
 internal const val LIVE_MAIL_PUSH_PREF = "live_mail_push_v1"
 internal const val BACKGROUND_SYNC_ENABLED_PREF = "background_sync_enabled_v1"

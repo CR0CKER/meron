@@ -13,6 +13,9 @@ import jp.nonbili.meron.shared.ComposeDraft
 import jp.nonbili.meron.shared.ContactSuggestParams
 import jp.nonbili.meron.shared.ContactSuggestion
 import jp.nonbili.meron.shared.DiscardDraftParams
+import jp.nonbili.meron.shared.DraftAttachment
+import jp.nonbili.meron.shared.FORWARD_QUOTE_MARKER
+import jp.nonbili.meron.shared.ForwardInlineImage
 import jp.nonbili.meron.shared.MessageBody
 import jp.nonbili.meron.shared.MobileMailCommandClient
 import jp.nonbili.meron.shared.SendIdentity
@@ -29,6 +32,7 @@ import jp.nonbili.meron.shared.folderIsDrafts
 import jp.nonbili.meron.shared.forwardHtmlForSend
 import jp.nonbili.meron.shared.forwardInlineImages
 import jp.nonbili.meron.shared.forwardableAttachments
+import jp.nonbili.meron.shared.hasReplyQuote
 import jp.nonbili.meron.shared.inlineImageToDraftAttachment
 import jp.nonbili.meron.shared.messageEditAsNewDraft
 import jp.nonbili.meron.shared.messageForwardDraft
@@ -40,6 +44,9 @@ import jp.nonbili.meron.shared.parseContactSuggestResponse
 import jp.nonbili.meron.shared.recipientTail
 import jp.nonbili.meron.shared.replaceRecipientTail
 import jp.nonbili.meron.shared.replyAllAddsRecipients
+import jp.nonbili.meron.shared.replyQuoteAttribution
+import jp.nonbili.meron.shared.replyQuotedHtmlBody
+import jp.nonbili.meron.shared.replyQuotedPlainBody
 import jp.nonbili.meron.shared.resolveSignatureHtml
 import jp.nonbili.meron.shared.signaturePlainText
 import jp.nonbili.meron.shared.threadIdIsRss
@@ -159,22 +166,27 @@ internal fun MeronMobileState.clearComposeDraftState() {
     composeReferences = ""
     composeForwardHtml = ""
     composeForwardInlineAttachments = emptyList()
+    composeQuoteMarker = FORWARD_QUOTE_MARKER
+    composeReplyQuote = ""
     composeSeed = ComposeSeed()
     recipientSuggestionField = ""
     recipientSuggestions = emptyList()
 }
 
 /**
- * The composer with the signature this app seeded taken back out. A signature
- * the user has typed into can no longer be identified (see
- * [bodyWithSwappedSignature]), which is the same answer as "this text is theirs
- * now". Mirrors the reply bar's [quickReplyIsBlank].
+ * The composer with the signature this app seeded taken back out, and a reply's
+ * seeded quote with it while the quote is untouched. A signature the user has
+ * typed into can no longer be identified (see [bodyWithSwappedSignature]), which
+ * is the same answer as "this text is theirs now". Mirrors the reply bar's
+ * [quickReplyIsBlank].
  */
 private fun MeronMobileState.composeBodyWithoutSignature(): String {
-    val mark = composeSignature ?: return body
-    if (mark.text.isBlank()) return body
-    val swapped = bodyWithSwappedSignature(body, mark, "")
-    return if (swapped.tracking == null) body else swapped.body
+    val quoteAt = if (composeReplyQuote.isBlank()) -1 else body.lastIndexOf(composeReplyQuote)
+    val written = if (quoteAt < 0) body else body.removeRange(quoteAt, quoteAt + composeReplyQuote.length)
+    val mark = composeSignature ?: return written
+    if (mark.text.isBlank()) return written
+    val swapped = bodyWithSwappedSignature(written, mark, "")
+    return if (swapped.tracking == null) written else swapped.body
 }
 
 /**
@@ -204,10 +216,12 @@ private fun recipientEntries(value: String): List<String> {
 }
 
 // The draft as the core should receive it: the plain body the composer edits,
-// plus — for a forward — the rebuilt HTML alternative and the inline images it
-// references.
+// plus — for a forward or a quoted reply — the rebuilt HTML alternative and the
+// inline images it references. A reply whose quote the user has edited goes out
+// plain: the cached HTML quote would no longer say what the plain one does.
 private fun MeronMobileState.currentComposeDraft(): ComposeDraft {
-    val html = forwardHtmlForSend(body.trim(), composeForwardHtml)
+    val quoteIntact = composeReplyQuote.isBlank() || body.trim().endsWith(composeReplyQuote)
+    val html = if (quoteIntact) forwardHtmlForSend(body.trim(), composeForwardHtml, composeQuoteMarker) else ""
     return ComposeDraft(
         to = to.trim(),
         cc = cc.trim(),
@@ -641,7 +655,7 @@ internal fun MeronMobileState.replyToMessage(
             replyAll = replyAll,
         )
     val generation = ++composeSessionGeneration
-    val open: MeronMobileState.() -> Unit = open@{
+    val open: MeronMobileState.(ReplyQuote?) -> Unit = open@{ quote ->
         if (generation != composeSessionGeneration) return@open
         // A reply of its own, not a continuation of whatever the composer last
         // held: threading headers and leftover forward state go first.
@@ -650,7 +664,13 @@ internal fun MeronMobileState.replyToMessage(
         cc = params.cc
         bcc = params.bcc
         subject = params.subject
-        body = seedBodyWithSignature(params.body, accountId)
+        body =
+            if (quote == null) {
+                seedBodyWithSignature(params.body, accountId)
+            } else {
+                seedBodyWithSignature(quote.text, accountId, SignaturePlacement.AboveQuote)
+            }
+        applyReplyQuote(quote)
         composeFromAccountId = accountId
         composeFromEmail = replyFrom
         composeInReplyTo = params.inReplyTo
@@ -660,15 +680,92 @@ internal fun MeronMobileState.replyToMessage(
         screen = Screen.Compose
         status = ""
     }
-    if (appSignatureLoaded) {
-        open()
+    if (appSignatureLoaded && !quoteReplies) {
+        open(null)
     } else {
         scope.launch {
             awaitAppSignatureLoaded()
-            open()
+            open(replyQuoteFor(message, accountId))
         }
     }
 }
+
+/**
+ * The original quoted under a reply (see `settings.composer.quoteReplies`): the
+ * plain text the composer edits, the HTML alternative with the inline images it
+ * references (both empty for a text-only original), and the attribution line
+ * that marks where the quote starts.
+ */
+internal data class ReplyQuote(
+    val text: String,
+    val html: String,
+    val marker: String,
+    val inlineAttachments: List<DraftAttachment>,
+)
+
+/** Whether [body] already ends in this quote, untouched, as a saved quoted
+ *  reply does until its quote is edited. */
+internal fun ReplyQuote.endsBody(body: String): Boolean = body.trim().endsWith(text.trim())
+
+/** Whether [body] already quotes the message, edited or not: its attribution
+ *  line is still there. Such a body is the user's as it stands. */
+internal fun ReplyQuote.inBody(body: String): Boolean = body.contains(marker)
+
+/** The quote for a reply to [message], or null when the user does not quote
+ *  replies or the message has no body to quote. Reads the original's inline
+ *  images, so it is a round trip for an HTML mail that has any. */
+internal suspend fun MeronMobileState.replyQuoteFor(
+    message: MessageBody,
+    accountId: String,
+): ReplyQuote? = if (quoteReplies) buildReplyQuote(message, accountId) else null
+
+/** [replyQuoteFor] whatever the setting says: a saved reply that already holds
+ *  its quote is rebuilt from it. */
+internal suspend fun MeronMobileState.buildReplyQuote(
+    message: MessageBody,
+    accountId: String,
+): ReplyQuote? {
+    if (!hasReplyQuote(message)) return null
+    val dateLabel = formatMessageFullTimestamp(message.dateEpochSeconds)
+    val images =
+        if (message.bodyHtml.isBlank()) {
+            emptyList()
+        } else {
+            runCatching {
+                withContext(ioDispatcher) { readQuoteInlineImages(MobileMailCommandClient(core), accountId, message) }
+            }.getOrDefault(emptyList())
+        }
+    return ReplyQuote(
+        text = replyQuotedPlainBody(message, dateLabel),
+        html = replyQuotedHtmlBody(message, dateLabel, images.map { it.first }),
+        marker = replyQuoteAttribution(message, dateLabel),
+        inlineAttachments = images.map { (image, data) -> inlineImageToDraftAttachment(image, data) },
+    )
+}
+
+/** Carry a reply's quote into the composer, after its body has been seeded. */
+internal fun MeronMobileState.applyReplyQuote(quote: ReplyQuote?) {
+    composeForwardHtml = quote?.html.orEmpty()
+    composeForwardInlineAttachments = quote?.inlineAttachments.orEmpty()
+    composeQuoteMarker = quote?.marker ?: FORWARD_QUOTE_MARKER
+    composeReplyQuote = quote?.text?.trim().orEmpty()
+}
+
+// The inline images a quoted original's HTML shows, with their bytes. Images
+// whose bytes can't be read are left out of the quote's cid: rewrite rather than
+// being referenced with no part behind them.
+internal suspend fun MeronMobileState.readQuoteInlineImages(
+    client: MobileMailCommandClient,
+    accountId: String,
+    message: MessageBody,
+): List<Pair<ForwardInlineImage, String>> =
+    forwardInlineImages(message).mapNotNull { image ->
+        runCatching {
+            readAttachmentData(client, accountId, image.attachment.key)
+        }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { image to it }
+    }
 
 internal fun MeronMobileState.discardComposeDraft() {
     ++composeSessionGeneration
@@ -843,21 +940,8 @@ internal fun MeronMobileState.openMessageCompose(
                         }
                     }
                 // Only a forward quotes the original's HTML, so only a forward
-                // needs its inline images re-attached. Images whose bytes can't
-                // be read are left out of the quote's cid: rewrite rather than
-                // being referenced with no part behind them.
-                val inlineImages =
-                    if (forward) {
-                        forwardInlineImages(message).mapNotNull { image ->
-                            runCatching {
-                                readAttachmentData(client, accountId, image.attachment.key)
-                            }.getOrNull()
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let { image to it }
-                        }
-                    } else {
-                        emptyList()
-                    }
+                // needs its inline images re-attached.
+                val inlineImages = if (forward) readQuoteInlineImages(client, accountId, message) else emptyList()
                 val draft =
                     if (forward) {
                         messageForwardDraft(

@@ -646,20 +646,71 @@ fun forwardedHtmlBody(
     return "$FORWARD_HTML_OPEN<p>$FORWARD_QUOTE_MARKER</p>$header<br>$body</div>"
 }
 
-// Assemble the HTML alternative for a forward at send time. The mobile composer
-// only edits plain text, so the user's own words live above the quote marker in
-// `body`; they are converted to HTML and prepended to the quote block. Returns ""
+// Assemble the HTML alternative for a forward or a quoted reply at send time.
+// The mobile composer only edits plain text, so the user's own words live above
+// the quote marker in `body` (the forward header, or a reply's attribution
+// line); they are converted to HTML and prepended to the quote block. Returns ""
 // when the marker is gone (the user deleted or rewrote the quote): there is then
 // no reliable boundary between their text and the quote, and sending plain-only
 // beats sending a body that no longer matches what they typed.
 fun forwardHtmlForSend(
     body: String,
     forwardedHtml: String,
+    marker: String = FORWARD_QUOTE_MARKER,
 ): String {
-    if (forwardedHtml.isBlank()) return ""
-    val marker = body.indexOf(FORWARD_QUOTE_MARKER)
-    if (marker < 0) return ""
-    return plainTextToHtml(body.substring(0, marker).trim()) + forwardedHtml
+    if (forwardedHtml.isBlank() || marker.isBlank()) return ""
+    val at = body.indexOf(marker)
+    if (at < 0) return ""
+    return plainTextToHtml(body.substring(0, at).trim()) + forwardedHtml
+}
+
+// The line over a quoted reply: "On <date>, Jane <jane@example.com> wrote:", as
+// the desktop composer writes it. It doubles as the reply's quote marker (see
+// [forwardHtmlForSend]).
+fun replyQuoteAttribution(
+    message: MessageBody,
+    dateLabel: String,
+): String {
+    val name = message.from.trim()
+    val addr = message.fromAddr.trim()
+    val sender =
+        when {
+            addr.isBlank() -> name
+            name.isBlank() || name.equals(addr, ignoreCase = true) -> addr
+            else -> "$name <$addr>"
+        }
+    return "On $dateLabel, $sender wrote:"
+}
+
+// Whether a reply to this message has anything to quote.
+fun hasReplyQuote(message: MessageBody): Boolean = message.body.isNotBlank() || message.bodyHtml.isNotBlank()
+
+// The original quoted under a reply, for the plain body the composer edits:
+// the attribution line, then every line of the original `> `-prefixed. Starts
+// with the blank line the user writes above it, like [forwardedPlainBody].
+fun replyQuotedPlainBody(
+    message: MessageBody,
+    dateLabel: String,
+): String {
+    val quoted =
+        message.body
+            .trimEnd()
+            .split("\n")
+            .joinToString("\n") { line -> if (line.isEmpty()) ">" else "> $line" }
+    return "\n\n${replyQuoteAttribution(message, dateLabel)}\n$quoted"
+}
+
+// The same quote for the HTML alternative, in a `<blockquote type="cite">` — the
+// shape the conversation view folds in our own sent replies. Only an HTML
+// original gets one: a text-only mail stays a text-only reply.
+fun replyQuotedHtmlBody(
+    message: MessageBody,
+    dateLabel: String,
+    inlineImages: List<ForwardInlineImage> = emptyList(),
+): String {
+    if (message.bodyHtml.isBlank()) return ""
+    val quoted = rewriteForwardMediaRefs(forwardableHtmlSource(message.bodyHtml), forwardInlineImages(message), inlineImages)
+    return "<p>${escapeHtml(replyQuoteAttribution(message, dateLabel))}</p><blockquote type=\"cite\">$quoted</blockquote>"
 }
 
 // Recover the quote block from a saved forward draft's HTML, so reopening one and

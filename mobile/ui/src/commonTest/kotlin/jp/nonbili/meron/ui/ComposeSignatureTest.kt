@@ -352,6 +352,81 @@ class ComposeSignatureTest {
         assertEquals("saved draft body", state.quickReplyBody)
     }
 
+    @Test
+    fun aQuotedReplyPutsTheSignatureBetweenTheReplyAndTheQuote() =
+        runBlocking {
+            val state = quickReplyState(this)
+            state.quoteReplies = true
+
+            state.replyToMessage(state.messages.single(), replyAll = false)
+            yield()
+
+            assertEquals("\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertEquals(attribution(), state.composeQuoteMarker)
+            // The seeded quote is no more the user's writing than the signature.
+            assertTrue(state.composeIsBlank())
+            state.body = "Sounds good${state.body}"
+            assertFalse(state.composeIsBlank())
+        }
+
+    @Test
+    fun anUnquotedReplyStaysEmpty() {
+        val state = quickReplyState()
+
+        state.replyToMessage(state.messages.single(), replyAll = false)
+
+        assertEquals("\n\nFrom A", state.body)
+    }
+
+    @Test
+    fun escalatingAQuotedReplyQuotesUnderTheTextAndSignature() =
+        runBlocking {
+            val state = quickReplyState(this)
+            state.quoteReplies = true
+            state.seedQuickReplySignature()
+            state.quickReplyBody = "t2\n\nFrom A"
+
+            state.openQuickReplyInFullEditor()
+            yield()
+
+            assertEquals("t2\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertEquals("From A", state.composeSignature?.text)
+        }
+
+    @Test
+    fun escalatingABarThatAlreadyHoldsItsQuoteDoesNotQuoteAgain() =
+        runBlocking {
+            val state = quickReplyState(this)
+            state.quoteReplies = true
+            // A saved quoted reply, hydrated into the bar.
+            state.quickReplyBody = "t2\n\nFrom A\n\n${attribution()}\n> Original message"
+            state.quickReplySignature = null
+
+            state.openQuickReplyInFullEditor()
+            yield()
+
+            assertEquals("t2\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertNull(state.composeSignature)
+        }
+
+    @Test
+    fun escalatingKeepsWhatWasTypedWhileTheQuoteLoaded() =
+        runBlocking {
+            val state = quickReplyState(this)
+            state.quoteReplies = true
+            state.seedQuickReplySignature()
+            state.quickReplyBody = "t2\n\nFrom A"
+
+            state.openQuickReplyInFullEditor()
+            // Still loading the quote: the bar takes another keystroke.
+            state.quickReplyBody = "t2 and more\n\nFrom A"
+            yield()
+
+            assertEquals("t2 and more\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+        }
+
+    private fun attribution() = "On ${formatMessageFullTimestamp(0)}, Them <them@example.com> wrote:"
+
     private fun quickReplyState(
         scope: CoroutineScope = CoroutineScope(EmptyCoroutineContext),
         accountId: String = "a",

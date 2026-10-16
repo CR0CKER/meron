@@ -27,6 +27,7 @@ import jp.nonbili.meron.shared.threadIdIsRss
 import jp.nonbili.meron.shared.toReplyMailParams
 import jp.nonbili.meron.shared.toSaveDraftParams
 import jp.nonbili.meron.shared.untrustedCertificateProtocol
+import jp.nonbili.meron.shared.withReplyQuote
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -428,41 +429,60 @@ internal fun MeronMobileState.openQuickReplyInFullEditor(replyAll: Boolean = fal
     }
     ++quickReplyGeneration
     val replyFrom = resolveQuickReplyFrom(parent, coreAccounts.firstOrNull { it.id == accountId })
-    // The seeded signature is handed over stripped, so the full composer inserts
-    // and tracks its own copy — the account is the same, so this is the identical
-    // text, now swappable if the draft later changes identity. When it can't be
-    // found the user has written into it: it stays in the body as theirs, and the
-    // composer must not add a second.
-    val (carriedBody, signatureStripped) = quickReplyWithoutSignature()
-    val carriesEditedSignature = !signatureStripped && quickReplySignature?.text?.isNotBlank() == true
-    val params =
-        parent.toReplyMailParams(
-            accountId = accountId,
-            body = carriedBody.trim(),
-            from = replyFrom,
-            attachments = quickReplyAttachments,
-            replyAll = replyAll,
-        )
     val generation = ++composeSessionGeneration
-    val open: MeronMobileState.() -> Unit = open@{
-        if (generation != composeSessionGeneration) return@open
+    val open: MeronMobileState.(ReplyQuote?) -> Unit = open@{ quote ->
+        if (generation != composeSessionGeneration || selectedCoreThread?.id != thread.id) return@open
+        // The bar as it stands now, not at the tap: loading the quote's images
+        // can take a moment the user keeps typing through.
+        //
+        // The seeded signature is handed over stripped, so the full composer
+        // inserts and tracks its own copy — the account is the same, so this is
+        // the identical text, now swappable if the draft later changes identity.
+        // When it can't be found the user has written into it: it stays in the
+        // body as theirs, and the composer must not add a second.
+        val (carriedBody, signatureStripped) = quickReplyWithoutSignature()
+        val carriesEditedSignature = !signatureStripped && quickReplySignature?.text?.isNotBlank() == true
+        val params =
+            parent.toReplyMailParams(
+                accountId = accountId,
+                body = carriedBody.trim(),
+                from = replyFrom,
+                attachments = quickReplyAttachments,
+                replyAll = replyAll,
+            )
         composeSignaturePending = false
         ++composeIdentityGeneration
         to = params.to
         cc = params.cc
         bcc = params.bcc
         subject = params.subject
+        // A quote goes under what was typed, with the signature between the two.
+        // A bar holding a saved quoted reply already has both.
+        val alreadyQuoted = quote?.inBody(params.body) == true
         body =
-            if (carriesEditedSignature) {
-                composeSignature = null
-                params.body
-            } else {
-                seedBodyWithSignature(params.body, accountId)
+            when {
+                alreadyQuoted -> {
+                    composeSignature = null
+                    params.body
+                }
+
+                carriesEditedSignature -> {
+                    composeSignature = null
+                    params.body.trimEnd('\n') + quote?.text.orEmpty()
+                }
+
+                quote == null -> {
+                    seedBodyWithSignature(params.body, accountId)
+                }
+
+                else -> {
+                    params.body.trimEnd('\n') + seedBodyWithSignature(quote.text, accountId, SignaturePlacement.AboveQuote)
+                }
             }
         attachments = quickReplyAttachments
-        // A quick reply is plain text; nothing carries over from an earlier forward.
-        composeForwardHtml = ""
-        composeForwardInlineAttachments = emptyList()
+        // A quick reply is plain text; nothing carries over from an earlier
+        // forward, only the quote of the message it answers.
+        applyReplyQuote(quote)
         composeFromAccountId = accountId
         composeFromEmail = replyFrom
         // Hand off any draft already saved for this quick reply so continuing in the
@@ -489,12 +509,12 @@ internal fun MeronMobileState.openQuickReplyInFullEditor(replyAll: Boolean = fal
         screen = Screen.Compose
         status = ""
     }
-    if (appSignatureLoaded) {
-        open()
+    if (appSignatureLoaded && !quoteReplies) {
+        open(null)
     } else {
         scope.launch {
             awaitAppSignatureLoaded()
-            open()
+            open(replyQuoteFor(parent, accountId))
         }
     }
 }
@@ -639,7 +659,13 @@ internal fun MeronMobileState.sendQuickReply() {
                         status = "Send failed: ${it.message}"
                         return@launch
                     }
-                val params = baseParams.copy(messageId = outboundMessageId)
+                // The quote goes out with the mail but stays out of the bar and
+                // the bubble: the conversation already shows what it answers.
+                val quote = replyQuoteFor(parent, accountId)
+                val params =
+                    baseParams
+                        .copy(messageId = outboundMessageId)
+                        .let { if (quote == null) it else it.withReplyQuote(quote.text, quote.html, quote.marker, quote.inlineAttachments) }
                 // The bubble went up on the click; only its id was still unknown.
                 messages =
                     messages.map { message ->

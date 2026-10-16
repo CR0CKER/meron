@@ -326,6 +326,10 @@ internal fun MeronMobileState.applyHydratedSettings(changed: Map<String, Any>) {
                 readerBottomActions = loadAppBoolean(prefs, READER_BOTTOM_ACTIONS_PREF, false)
             }
 
+            settingKeyFor(QUOTE_REPLIES_PREF) -> {
+                quoteReplies = loadAppBoolean(prefs, QUOTE_REPLIES_PREF, false)
+            }
+
             settingKeyFor(LIVE_MAIL_PUSH_PREF) -> {
                 liveMailPushEnabled = loadAppBoolean(prefs, LIVE_MAIL_PUSH_PREF, false)
                 mobileHost.syncLiveMailPush(liveMailPushEnabled)

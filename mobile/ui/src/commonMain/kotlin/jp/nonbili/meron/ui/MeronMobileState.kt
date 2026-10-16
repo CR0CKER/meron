@@ -8,6 +8,7 @@ import jp.nonbili.meron.shared.AccountSummary
 import jp.nonbili.meron.shared.ChangelogRelease
 import jp.nonbili.meron.shared.ContactSuggestion
 import jp.nonbili.meron.shared.DraftAttachment
+import jp.nonbili.meron.shared.FORWARD_QUOTE_MARKER
 import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.MeronCore
 import jp.nonbili.meron.shared.MessageAttachment
@@ -261,12 +262,21 @@ internal class MeronMobileState(
     var composeInReplyTo by mutableStateOf("")
     var composeReferences by mutableStateOf("")
 
-    // The quoted original of a forward, as HTML, plus the inline images it
-    // references. The composer itself edits plain text; these ride alongside so
-    // the send path can rebuild the HTML alternative. Both are empty for every
-    // other kind of draft, which stays plain-text-only.
+    // The quoted original of a forward or a quoted reply, as HTML, plus the
+    // inline images it references. The composer itself edits plain text; these
+    // ride alongside so the send path can rebuild the HTML alternative. Both are
+    // empty for every other kind of draft, which stays plain-text-only.
     var composeForwardHtml by mutableStateOf("")
     var composeForwardInlineAttachments by mutableStateOf(emptyList<DraftAttachment>())
+
+    // Where the quote starts in the plain body: the forward header, or a quoted
+    // reply's attribution line (see forwardHtmlForSend).
+    var composeQuoteMarker by mutableStateOf(FORWARD_QUOTE_MARKER)
+
+    // The quote a reply was opened with, as the plain body holds it. While it is
+    // still there untouched it is no more the user's writing than the seeded
+    // signature is (see composeIsBlank).
+    var composeReplyQuote by mutableStateOf("")
     var locallyDraftedThreadIds by mutableStateOf(emptySet<String>())
     var locallyDiscardedThreadIds by mutableStateOf(emptySet<String>())
     var subject by mutableStateOf("")
@@ -343,6 +353,7 @@ internal class MeronMobileState(
     var autoFitMessages by mutableStateOf(loadAppBoolean(prefs, AUTO_FIT_MESSAGES_PREF, false))
     var chatFullMessages by mutableStateOf(loadAppBoolean(prefs, CHAT_FULL_MESSAGES_PREF, false))
     var readerBottomActions by mutableStateOf(loadAppBoolean(prefs, READER_BOTTOM_ACTIONS_PREF, false))
+    var quoteReplies by mutableStateOf(loadAppBoolean(prefs, QUOTE_REPLIES_PREF, false))
     var liveMailPushEnabled by mutableStateOf(loadAppBoolean(prefs, LIVE_MAIL_PUSH_PREF, false))
     var backgroundSyncEnabled by mutableStateOf(loadAppBoolean(prefs, BACKGROUND_SYNC_ENABLED_PREF, true))
     var pollIntervalMinutes by mutableStateOf(

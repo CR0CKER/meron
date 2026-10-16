@@ -1345,6 +1345,76 @@ class MobileCommandsTest {
     }
 
     @Test
+    fun replyQuoteQuotesThePlainBodyUnderAnAttribution() {
+        val message = MessageBody(id = "m", from = "Jane", fromAddr = "jane@example.com", to = "", subject = "Hi", body = "Lunch?\n\nJane\n")
+
+        assertEquals("On Mon, Jane <jane@example.com> wrote:", replyQuoteAttribution(message, "Mon"))
+        assertEquals("\n\nOn Mon, Jane <jane@example.com> wrote:\n> Lunch?\n>\n> Jane", replyQuotedPlainBody(message, "Mon"))
+        // A text-only original stays a text-only reply.
+        assertEquals("", replyQuotedHtmlBody(message, "Mon"))
+        assertEquals("On Mon, jane@example.com wrote:", replyQuoteAttribution(message.copy(from = ""), "Mon"))
+    }
+
+    @Test
+    fun replyQuoteCitesAnHtmlOriginalAndRebuildsItsInlineImages() {
+        val image = MessageAttachment(filename = "a.png", mimeType = "image/png", key = "acct/1/0.png")
+        val message =
+            MessageBody(
+                id = "m",
+                from = "Jane",
+                fromAddr = "jane@example.com",
+                to = "",
+                subject = "Hi",
+                body = "Lunch?",
+                bodyHtml = "<p>Lunch? <img src=\"/media/acct/1/0.png\"></p>",
+                attachments = listOf(image),
+            )
+
+        assertEquals(
+            "<p>On Mon, Jane &lt;jane@example.com&gt; wrote:</p><blockquote type=\"cite\"><p>Lunch? <img src=\"cid:meron-forward-0@meron\"></p></blockquote>",
+            replyQuotedHtmlBody(message, "Mon", forwardInlineImages(message)),
+        )
+        // An image whose bytes could not be read never points at this device.
+        assertTrue(!replyQuotedHtmlBody(message, "Mon").contains("/media/"))
+    }
+
+    @Test
+    fun withReplyQuoteAppendsTheQuoteToTheSentReply() {
+        val params = SendMailParams(accountId = "a", to = "jane@example.com", subject = "Re: Hi", body = "Sounds good")
+        val quote = "\n\nOn Mon, Jane wrote:\n> Lunch?"
+
+        val plain = params.withReplyQuote(quote, "", "On Mon, Jane wrote:")
+        assertEquals("Sounds good\n\nOn Mon, Jane wrote:\n> Lunch?", plain.body)
+        assertEquals("", plain.html)
+
+        val inline = DraftAttachment(id = "i", displayName = "a.png", mimeType = "image/png", dataBase64 = "AA==", inlineId = "meron-forward-0@meron")
+        val rich = params.withReplyQuote(quote, "<p>On Mon, Jane wrote:</p><blockquote type=\"cite\"><p>Lunch?</p></blockquote>", "On Mon, Jane wrote:", listOf(inline))
+        assertEquals("<p>Sounds good</p><p>On Mon, Jane wrote:</p><blockquote type=\"cite\"><p>Lunch?</p></blockquote>", rich.html)
+        assertEquals(listOf("meron-forward-0@meron"), rich.attachments.map { it.inlineId })
+
+        assertEquals("On Mon, Jane wrote:\n> Lunch?", params.copy(body = "").withReplyQuote(quote, "", "On Mon, Jane wrote:").body)
+
+        // A reopened quoted reply already carries its quote.
+        val saved = params.copy(body = "Sounds good$quote").withReplyQuote(quote, "<blockquote type=\"cite\"><p>Lunch?</p></blockquote>", "On Mon, Jane wrote:")
+        assertEquals("Sounds good$quote", saved.body)
+        assertEquals("<p>Sounds good</p><blockquote type=\"cite\"><p>Lunch?</p></blockquote>", saved.html)
+
+        // One whose quote the user trimmed goes out as they left it.
+        val trimmed = params.copy(body = "Sounds good\n\nOn Mon, Jane wrote:\n> Lun").withReplyQuote(quote, "<p>x</p>", "On Mon, Jane wrote:")
+        assertEquals("Sounds good\n\nOn Mon, Jane wrote:\n> Lun", trimmed.body)
+        assertEquals("", trimmed.html)
+    }
+
+    @Test
+    fun forwardHtmlForSendFindsAReplyQuoteByItsAttribution() {
+        val quote = "<p>On Mon, Jane wrote:</p><blockquote type=\"cite\"><p>Lunch?</p></blockquote>"
+        val body = "Sounds good\n\nOn Mon, Jane wrote:\n> Lunch?"
+
+        assertEquals("<p>Sounds good</p>$quote", forwardHtmlForSend(body, quote, "On Mon, Jane wrote:"))
+        assertEquals("", forwardHtmlForSend("Sounds good", quote, "On Mon, Jane wrote:"))
+    }
+
+    @Test
     fun forwardHtmlForSendPrependsTypedTextAndDropsHtmlWithoutQuote() {
         val quote = """<p><br></p><div class="meron-forwarded-message"><p>$FORWARD_QUOTE_MARKER</p><p>Original</p></div>"""
         val body = "See below.\n\n$FORWARD_QUOTE_MARKER\nFrom: Ada\n\nOriginal"

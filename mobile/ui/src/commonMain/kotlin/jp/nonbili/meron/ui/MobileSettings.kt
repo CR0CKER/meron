@@ -69,6 +69,7 @@ internal val mobileSettings =
         MobileSetting(PrefStore.App, TASKS_ENABLED_PREF, PrefType.Bool),
         MobileSetting(PrefStore.App, CONVERSATION_LAYOUT_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, SEND_SHORTCUT_PREF, PrefType.Str),
+        MobileSetting(PrefStore.App, QUOTE_REPLIES_PREF, PrefType.Bool),
         MobileSetting(PrefStore.App, HIDDEN_NAV_ACCOUNTS_PREF, PrefType.StrSet),
         MobileSetting(PrefStore.App, KANBAN_COLUMN_WIDTH_PREF, PrefType.Int),
         // Sync and notifications.

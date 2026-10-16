@@ -29,6 +29,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
+// The quote a saved reply was written with, rebuilt from the message it answers
+// when that is loaded and the draft still ends in it unchanged. The draft's own
+// HTML can't give it back: the reader serves it sanitized.
+private suspend fun MeronMobileState.savedReplyQuote(
+    draft: MessageBody,
+    accountId: String,
+): ReplyQuote? {
+    val parentId = draft.inReplyTo.normalizedComposeDraftId()
+    if (parentId.isBlank()) return null
+    val parent = messages.firstOrNull { it.messageId.normalizedComposeDraftId() == parentId } ?: return null
+    return buildReplyQuote(parent, accountId)?.takeIf { it.endsBody(draft.body) }
+}
+
 internal fun MeronMobileState.openDraftCompose(
     message: MessageBody,
     thread: ThreadSummary,
@@ -77,7 +90,10 @@ internal fun MeronMobileState.openDraftCompose(
                     inlineImages.map { (image, data) -> inlineImageToDraftAttachment(image, data) },
                 )
             }
-        }.onSuccess { (copiedAttachments, forwardHtml, inlineAttachments) ->
+        }.mapCatching { restored ->
+            restored to savedReplyQuote(message, thread.accountId)
+        }.onSuccess { (restored, replyQuote) ->
+            val (copiedAttachments, forwardHtml, inlineAttachments) = restored
             if (generation != composeSessionGeneration) return@onSuccess
             // Start from a clean composer: a draft opened after a reply would
             // otherwise inherit that reply's threading headers and be sent into
@@ -96,6 +112,9 @@ internal fun MeronMobileState.openDraftCompose(
             attachments = copiedAttachments
             composeForwardHtml = forwardHtml
             composeForwardInlineAttachments = inlineAttachments
+            // A saved quoted reply gets its HTML quote back from the message it
+            // answers, as long as the plain quote still ends it unchanged.
+            replyQuote?.let(::applyReplyQuote)
             composeFromAccountId = thread.accountId
             composeFromEmail = ""
             // A draft with no Message-ID of its own — imported, or written by

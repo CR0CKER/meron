@@ -923,6 +923,43 @@ fun MessageBody.toReplyMailParams(
     )
 }
 
+// A reply with the original quoted under it (see [replyQuotedPlainBody]): the
+// quote joins the plain body, and an HTML original's quote makes the reply's
+// HTML alternative, with the user's text converted above it and the inline
+// images the quote references attached. A body that already quotes the message
+// — a saved quoted reply, reopened — is not quoted twice: one that still ends in
+// the quote untouched keeps its HTML, and one whose quote the user edited (its
+// [marker], the attribution line, still there) goes out exactly as written.
+fun SendMailParams.withReplyQuote(
+    quoteText: String,
+    quoteHtml: String,
+    marker: String,
+    inlineImages: List<DraftAttachment> = emptyList(),
+): SendMailParams {
+    val quote = quoteText.trim()
+    if (quote.isBlank()) return this
+    val sent = body.trim()
+    val quoted = sent.endsWith(quote)
+    if (!quoted && marker.isNotBlank() && sent.contains(marker)) return this
+    val own = if (quoted) sent.removeSuffix(quote).trim() else sent
+    val html = if (quoteHtml.isBlank()) "" else plainTextToHtml(own) + quoteHtml
+    return copy(
+        body =
+            when {
+                quoted -> sent
+                own.isBlank() -> quote
+                else -> own + quoteText
+            },
+        html = html,
+        attachments =
+            if (html.isBlank()) {
+                attachments
+            } else {
+                attachments + inlineImages.map { MobileAttachmentInput(it.displayName, it.mimeType, it.dataBase64, it.inlineId) }
+            },
+    )
+}
+
 data class ThreadActionParams(
     val threadId: String,
     val folderId: String? = null,
