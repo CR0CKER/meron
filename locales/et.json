@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Taastatud. Välimuse ja keele rakendamiseks käivita Meron uuesti.",
   "settings.backup.wrongPassphrase": "Vale paroolifraas. Proovi uuesti.",
   "settings.chooseWallpaperImage": "Valige taustapilt",
+  "settings.composer.quoteReplies": "Tsiteeri vastustes algset kirja",
+  "settings.composer.quoteRepliesHint": "Lisa kiri, millele vastad, oma vastuse alla.",
   "settings.composer.sendMessageWith": "Sõnumi saatmine klahviga",
   "settings.composer.sendShortcutEnterHint": "Enter saadab, Shift+Enter lisab uue rea.",
   "settings.composer.sendShortcutHint": "Riistvara klaviatuuri käitumine",

@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "복원했습니다. 모양과 언어를 적용하려면 Meron을 다시 시작하세요.",
   "settings.backup.wrongPassphrase": "암호 문구가 틀렸습니다. 다시 시도하세요.",
   "settings.chooseWallpaperImage": "배경화면 이미지 선택",
+  "settings.composer.quoteReplies": "답장에 원본 메시지 인용",
+  "settings.composer.quoteRepliesHint": "답장 아래에 답장하는 메시지를 포함합니다.",
   "settings.composer.sendMessageWith": "메시지 전송 방식",
   "settings.composer.sendShortcutEnterHint": "Enter 키로 전송하고 Shift+Enter 키로 새 줄을 추가합니다.",
   "settings.composer.sendShortcutHint": "하드웨어 키보드 동작",

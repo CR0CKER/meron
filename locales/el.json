@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Έγινε επαναφορά. Επανεκκινήστε το Meron για να εφαρμοστούν εμφάνιση και γλώσσα.",
   "settings.backup.wrongPassphrase": "Λανθασμένη συνθηματική φράση. Δοκιμάστε ξανά.",
   "settings.chooseWallpaperImage": "Επιλέξτε εικόνα ταπετσαρίας",
+  "settings.composer.quoteReplies": "Παράθεση αρχικού μηνύματος στις απαντήσεις",
+  "settings.composer.quoteRepliesHint": "Συμπερίληψη του μηνύματος στο οποίο απαντάτε κάτω από την απάντησή σας.",
   "settings.composer.sendMessageWith": "Αποστολή μηνύματος με",
   "settings.composer.sendShortcutEnterHint": "Το Enter στέλνει, το Shift+Enter προσθέτει νέα γραμμή.",
   "settings.composer.sendShortcutHint": "Συμπεριφορά πληκτρολογίου υλικού",

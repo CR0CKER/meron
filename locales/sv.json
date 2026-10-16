@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Återställt. Starta om Meron för att tillämpa utseende och språk.",
   "settings.backup.wrongPassphrase": "Fel lösenfras. Försök igen.",
   "settings.chooseWallpaperImage": "Välj bakgrundsbild",
+  "settings.composer.quoteReplies": "Citera originalet i svar",
+  "settings.composer.quoteRepliesHint": "Inkludera meddelandet du svarar på under ditt svar.",
   "settings.composer.sendMessageWith": "Skicka meddelande med",
   "settings.composer.sendShortcutEnterHint": "Enter skickar, Shift+Enter lägger till en ny rad.",
   "settings.composer.sendShortcutHint": "Hårdvarutangentbords beteende",

@@ -91,6 +91,21 @@ describe('spellCheck setting', () => {
   })
 })
 
+describe('quoteReplies setting', () => {
+  afterEach(() => {
+    settings$.quoteReplies.set(false)
+  })
+
+  it('defaults reply quoting off', () => {
+    expect(settings$.quoteReplies.get()).toBe(false)
+  })
+
+  it('hydrates a persisted reply quoting preference', () => {
+    hydrateSettings({ quote_replies: true })
+    expect(settings$.quoteReplies.get()).toBe(true)
+  })
+})
+
 describe('kanban scroll lock setting', () => {
   afterEach(() => {
     settings$.kanbanLockScroll.set(false)

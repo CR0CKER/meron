@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Restaurado. Reinicia Meron para aplicar la apariencia y el idioma.",
   "settings.backup.wrongPassphrase": "Frase de contraseña incorrecta. Inténtalo de nuevo.",
   "settings.chooseWallpaperImage": "Elige la imagen del fondo de pantalla",
+  "settings.composer.quoteReplies": "Citar el original en las respuestas",
+  "settings.composer.quoteRepliesHint": "Incluir el mensaje al que respondes debajo de tu respuesta.",
   "settings.composer.sendMessageWith": "Enviar mensaje con",
   "settings.composer.sendShortcutEnterHint": "Intro envía, Mayús+Intro añade una línea nueva.",
   "settings.composer.sendShortcutHint": "Comportamiento del teclado de hardware",

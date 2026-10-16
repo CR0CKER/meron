@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Đã khôi phục. Khởi động lại Meron để áp dụng giao diện và ngôn ngữ.",
   "settings.backup.wrongPassphrase": "Cụm mật khẩu không đúng. Hãy thử lại.",
   "settings.chooseWallpaperImage": "Chọn hình nền",
+  "settings.composer.quoteReplies": "Trích dẫn thư gốc khi trả lời",
+  "settings.composer.quoteRepliesHint": "Đính kèm thư bạn đang trả lời bên dưới thư trả lời của bạn.",
   "settings.composer.sendMessageWith": "Gửi tin nhắn bằng",
   "settings.composer.sendShortcutEnterHint": "Phím Enter để gửi, Shift+Enter để xuống dòng.",
   "settings.composer.sendShortcutHint": "Hành vi bàn phím phần cứng",

@@ -21,6 +21,7 @@ import {
   Globe,
   KeyRound,
   SpellCheck,
+  Quote,
   Pause,
   BellOff,
   ScrollText,
@@ -595,6 +596,7 @@ function ComposerSection() {
   const { t } = useTranslation()
   const sendShortcut = useValue(settings$.sendShortcut)
   const spellCheck = useValue(settings$.spellCheck)
+  const quoteReplies = useValue(settings$.quoteReplies)
 
   return (
     <div className="flex flex-col gap-4">
@@ -605,6 +607,13 @@ function ComposerSection() {
           hint={t('settings.composer.spellCheckHint')}
           checked={spellCheck}
           onChange={() => settings$.spellCheck.set(!spellCheck)}
+        />
+        <ToggleRow
+          icon={<Quote size={15} />}
+          title={t('settings.composer.quoteReplies')}
+          hint={t('settings.composer.quoteRepliesHint')}
+          checked={quoteReplies}
+          onChange={() => settings$.quoteReplies.set(!quoteReplies)}
         />
         <SegmentedRow
           icon={<Send size={15} />}

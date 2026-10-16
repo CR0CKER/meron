@@ -131,6 +131,8 @@ export type Settings = {
   chatFullMessages: boolean
   /** Whether native spell checking is requested in composer prose fields. */
   spellCheck: boolean
+  /** Whether replies carry the message they answer, quoted under the reply text. */
+  quoteReplies: boolean
   /**
    * App-wide signature HTML, inserted into new messages and replies. Accounts
    * follow this unless they carry their own override (see Account.signature).
@@ -211,6 +213,7 @@ const DB_KEY = {
   conversationLayout: 'conversation_layout',
   chatFullMessages: 'chat_full_messages',
   spellCheck: 'spell_check',
+  quoteReplies: 'quote_replies',
   signature: 'signature',
   remoteImageSenders: 'remote_image_senders',
   kanbanBoards: 'kanban_boards',
@@ -422,6 +425,7 @@ export const settings$ = observable<Settings>({
   conversationLayout: 'chat',
   chatFullMessages: false,
   spellCheck: true,
+  quoteReplies: false,
   signature: '',
   remoteImageSenders: [],
   kanbanBoards: [],
@@ -907,6 +911,10 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.spellCheck] === 'boolean') {
       settings$.spellCheck.set(prefs[DB_KEY.spellCheck] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.quoteReplies] === 'boolean') {
+      settings$.quoteReplies.set(prefs[DB_KEY.quoteReplies] as boolean)
     }
 
     if (typeof prefs[DB_KEY.signature] === 'string') {

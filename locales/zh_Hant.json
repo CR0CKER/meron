@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "已還原。請重新啟動 Meron 以套用外觀和語言。",
   "settings.backup.wrongPassphrase": "通關密語不正確，請再試一次。",
   "settings.chooseWallpaperImage": "選擇壁紙圖片",
+  "settings.composer.quoteReplies": "回覆時引用原郵件",
+  "settings.composer.quoteRepliesHint": "在回覆下方附上你所回覆的郵件。",
   "settings.composer.sendMessageWith": "以此傳送訊息",
   "settings.composer.sendShortcutEnterHint": "按 Enter 鍵傳送，Shift+Enter 換行。",
   "settings.composer.sendShortcutHint": "硬體鍵盤行為",

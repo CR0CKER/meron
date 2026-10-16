@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEditor } from '@tiptap/react'
+import { Extension, useEditor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
 import { useValue } from '@legendapp/state/react'
@@ -43,6 +43,27 @@ import {
   textToHtml,
   type NativeClipboardImage,
 } from './composerHelpers'
+
+// A quoted reply's `<blockquote type="cite">` (see replyQuote) keeps its type
+// through the editor, which would otherwise drop it: that attribute is what
+// tells the conversation view the blockquote is a quote to fold.
+const CiteBlockquote = Extension.create({
+  name: 'citeBlockquote',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['blockquote'],
+        attributes: {
+          type: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('type'),
+            renderHTML: (attributes) => (attributes.type ? { type: attributes.type } : {}),
+          },
+        },
+      },
+    ]
+  },
+})
 
 // All of the Composer's behaviour: the tiptap editor, attachment handling
 // (paste/drop/file-picker, inline images), rich/plain toggling, autosave, and
@@ -135,8 +156,10 @@ export function useComposer(tabId: string) {
   const focusBody = useRef((draft?.to ?? '').trim().length > 0).current
   // A seeded signature sits at the top of the body, above any quote, so landing
   // at the end would drop the cursor below it — and below the quote. Start puts
-  // it on the blank line the signature was inserted under.
-  const focusAt = useRef(draft?.signature?.html ? ('start' as const) : ('end' as const)).current
+  // it on the blank line the signature was inserted under. A quote seeded
+  // without a signature (a forward, a quoted reply) still sits below that line.
+  const aboveQuote = draft?.signature?.placement === 'aboveQuote'
+  const focusAt = useRef(draft?.signature?.html || aboveQuote ? ('start' as const) : ('end' as const)).current
 
   const editor = useEditor({
     extensions: [
@@ -144,6 +167,7 @@ export function useComposer(tabId: string) {
       // No HTMLAttributes: the node view does the styling on screen, and class
       // names would only go out in the mail, meaning nothing to its recipient.
       ResizableImage.configure({ allowBase64: true }),
+      CiteBlockquote,
     ],
     content: initialHtml,
     editorProps: {
@@ -207,7 +231,10 @@ export function useComposer(tabId: string) {
     const el = textRef.current
     if (!el || !focusBody) return
     const signature = draft?.signature?.text
-    if (!signature) return
+    if (!signature) {
+      if (aboveQuote) el.setSelectionRange(0, 0)
+      return
+    }
     const at = el.value.indexOf(signature)
     if (at < 0) return
     const caret = el.value.slice(0, at).replace(/\s+$/, '').length

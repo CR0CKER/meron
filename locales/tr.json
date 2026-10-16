@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Geri yüklendi. Görünüm ve dili uygulamak için Meron'u yeniden başlatın.",
   "settings.backup.wrongPassphrase": "Parola metni yanlış. Tekrar deneyin.",
   "settings.chooseWallpaperImage": "Duvar kağıdı resmini seçin",
+  "settings.composer.quoteReplies": "Yanıtlarda orijinali alıntıla",
+  "settings.composer.quoteRepliesHint": "Yanıtladığınız iletiyi yanıtınızın altına ekleyin.",
   "settings.composer.sendMessageWith": "Mesajı Şununla Gönder",
   "settings.composer.sendShortcutEnterHint": "Enter gönderir, Shift+Enter yeni satır ekler.",
   "settings.composer.sendShortcutHint": "Donanım klavye davranışı",

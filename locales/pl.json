@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Przywrócono. Uruchom Meron ponownie, aby zastosować wygląd i język.",
   "settings.backup.wrongPassphrase": "Nieprawidłowe hasło szyfrujące. Spróbuj ponownie.",
   "settings.chooseWallpaperImage": "Wybierz obraz tapety",
+  "settings.composer.quoteReplies": "Cytuj oryginał w odpowiedziach",
+  "settings.composer.quoteRepliesHint": "Dołączaj wiadomość, na którą odpowiadasz, pod swoją odpowiedzią.",
   "settings.composer.sendMessageWith": "Wyślij wiadomość za pomocą",
   "settings.composer.sendShortcutEnterHint": "Enter wysyła, Shift+Enter wstawia nową linię.",
   "settings.composer.sendShortcutHint": "Zachowanie klawiatury sprzętowej",

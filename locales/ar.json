@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "تمت الاستعادة. أعد تشغيل Meron لتطبيق المظهر واللغة.",
   "settings.backup.wrongPassphrase": "عبارة المرور غير صحيحة. حاول مرة أخرى.",
   "settings.chooseWallpaperImage": "اختر صورة خلفية",
+  "settings.composer.quoteReplies": "اقتباس الرسالة الأصلية في الردود",
+  "settings.composer.quoteRepliesHint": "تضمين الرسالة التي ترد عليها أسفل ردك.",
   "settings.composer.sendMessageWith": "إرسال الرسالة باستخدام",
   "settings.composer.sendShortcutEnterHint": "مفتاح Enter يرسل، ومفتاحا Shift+Enter يضيفان سطرًا جديدًا.",
   "settings.composer.sendShortcutHint": "سلوك لوحة مفاتيح الأجهزة",

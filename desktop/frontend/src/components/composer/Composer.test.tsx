@@ -546,4 +546,18 @@ describe('Composer', () => {
     expect(bodyHtml()).toContain('Hello there')
     expect(bodyHtml()).toContain('From B')
   })
+
+  it('starts the caret above a quote seeded without a signature', () => {
+    accounts$.set([{ ...account('a', ''), signature: { mode: 'none', html: '' } }])
+    const tabId = openComposeTab({
+      to: 'them@example.com',
+      rich: false,
+      quote: { rich: false, html: '', text: 'On Mon, Them wrote:\n> Lunch?' },
+    })!
+    const view = render(<Composer tabId={tabId} />)
+
+    const body = view.container.querySelector('textarea') as HTMLTextAreaElement
+    expect(body.value).toBe('\n\nOn Mon, Them wrote:\n> Lunch?')
+    expect(body.selectionStart).toBe(0)
+  })
 })

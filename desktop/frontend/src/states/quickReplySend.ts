@@ -18,7 +18,8 @@ import {
   discardUnsentRescue,
 } from './pendingSends'
 import { offerCertificateTrust } from './certificateTrust'
-import { draftIdOfFailedSave, escapeHtml, saveComposedDraft, textToHtml } from './compose'
+import { draftIdOfFailedSave, escapeHtml, replyQuote, saveComposedDraft, textToHtml } from './compose'
+import { inlineRichStyles, prepareInlineImages } from '../components/composer/composerHelpers'
 import { buildReplyRecipients, buildReplyThreading, pickReplyTarget, resolveQuickReplyFrom } from './composeReply'
 import { allocateMessageIdentity, compose$, newDraftMessageId } from './composeState'
 import {
@@ -154,7 +155,7 @@ export async function sendReply() {
     const target = pickReplyTarget(activeT, tempId)
     const { to, cc } = buildReplyRecipients(target)
     const { in_reply_to, references } = buildReplyThreading(target)
-    return { to, cc, in_reply_to, references, from: resolveQuickReplyFrom(target, activeAcc) }
+    return { target, to, cc, in_reply_to, references, from: resolveQuickReplyFrom(target, activeAcc) }
   }
   let addressed = addressReply()
 
@@ -357,6 +358,25 @@ export async function sendReply() {
     addressed = addressReply()
   }
 
+  // The quote goes out with the mail but stays out of the box and the bubble:
+  // the conversation already shows the message it answers.
+  let outgoing = { body: text, html, attachments: sendAttachments }
+  const quote = replyQuote(addressed.target)
+  if (quote) {
+    const body = text.trim() ? `${text.replace(/\n+$/, '')}\n\n${quote.text}` : quote.text
+    if (!quote.rich && !html) {
+      outgoing = { ...outgoing, body }
+    } else {
+      // The original's inline images are served from the media cache; they go
+      // out as attachments of this reply, like a forward's.
+      const prepared = await prepareInlineImages(
+        inlineRichStyles(`${html || textToHtml(text)}${quote.html}`),
+        sendAttachments,
+      )
+      outgoing = { body, html: prepared.html, attachments: prepared.attachments }
+    }
+  }
+
   let messageId: string
   try {
     messageId = await allocateMessageIdentity(replyAccountId, false)
@@ -368,13 +388,13 @@ export async function sendReply() {
     to: addressed.to,
     cc: addressed.cc,
     subject,
-    body: text,
-    html,
+    body: outgoing.body,
+    html: outgoing.html,
     in_reply_to: addressed.in_reply_to,
     references: addressed.references,
     from: addressed.from,
     message_id: messageId,
-    attachments: sendAttachments.map((a) => ({
+    attachments: outgoing.attachments.map((a) => ({
       filename: a.filename,
       mime: a.mime,
       data: a.data,

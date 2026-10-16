@@ -766,6 +766,8 @@
   "settings.backup.restoredRestart": "Atjaunots. Restartējiet Meron, lai lietotu izskatu un valodu.",
   "settings.backup.wrongPassphrase": "Nepareiza paroles frāze. Mēģiniet vēlreiz.",
   "settings.chooseWallpaperImage": "Izvēlieties fona attēlu",
+  "settings.composer.quoteReplies": "Citēt oriģinālu atbildēs",
+  "settings.composer.quoteRepliesHint": "Iekļaut ziņojumu, uz kuru atbildat, zem jūsu atbildes.",
   "settings.composer.sendMessageWith": "Sūtīt ziņojumu ar",
   "settings.composer.sendShortcutEnterHint": "Enter nosūta, Shift+Enter pievieno jaunu rindu.",
   "settings.composer.sendShortcutHint": "Aparatūras tastatūras darbība",

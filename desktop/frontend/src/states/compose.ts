@@ -16,6 +16,7 @@ import { parseMailto } from '../lib/mailto'
 import {
   bodyWithSignature,
   bodyWithSwappedSignature,
+  type ComposeBody,
   resolveSignature,
   signatureForms,
   type Signature,
@@ -110,6 +111,43 @@ function forwardedHtmlBody(message: Message): string {
     .join('')
   const body = message.body_html || textToHtml(message.body ?? '')
   return `<p><br></p><div class="meron-forwarded-message"><p>---------- Forwarded message ---------</p>${header}<br>${body}</div>`
+}
+
+/**
+ * The message a reply answers, quoted under it, when the user quotes replies
+ * (`settings.quoteReplies`): an "On …, Jane wrote:" line over the original,
+ * `> `-prefixed in plain text and in a `<blockquote type="cite">` in HTML —
+ * the Apple Mail and Thunderbird shape, which the conversation view folds in
+ * our own sent replies as it does in theirs. `rich` says whether the original
+ * was HTML. Undefined when quoting is off or the original has no body loaded.
+ */
+export function replyQuote(message: Message): ComposeBody | undefined {
+  if (!settings$.quoteReplies.peek()) return undefined
+  const body = message.body ?? ''
+  if (!message.body_html && !body.trim()) return undefined
+  const attribution = `On ${formatFullTimestamp(message.date)}, ${formatMessageFrom(message)} wrote:`
+  const quoted = body
+    .replace(/\s+$/, '')
+    .split('\n')
+    .map((line) => (line ? `> ${line}` : '>'))
+    .join('\n')
+  return {
+    rich: !!message.body_html,
+    html: `<p>${escapeHtml(attribution)}</p><blockquote type="cite">${message.body_html || textToHtml(body)}</blockquote>`,
+    text: `${attribution}\n${quoted}`,
+  }
+}
+
+/** A reply body with the quote under it, and the signature, when there is one,
+ * between the two. Goes rich when either part is. */
+function bodyWithReplyQuote(own: ComposeBody, quote: ComposeBody, signature?: Signature): ComposeBody {
+  const rich = own.rich || quote.rich
+  const quoted: ComposeBody = rich
+    ? { rich, html: `<p><br></p>${quote.html}`, text: '' }
+    : { rich, html: '', text: `\n\n${quote.text}` }
+  const signed = signature ? bodyWithSignature(quoted, signature, 'aboveQuote') : quoted
+  if (rich) return { ...signed, html: `${own.rich ? own.html : textToHtml(own.text)}${signed.html}` }
+  return { ...signed, text: `${own.text.replace(/\n+$/, '')}${signed.text}` }
 }
 
 // Return to the Current conversation tab, restoring the thread it was showing
@@ -378,6 +416,11 @@ type ComposeSeed = Partial<ComposeDraft> & {
   /** Where the signature lands; 'aboveQuote' for a seeded quote (forwards). */
   signaturePlacement?: SignaturePlacement
   /**
+   * The message a reply answers, quoted under the seeded body (see
+   * {@link replyQuote}). The signature goes between the two.
+   */
+  quote?: ComposeBody
+  /**
    * Skip the signature. Set when the body is an existing message being re-opened
    * (a saved draft, "Edit as New Message") — it already carries whatever
    * signature it was written with, and a second copy is not wanted.
@@ -405,13 +448,18 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
   }
   // A body this app did not compose (a saved draft, "Edit as New Message") may
   // already carry a signature, so it stays unmanaged: `undefined`, not `null`.
-  const placement = seed?.signaturePlacement ?? 'belowText'
+  const quote = seed?.quote
+  const placement = quote ? 'aboveQuote' : (seed?.signaturePlacement ?? 'belowText')
   const signature = seed?.noSignature ? undefined : resolveSignatureFor(account)
   // The placement is recorded even when the account sends no signature, so a
   // forward that later moves to an account with one still puts it above the
   // quote rather than after it.
   const tracking: SignatureTracking = signature ? { ...signature, placement } : undefined
-  const body = signature ? bodyWithSignature(seeded, signature, placement) : seeded
+  const body = quote
+    ? bodyWithReplyQuote(seeded, quote, signature)
+    : signature
+      ? bodyWithSignature(seeded, signature, placement)
+      : seeded
 
   const draft: ComposeDraft = {
     accountId,
@@ -501,6 +549,7 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
     draftMessageId: existingDraftId,
     title: subject,
     threadId: t.thread_id,
+    quote: replyQuote(target),
   })
   compose$.composerAttachments.set([])
   clearQuickReplyDraftOwnership()
@@ -765,6 +814,7 @@ export function replyToMessage(message: Message, replyAll = false) {
     title: subject,
     inReplyTo: in_reply_to,
     references,
+    quote: replyQuote(message),
   })
 }
 

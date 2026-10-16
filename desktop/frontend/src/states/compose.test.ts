@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, jest } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import type { Message, MessageTab } from '../types'
 import {
   activateConversationTab,
@@ -15,7 +15,9 @@ import {
   updateComposeDraft,
   openThreadTabById,
   replyAllToMessage,
+  replyToMessage,
 } from './compose'
+import { formatFullTimestamp } from '../components/chat/messageHelpers'
 import {
   buildReplyRecipients,
   ownAddressSet,
@@ -4061,5 +4063,154 @@ describe('quick reply recipient line', () => {
 
   it('reports nothing without an open conversation, which hides the line', () => {
     expect(quickReplyRecipients()).toEqual({ to: '', cc: '' })
+  })
+})
+
+describe('quoting the original in replies', () => {
+  const calls: { command: string; payload: unknown }[] = []
+
+  const sendable = {
+    id: 'acc-1',
+    email: 'me@example.com',
+    display_name: 'Me',
+    provider: 'custom',
+    auth_type: 'password' as const,
+    imap_host: 'imap.example.com',
+    imap_port: 993,
+    smtp_host: 'smtp.example.com',
+    smtp_port: 465,
+    tls: true,
+  }
+
+  const original = (overrides: Partial<Message> = {}) =>
+    message({
+      id: 'root',
+      account_id: 'acc-1',
+      thread_id: 't-1',
+      folder_id: 'INBOX',
+      from_name: 'Them',
+      from_addr: 'them@example.com',
+      message_id: 'root@example.com',
+      subject: 'Lunch',
+      body: 'Lunch on Friday?\n\nJane',
+      ...overrides,
+    })
+  const attribution = (m: Message) => `On ${formatFullTimestamp(m.date)}, Them <them@example.com> wrote:`
+  const htmlAttribution = (m: Message) => attribution(m).replace('<', '&lt;').replace('>', '&gt;')
+  const draft = () => compose$.tabs.get()[0]?.compose
+
+  beforeEach(() => {
+    cancelQuickReplyDraftSave()
+    calls.length = 0
+    compose$.tabs.set([])
+    compose$.activeTab.set('')
+    compose$.composer.set('')
+    compose$.composerAttachments.set([])
+    compose$.quickReplyDraftId.set('')
+    compose$.quickReplyDraftSaved.set(false)
+    compose$.quickReplyFrom.set('')
+    compose$.quickReplySignature.set(null)
+    mail$.messages.set([])
+    mail$.threads.set([])
+    mail$.folders.set([])
+    mail$.foldersByAccount.set({})
+    ui$.selectedThread.set('')
+    ui$.selectedAccount.set('acc-1')
+    accounts$.set([sendable])
+    settings$.signature.set('')
+    settings$.quoteReplies.set(true)
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string, payload: unknown) => {
+            calls.push({ command, payload })
+            if (command === 'mail.allocateIdentity') return { message_id: 'sent@example.com' }
+            if (command === 'mail.folderList') return { folders: [] }
+            if (command === 'mail.threadList') return { threads: [] }
+            return {}
+          },
+        },
+      },
+    }
+  })
+
+  afterEach(() => {
+    settings$.quoteReplies.set(false)
+  })
+
+  it('leaves replies unquoted by default', () => {
+    settings$.quoteReplies.set(false)
+    accounts$.set([{ ...sendable, conversation_html: false }])
+
+    replyToMessage(original())
+
+    expect(draft()?.text).toBe('')
+  })
+
+  it('quotes a plain original under the signature', () => {
+    accounts$.set([{ ...sendable, conversation_html: false }])
+    settings$.signature.set('<p>Ping</p>')
+    const m = original()
+
+    replyToMessage(m)
+
+    expect(draft()?.rich).toBe(false)
+    expect(draft()?.text).toBe(`\n\nPing\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+  })
+
+  it('quotes an HTML original in a cite blockquote', () => {
+    accounts$.set([{ ...sendable, conversation_html: false }])
+    settings$.signature.set('<p>Ping</p>')
+    const m = original({ body_html: '<p>Lunch on <b>Friday</b>?</p>' })
+
+    replyToMessage(m)
+
+    expect(draft()?.rich).toBe(true)
+    expect(draft()?.html).toBe(
+      `<p></p><p>Ping</p><p><br></p><p>${htmlAttribution(m)}</p><blockquote type="cite"><p>Lunch on <b>Friday</b>?</p></blockquote>`,
+    )
+  })
+
+  it('quotes under the text carried from the quick reply into the full editor', () => {
+    const m = original()
+    mail$.threads.set([m])
+    mail$.messages.set([m])
+    ui$.selectedThread.set('t-1')
+    compose$.composer.set('Sounds good')
+
+    openReplyInFullEditor()
+
+    expect(draft()?.text).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+  })
+
+  it('sends the quote with a quick reply but keeps it out of the bubble', async () => {
+    const m = original()
+    mail$.threads.set([m])
+    mail$.messages.set([m])
+    ui$.selectedThread.set('t-1')
+    compose$.composer.set('Sounds good')
+
+    await sendReply()
+
+    const sent = calls.find((call) => call.command === 'mail.send')?.payload as { body: string; html: string }
+    expect(sent.body).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+    expect(sent.html).toBe('')
+    expect(mail$.messages.get().find((message) => message.send_status)?.body).toBe('Sounds good')
+  })
+
+  it('sends an HTML quote with a quick reply to an HTML original', async () => {
+    const m = original({ body_html: '<p>Lunch on <b>Friday</b>?</p>' })
+    mail$.threads.set([m])
+    mail$.messages.set([m])
+    ui$.selectedThread.set('t-1')
+    compose$.composer.set('Sounds good')
+
+    await sendReply()
+
+    const sent = calls.find((call) => call.command === 'mail.send')?.payload as { body: string; html: string }
+    expect(sent.body).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+    expect(sent.html).toStartWith(`<p>Sounds good</p><p>${htmlAttribution(m)}</p><blockquote `)
+    expect(sent.html).toContain('type="cite"')
+    expect(sent.html).toContain('<p>Lunch on <b>Friday</b>?</p></blockquote>')
   })
 })
