@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Lisa ülesannetesse",
   "tasks.addTask": "Lisa ülesanne",
   "tasks.addedFromMessage": "Lisatud ülesannetesse",
+  "tasks.alreadyInTasks": "Juba ülesannetes",
   "tasks.clearCompleted": "Kustuta tehtud",
   "tasks.clearDueDate": "Eemalda tähtaeg",
   "tasks.completed": "Tehtud",

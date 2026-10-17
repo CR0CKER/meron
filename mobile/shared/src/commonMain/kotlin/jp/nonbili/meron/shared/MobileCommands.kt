@@ -79,6 +79,7 @@ object MobileCommand {
     const val TaskListRename = "tasks.listRename"
     const val TaskListDelete = "tasks.listDelete"
     const val TaskItems = "tasks.items"
+    const val TaskForThread = "tasks.forThread"
     const val TaskCreate = "tasks.create"
     const val TaskUpdate = "tasks.update"
     const val TaskSetDone = "tasks.setDone"
@@ -1209,6 +1210,8 @@ class MobileMailCommandClient(
 
     suspend fun taskItems(params: TaskItemsParams): String = core.invoke(MobileCommand.TaskItems, params.toJson())
 
+    suspend fun threadTasks(params: TaskForThreadParams): String = core.invoke(MobileCommand.TaskForThread, params.toJson())
+
     suspend fun createTask(params: TaskCreateParams): String = core.invoke(MobileCommand.TaskCreate, params.toJson())
 
     suspend fun updateTask(params: TaskUpdateParams): String = core.invoke(MobileCommand.TaskUpdate, params.toJson())
@@ -1575,6 +1578,13 @@ data class TaskListDeleteParams(
     val listId: String,
 ) {
     fun toJson(): String = jsonObject("list_id" to listId.jsonString())
+}
+
+/** Every task filed from a thread, done or not. */
+data class TaskForThreadParams(
+    val threadId: String,
+) {
+    fun toJson(): String = jsonObject("thread_id" to threadId.jsonString())
 }
 
 /**

@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Zu Aufgaben hinzufügen",
   "tasks.addTask": "Aufgabe hinzufügen",
   "tasks.addedFromMessage": "Zu Aufgaben hinzugefügt",
+  "tasks.alreadyInTasks": "Bereits in Aufgaben",
   "tasks.clearCompleted": "Erledigte löschen",
   "tasks.clearDueDate": "Fälligkeitsdatum entfernen",
   "tasks.completed": "Erledigt",

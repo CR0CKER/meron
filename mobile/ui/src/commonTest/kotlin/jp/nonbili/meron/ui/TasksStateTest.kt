@@ -9,6 +9,8 @@ import jp.nonbili.meron.shared.ThreadSummary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -80,6 +82,41 @@ class TasksStateTest {
             val state = testState(core, this)
             state.requestAddMailToTasks(ThreadSummary(id = "thread", accountId = "account", folder = "INBOX", subject = "Follow up", sender = "sender"))
             assertEquals(null, state.pendingTaskThread)
+            val payload = Json.parseToJsonElement(core.createdPayload).jsonObject
+            assertEquals("only", payload["list_id"]?.jsonPrimitive?.content)
+        }
+
+    @Test
+    fun aThreadWithAnOpenTaskIsPointedOutNotAddedAgain() =
+        runBlocking {
+            val core = RecordingCore()
+            core.threadTasks = """[{"id":"task-1","list_id":"list-1","title":"Follow up","thread_id":"thread","done":false}]"""
+            val state = testState(core, this)
+            state.requestAddMailToTasks(ThreadSummary(id = "thread", accountId = "account", folder = "INBOX", subject = "Follow up", sender = "sender"))
+            assertEquals(null, state.pendingTaskThread)
+            assertEquals("", core.createdPayload)
+            assertEquals("Already in Tasks", state.status)
+        }
+
+    @Test
+    fun aDoubleTapFilesTheThreadOnce() =
+        runBlocking {
+            val core = RecordingCore()
+            core.lists = """[{"id":"only","title":"Only"}]"""
+            val state = testState(core, this)
+            val thread = ThreadSummary(id = "thread", accountId = "account", folder = "INBOX", subject = "Follow up", sender = "sender")
+            listOf(launch { state.requestAddMailToTasks(thread) }, launch { state.requestAddMailToTasks(thread) }).joinAll()
+            assertEquals(1, core.commands.count { it == "tasks.create" })
+        }
+
+    @Test
+    fun aThreadWhoseTaskIsDoneCanBeAddedAgain() =
+        runBlocking {
+            val core = RecordingCore()
+            core.lists = """[{"id":"only","title":"Only"}]"""
+            core.threadTasks = """[{"id":"task-1","list_id":"only","title":"Follow up","thread_id":"thread","done":true}]"""
+            val state = testState(core, this)
+            state.requestAddMailToTasks(ThreadSummary(id = "thread", accountId = "account", folder = "INBOX", subject = "Follow up", sender = "sender"))
             val payload = Json.parseToJsonElement(core.createdPayload).jsonObject
             assertEquals("only", payload["list_id"]?.jsonPrimitive?.content)
         }
@@ -188,6 +225,7 @@ class TasksStateTest {
         var createdPayload = ""
         var lists = """[{"id":"list-1","title":"First"},{"id":"list-2","title":"Second"}]"""
         var threadMessages = "[]"
+        var threadTasks = "[]"
 
         override suspend fun invoke(
             command: String,
@@ -197,6 +235,7 @@ class TasksStateTest {
             if (command == "tasks.lists") return """{"lists":$lists,"default_list_id":"list-1"}"""
             if (command == "tasks.create") createdPayload = payloadJson
             if (command == "mail.threadRead") return """{"messages":$threadMessages}"""
+            if (command == "tasks.forThread") return """{"tasks":$threadTasks}"""
             return "{}"
         }
 

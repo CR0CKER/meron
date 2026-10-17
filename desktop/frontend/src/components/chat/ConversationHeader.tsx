@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, RefObject } from 'react'
+import type { RefObject } from 'react'
 import {
   Archive,
   ChevronDown,
@@ -8,17 +8,14 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Code,
-  Copy,
   Download,
   FileText,
   LoaderCircle,
-  Mail,
   MoreHorizontal,
   PanelRight,
   Printer,
   ReplyAll,
   Search,
-  SquarePen,
   Star,
   Trash2,
   X,
@@ -28,6 +25,7 @@ import { printThread } from '../../lib/printMail'
 import { useTranslation } from '../../lib/i18n'
 import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
+import { settings$ } from '../../states/settings'
 import { starThread } from '../../states/mailFlags'
 import { isDraftFolder, isTrashFolderId } from '../../states/mailFolders'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
@@ -35,8 +33,8 @@ import { goToSearchMatch, setAllMessagesExpanded, thread$ } from '../../states/t
 import { accounts$ } from '../../states/accounts'
 import { exportThreadsAsEml } from '../../states/emlExport'
 import { isRssAccount } from '../../lib/threadActions'
-import { closeCurrentConversation, kanban$, openCorrespondentMail } from '../../states/kanban'
-import { openComposeTab, openReplyInFullEditor } from '../../states/compose'
+import { closeCurrentConversation, kanban$ } from '../../states/kanban'
+import { openReplyInFullEditor } from '../../states/compose'
 import { canReplyAllToThread } from '../../states/composeReply'
 import { compose$ } from '../../states/composeState'
 import type { Message } from '../../types'
@@ -45,13 +43,14 @@ import { IconButton } from '../button/IconButton'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { targetWithin } from '../menu/useDismissOnOutside'
+import { AddToTasksButton } from '../tasks/AddToTasksButton'
 import { ThreadMoveCopyItems } from '../threads/ThreadMoveCopyItems'
 import { ConversationSubject } from './ConversationSubject'
 import { useConversationMode } from './useMessageView'
 
-// The conversation header: back/close affordances, sender info, the desktop
-// in-thread search box and the overflow actions menu (view mode, star, archive,
-// delete). Search match state is published to thread$ by useThreadSearch.
+// The conversation header: back/close affordances, the subject, add-to-tasks, the desktop in-thread search box and
+// the overflow actions menu (view mode, star, archive, delete). Search match
+// state is published to thread$ by useThreadSearch.
 export function ConversationHeader({
   activeThread,
   desktopSearchInputRef,
@@ -76,11 +75,11 @@ export function ConversationHeader({
   const mediaOpen = useValue(thread$.mediaOpen)
   const conversationMenu = useValue(thread$.conversationMenu)
   const expandAllAction = useValue(thread$.expandAllAction)
+  const tasksEnabled = useValue(settings$.tasksEnabled)
   const normalizedThreadSearch = threadSearch.trim().toLowerCase()
 
   const [printing, setPrinting] = useState(false)
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
-  const [senderMenu, setSenderMenu] = useState<{ x: number; y: number } | null>(null)
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -96,10 +95,6 @@ export function ConversationHeader({
     return () => window.removeEventListener('mousedown', onDown)
   }, [actionsMenuOpen])
 
-  useEffect(() => {
-    setSenderMenu(null)
-  }, [activeThread.thread_id])
-
   const copyHeaderText = (text: string, toast: string) => {
     const value = text.trim()
     if (!value) return
@@ -113,16 +108,6 @@ export function ConversationHeader({
   // Hidden when the conversation's reply target has no other recipients: a
   // reply-all identical to the reply is a second name for the same action.
   const replyAll = useValue(canReplyAllToThread)
-
-  const senderName = activeThread.from_name.trim()
-  const senderEmail = activeThread.from_addr.trim()
-  const senderDisplayName = senderName || senderEmail
-  const senderRecipient = senderName && senderName !== senderEmail ? `${senderName} <${senderEmail}>` : senderEmail
-
-  const openSenderMenu = (event: ReactMouseEvent<HTMLElement>) => {
-    event.preventDefault()
-    setSenderMenu({ x: event.clientX, y: event.clientY })
-  }
 
   // The same wording, and the same permanence in Trash, as the thread list's menu.
   const inTrash = isTrashFolderId(activeThread.account_id, activeThread.folder_id)
@@ -302,33 +287,23 @@ export function ConversationHeader({
             copyLabel={t('chat.copySubject')}
             onCopy={() => copyHeaderText(activeThread.subject, 'Subject copied')}
           />
-          {isRSS ? (
-            // RSS subject == from_name (both the feed title), so showing the name
-            // again would just duplicate the title above. Show the feed host only.
+          {isRSS && (
+            // RSS subject == from_name (both the feed title), so the feed host
+            // sits under it rather than the name again.
             <p className="truncate text-[0.71875rem] text-secondary mt-0.5 font-medium" title={activeThread.from_addr}>
               {activeThread.from_addr}
             </p>
-          ) : (
-            <button
-              type="button"
-              onClick={openSenderMenu}
-              onContextMenu={openSenderMenu}
-              className="mt-0.5 block max-w-full truncate rounded-sm text-left text-[0.71875rem] font-medium text-secondary outline-none transition-colors cursor-context-menu hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-              title={`${activeThread.from_name} (${activeThread.from_addr})`}
-              aria-label={t('chat.copyFullAddress')}
-            >
-              {senderName ? (
-                <>
-                  {senderName} <span className="opacity-70">({senderEmail})</span>
-                </>
-              ) : (
-                senderEmail
-              )}
-            </button>
           )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {tasksEnabled && !isRSS && (
+            <AddToTasksButton
+              title={activeThread.subject}
+              account={activeThread.account_id}
+              threadId={activeThread.thread_id}
+            />
+          )}
           {!threadSearchOpen ? (
             <IconButton icon={Search} label={t('chat.searchThread')} onClick={() => thread$.searchOpen.set(true)} />
           ) : (
@@ -423,54 +398,6 @@ export function ConversationHeader({
           onContextMenu={(event) => event.preventDefault()}
         >
           {actionItems}
-        </FloatingContextMenu>
-      )}
-      {senderMenu && !isRSS && (
-        <FloatingContextMenu
-          x={senderMenu.x}
-          y={senderMenu.y}
-          onClose={() => setSenderMenu(null)}
-          overlay
-          overlayClassName="fixed inset-0 z-[60]"
-          className="fixed z-[61] min-w-[180px] rounded-xl border border-border bg-header p-1 shadow-xl"
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <MenuItem
-            icon={<Copy size={13} className="text-accent" />}
-            label={t('chat.copyName', { defaultValue: 'Copy name' })}
-            disabled={!senderDisplayName}
-            onClick={() => {
-              copyHeaderText(senderDisplayName, 'Name copied')
-              setSenderMenu(null)
-            }}
-          />
-          <MenuItem
-            icon={<Mail size={13} className="text-accent" />}
-            label={t('chat.copyEmailAddress')}
-            disabled={!senderEmail}
-            onClick={() => {
-              copyHeaderText(senderEmail, 'Email copied')
-              setSenderMenu(null)
-            }}
-          />
-          <MenuItem
-            icon={<Search size={13} className="text-accent" />}
-            label={t('chat.viewMessagesWith', { name: senderDisplayName })}
-            disabled={!senderEmail}
-            onClick={() => {
-              openCorrespondentMail(activeThread.account_id, activeThread.folder_id, senderEmail)
-              setSenderMenu(null)
-            }}
-          />
-          <MenuItem
-            icon={<SquarePen size={13} className="text-accent" />}
-            label={t('chat.newMessageTo', { email: senderEmail })}
-            disabled={!senderEmail}
-            onClick={() => {
-              openComposeTab({ accountId: activeThread.account_id, to: senderRecipient })
-              setSenderMenu(null)
-            }}
-          />
         </FloatingContextMenu>
       )}
     </>

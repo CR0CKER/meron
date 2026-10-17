@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "添加到任务",
   "tasks.addTask": "添加任务",
   "tasks.addedFromMessage": "已添加到任务",
+  "tasks.alreadyInTasks": "已在任务中",
   "tasks.clearCompleted": "删除已完成",
   "tasks.clearDueDate": "清除截止日期",
   "tasks.completed": "已完成",

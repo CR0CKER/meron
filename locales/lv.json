@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Pievienot uzdevumiem",
   "tasks.addTask": "Pievienot uzdevumu",
   "tasks.addedFromMessage": "Pievienots uzdevumiem",
+  "tasks.alreadyInTasks": "Jau ir uzdevumos",
   "tasks.clearCompleted": "Dzēst pabeigtos",
   "tasks.clearDueDate": "Noņemt termiņu",
   "tasks.completed": "Pabeigtie",

@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Lägg till i Uppgifter",
   "tasks.addTask": "Lägg till en uppgift",
   "tasks.addedFromMessage": "Tillagd i Uppgifter",
+  "tasks.alreadyInTasks": "Finns redan i Uppgifter",
   "tasks.clearCompleted": "Ta bort klara",
   "tasks.clearDueDate": "Ta bort förfallodatum",
   "tasks.completed": "Klara",

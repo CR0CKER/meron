@@ -125,8 +125,29 @@ export async function addTask(title: string) {
 }
 
 /**
+ * Whether a thread already has a task that isn't done. A finished one doesn't
+ * count: filing the same mail again after closing its task is a new follow-up.
+ */
+export async function threadHasOpenTask(threadId: string): Promise<boolean> {
+  const res = await invoke<{ tasks?: Task[] }>('tasks.forThread', { thread_id: threadId })
+  return (res?.tasks ?? []).some((task) => !task.done)
+}
+
+/** Says so, rather than adding it twice, when the thread is already in Tasks. */
+export async function warnIfThreadInTasks(threadId: string): Promise<boolean> {
+  const exists = await threadHasOpenTask(threadId).catch(() => false)
+  if (exists) showToast(t('tasks.alreadyInTasks'))
+  return exists
+}
+
+// Threads being filed right now, so a second press landing before the first
+// has created its task isn't let through by a check that ran too early.
+const filingThreads = new Set<string>()
+
+/**
  * Turn a message into a task in the chosen list. Callers without an explicit
  * destination use the remembered selection, or the core default on first use.
+ * `checked` is for a caller that already ran warnIfThreadInTasks itself.
  */
 export async function addTaskFromMessage(input: {
   title: string
@@ -134,14 +155,22 @@ export async function addTaskFromMessage(input: {
   threadId: string
   messageId?: string
   listId?: string
+  checked?: boolean
 }) {
-  await invoke('tasks.create', {
-    list_id: input.listId ?? ui$.activeTaskList.peek(),
-    title: input.title,
-    account: input.account,
-    thread_id: input.threadId,
-    message_id: input.messageId ?? '',
-  })
+  if (filingThreads.has(input.threadId)) return
+  filingThreads.add(input.threadId)
+  try {
+    if (input.threadId && !input.checked && (await warnIfThreadInTasks(input.threadId))) return
+    await invoke('tasks.create', {
+      list_id: input.listId ?? ui$.activeTaskList.peek(),
+      title: input.title,
+      account: input.account,
+      thread_id: input.threadId,
+      message_id: input.messageId ?? '',
+    })
+  } finally {
+    filingThreads.delete(input.threadId)
+  }
   showToast(t('tasks.addedFromMessage'))
   // The panel is very likely open and showing the list this landed in, so it
   // has to repaint; when it is closed the next open reads fresh anyway.

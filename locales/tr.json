@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Görevlere ekle",
   "tasks.addTask": "Görev ekle",
   "tasks.addedFromMessage": "Görevlere eklendi",
+  "tasks.alreadyInTasks": "Zaten görevlerde",
   "tasks.clearCompleted": "Tamamlananları sil",
   "tasks.clearDueDate": "Bitiş tarihini kaldır",
   "tasks.completed": "Tamamlananlar",

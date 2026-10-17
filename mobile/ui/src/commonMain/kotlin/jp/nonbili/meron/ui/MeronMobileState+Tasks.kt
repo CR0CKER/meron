@@ -7,6 +7,7 @@ import jp.nonbili.meron.shared.RssThreadParams
 import jp.nonbili.meron.shared.TaskClearCompletedParams
 import jp.nonbili.meron.shared.TaskCreateParams
 import jp.nonbili.meron.shared.TaskDeleteParams
+import jp.nonbili.meron.shared.TaskForThreadParams
 import jp.nonbili.meron.shared.TaskItemsParams
 import jp.nonbili.meron.shared.TaskListCreateParams
 import jp.nonbili.meron.shared.TaskListDeleteParams
@@ -355,14 +356,30 @@ private fun civilFromDays(days: Long): Triple<Int, Int, Int> {
     return Triple(year, month, day)
 }
 
-/** Choose a destination explicitly when more than one list exists. */
+/**
+ * Choose a destination explicitly when more than one list exists. A thread that
+ * already has an open task is only pointed out, before any picker; a finished
+ * one doesn't count, as filing the mail again then is a new follow-up.
+ */
 internal suspend fun MeronMobileState.requestAddMailToTasks(thread: jp.nonbili.meron.shared.ThreadSummary) {
-    val response = onCore { requireCoreOk(it.taskLists()) } ?: return
-    taskLists = parseTaskListsResponse(response).lists
-    if (taskLists.size == 1) {
-        addTaskFromMessage(thread.subject, thread.accountId, thread.id, listId = taskLists.single().id)
-    } else if (taskLists.size > 1) {
-        pendingTaskThread = thread
+    // Two taps both checking before either has created its task would both pass.
+    if (filingMailToTasks) return
+    filingMailToTasks = true
+    try {
+        val existing = onCore { requireCoreOk(it.threadTasks(TaskForThreadParams(thread.id))) }
+        if (existing != null && parseTasksResponse(existing).any { !it.done }) {
+            status = trs("tasks.alreadyInTasks")
+            return
+        }
+        val response = onCore { requireCoreOk(it.taskLists()) } ?: return
+        taskLists = parseTaskListsResponse(response).lists
+        if (taskLists.size == 1) {
+            addTaskFromMessage(thread.subject, thread.accountId, thread.id, listId = taskLists.single().id)
+        } else if (taskLists.size > 1) {
+            pendingTaskThread = thread
+        }
+    } finally {
+        filingMailToTasks = false
     }
 }
 

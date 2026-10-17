@@ -34,13 +34,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -724,6 +724,13 @@ internal fun ThreadScreen(
                     actions = {
                         FloatingBarChip(RoundedCornerShape(50), Modifier.padding(end = 4.dp)) {
                             if (printing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp))
+                            // On the bar, like the desktop header's, and not the
+                            // Tasks screen's checklist icon: this files the thread.
+                            if (onAddToTasks != null) {
+                                IconButton(onClick = onAddToTasks) {
+                                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = tr("tasks.addFromMessage"))
+                                }
+                            }
                             IconButton(onClick = onToggleStar) {
                                 Icon(
                                     if (thread?.starred == true) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -744,16 +751,6 @@ internal fun ThreadScreen(
                                             onArchive()
                                         },
                                     )
-                                    if (onAddToTasks != null) {
-                                        DropdownMenuItem(
-                                            text = { Text(tr("tasks.addFromMessage")) },
-                                            leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
-                                            onClick = {
-                                                overflowOpen = false
-                                                onAddToTasks()
-                                            },
-                                        )
-                                    }
                                     DropdownMenuItem(
                                         text = { Text(tr("chat.searchThread")) },
                                         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },

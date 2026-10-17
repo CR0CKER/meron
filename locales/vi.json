@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Thêm vào Công việc",
   "tasks.addTask": "Thêm công việc",
   "tasks.addedFromMessage": "Đã thêm vào Công việc",
+  "tasks.alreadyInTasks": "Đã có trong Công việc",
   "tasks.clearCompleted": "Xóa mục đã hoàn thành",
   "tasks.clearDueDate": "Xóa ngày đến hạn",
   "tasks.completed": "Đã hoàn thành",

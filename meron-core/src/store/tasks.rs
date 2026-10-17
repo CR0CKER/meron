@@ -259,14 +259,36 @@ pub fn task(conn: &Connection, id: &str) -> Result<Option<Task>> {
 
 /// Every task linked to a thread, so a mail surface can show "already in Tasks"
 /// without loading a list.
+///
+/// A task keeps the thread id it was filed with, and that id names the folder
+/// (`account#folder#key`). Mail that was archived or moved since is still the
+/// same conversation, so a `t.` thread key — derived from the messages, not the
+/// mailbox — matches in any folder of the same account. A `uid` key is a
+/// per-folder IMAP UID and only ever matches exactly.
 pub fn tasks_for_thread(conn: &Connection, thread_id: &str) -> Result<Vec<Task>> {
     let sql =
-        format!("SELECT {TASK_COLUMNS} FROM tasks WHERE thread_id = ?1 ORDER BY created_at, id");
+        format!("SELECT {TASK_COLUMNS} FROM tasks WHERE thread_id != '' ORDER BY created_at, id");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
-        .query_map(params![thread_id], read_task)?
+        .query_map([], read_task)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+    Ok(rows
+        .into_iter()
+        .filter(|task| same_thread(&task.thread_id, thread_id))
+        .collect())
+}
+
+fn same_thread(a: &str, b: &str) -> bool {
+    a == b || matches!((folderless_thread(a), folderless_thread(b)), (Some(x), Some(y)) if x == y)
+}
+
+/// The account and the folder-independent thread key of a thread id, or None
+/// when the key is a UID, which means nothing outside its folder.
+fn folderless_thread(thread_id: &str) -> Option<(&str, &str)> {
+    let first = thread_id.find('#')?;
+    let last = thread_id.rfind('#')?;
+    let key = &thread_id[last + 1..];
+    (first > 0 && last > first && key.starts_with("t.")).then(|| (&thread_id[..first], key))
 }
 
 /// A new task, placed at the top of its list. Adding to the top is what every

@@ -349,6 +349,9 @@ internal class MeronMobileState(
     /** Lists and items for the Tasks screen; empty until it is first opened. */
     var taskLists by mutableStateOf(emptyList<TaskListSummary>())
     var pendingTaskThread by mutableStateOf<ThreadSummary?>(null)
+
+    /** A thread is being filed in Tasks; a second tap meanwhile is dropped. */
+    internal var filingMailToTasks = false
     var activeTaskListId by mutableStateOf("")
     var tasks by mutableStateOf(emptyList<TaskSummary>())
     var tasksLoading by mutableStateOf(false)

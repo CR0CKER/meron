@@ -478,6 +478,15 @@ class MobileCommandsTest {
         assertEquals("""{"list_id":"list-1"}""", core.lastPayloadJson)
     }
 
+    @Test
+    fun threadTasksAsksForTheThreadsTasks() {
+        val core = FakeMeronCore("""{"tasks":[]}""")
+        val client = MobileMailCommandClient(core)
+        runSuspend { client.threadTasks(TaskForThreadParams("acct#INBOX#t1")) }
+        assertEquals(MobileCommand.TaskForThread, core.lastCommand)
+        assertEquals("""{"thread_id":"acct#INBOX#t1"}""", core.lastPayloadJson)
+    }
+
     /**
      * The restore blob travels from the delete response back to the core
      * untouched — parsing and rebuilding it would be a chance to lose a field.

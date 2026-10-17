@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "タスクに追加",
   "tasks.addTask": "タスクを追加",
   "tasks.addedFromMessage": "タスクに追加しました",
+  "tasks.alreadyInTasks": "すでにタスクにあります",
   "tasks.clearCompleted": "完了済みを削除",
   "tasks.clearDueDate": "期限を削除",
   "tasks.completed": "完了済み",

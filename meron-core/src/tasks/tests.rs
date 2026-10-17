@@ -160,6 +160,31 @@ fn a_mail_linked_task_is_findable_from_its_thread() {
     );
 }
 
+// Archiving or moving the mail changes the folder in its thread id, not the
+// conversation: the task filed from the inbox still belongs to it.
+#[test]
+fn a_task_is_found_from_its_thread_in_another_folder() {
+    let conn = test_conn();
+    let list = ensure_default_list(&conn).unwrap();
+    for thread in ["acct1#INBOX#t.YWJj", "acct1#INBOX#7"] {
+        create_task(&conn, &list, "Reply", "", 0, "acct1", thread, "").unwrap();
+    }
+    let found = |thread_id: &str| {
+        thread_tasks_payload(&conn, thread_id).unwrap()["tasks"]
+            .as_array()
+            .unwrap()
+            .len()
+    };
+
+    assert_eq!(found("acct1#Archive#t.YWJj"), 1);
+    assert_eq!(found("acct1#[Gmail]/All Mail#t.YWJj"), 1);
+    // Another account's conversation with the same key is not this one.
+    assert_eq!(found("acct2#INBOX#t.YWJj"), 0);
+    // A UID only means something in its own folder.
+    assert_eq!(found("acct1#Archive#7"), 0);
+    assert_eq!(found("acct1#INBOX#7"), 1);
+}
+
 #[test]
 fn an_edit_never_blanks_a_title() {
     let conn = test_conn();

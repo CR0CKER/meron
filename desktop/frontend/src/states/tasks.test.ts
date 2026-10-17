@@ -35,10 +35,12 @@ const task = (overrides: Partial<Task> = {}): Task => ({
 const calls: { command: string; payload: any }[] = []
 let items: Task[] = []
 let threadMessages: any[] = []
+let threadTasks: Task[] = []
 
 beforeEach(() => {
   calls.length = 0
   items = [task()]
+  threadTasks = []
   ui$.tasksPanelOpen.set(false)
   ui$.activeTaskList.set('')
   ui$.toast.set('')
@@ -74,6 +76,7 @@ beforeEach(() => {
             }
           }
           if (command === 'tasks.items') return { tasks: items }
+          if (command === 'tasks.forThread') return { tasks: threadTasks }
           if (command === 'mail.threadRead') return { messages: threadMessages }
           if (command === 'tasks.delete') return { ok: true, restore: { tasks: [task()] } }
           if (command === 'tasks.listDelete') {
@@ -199,6 +202,33 @@ describe('addTaskFromMessage', () => {
   it('does not reload a panel that is closed', async () => {
     await addTaskFromMessage({ title: 'Boiler repair', account: 'acct1', threadId: 'acct1#thread#4' })
     expect(calls.some((call) => call.command === 'tasks.items')).toBe(false)
+  })
+
+  it('says so instead of adding a thread that already has an open task', async () => {
+    threadTasks = [task({ thread_id: 'acct1#thread#4' })]
+    await addTaskFromMessage({ title: 'Boiler repair', account: 'acct1', threadId: 'acct1#thread#4' })
+    expect(calls.find((call) => call.command === 'tasks.forThread')?.payload).toEqual({ thread_id: 'acct1#thread#4' })
+    expect(calls.some((call) => call.command === 'tasks.create')).toBe(false)
+    expect(ui$.toast.get()).toBe('Already in Tasks')
+  })
+
+  it('files a double press once', async () => {
+    const input = { title: 'Boiler repair', account: 'acct1', threadId: 'acct1#thread#4' }
+    await Promise.all([addTaskFromMessage(input), addTaskFromMessage(input)])
+    expect(calls.filter((call) => call.command === 'tasks.create')).toHaveLength(1)
+  })
+
+  it('trusts a caller that already checked', async () => {
+    threadTasks = [task({ thread_id: 'acct1#thread#4' })]
+    await addTaskFromMessage({ title: 'Boiler repair', account: 'acct1', threadId: 'acct1#thread#4', checked: true })
+    expect(calls.some((call) => call.command === 'tasks.forThread')).toBe(false)
+    expect(calls.some((call) => call.command === 'tasks.create')).toBe(true)
+  })
+
+  it('adds again once the earlier task is done', async () => {
+    threadTasks = [task({ thread_id: 'acct1#thread#4', done: true })]
+    await addTaskFromMessage({ title: 'Boiler repair', account: 'acct1', threadId: 'acct1#thread#4' })
+    expect(calls.some((call) => call.command === 'tasks.create')).toBe(true)
   })
 })
 

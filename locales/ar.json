@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "إضافة إلى المهام",
   "tasks.addTask": "إضافة مهمة",
   "tasks.addedFromMessage": "تمت الإضافة إلى المهام",
+  "tasks.alreadyInTasks": "موجود بالفعل في المهام",
   "tasks.clearCompleted": "حذف المكتملة",
   "tasks.clearDueDate": "مسح تاريخ الاستحقاق",
   "tasks.completed": "المكتملة",

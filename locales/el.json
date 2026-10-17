@@ -901,6 +901,7 @@
   "tasks.addFromMessage": "Προσθήκη στις Εργασίες",
   "tasks.addTask": "Προσθήκη εργασίας",
   "tasks.addedFromMessage": "Προστέθηκε στις Εργασίες",
+  "tasks.alreadyInTasks": "Υπάρχει ήδη στις Εργασίες",
   "tasks.clearCompleted": "Διαγραφή ολοκληρωμένων",
   "tasks.clearDueDate": "Κατάργηση προθεσμίας",
   "tasks.completed": "Ολοκληρωμένες",
