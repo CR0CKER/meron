@@ -63,6 +63,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.4.6" date="2026-10-17">
+      <description>
+        <ul>
+          <li>Add setting to quote the original in replies</li>
+          <li>Add "Add to Tasks" button to the thread header</li>
+          <li>Add Copy message text to the message menu</li>
+          <li>Show up to four digits in the unread badge</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.5" date="2026-10-15">
       <description>
         <ul>
