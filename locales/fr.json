@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Écrivez votre message...",
   "composer.placeholders.quickMessage": "Écrivez un message...",
   "composer.placeholders.recipient": "destinataire@example.com",
+  "composer.removeQuotedText": "Supprimer le texte cité",
   "composer.status.addRecipientBeforeSending": "Ajoutez un destinataire avant l'envoi",
   "composer.status.chooseAvailableAccount": "Choisissez un compte de messagerie disponible",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Impossible de supprimer le brouillon du compte précédent",

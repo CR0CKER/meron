@@ -277,6 +277,7 @@
   "composer.placeholders.message": "撰写您的邮件...",
   "composer.placeholders.quickMessage": "写条消息...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "移除引用的文本",
   "composer.status.addRecipientBeforeSending": "发送前请添加收件人",
   "composer.status.chooseAvailableAccount": "请选择可用的邮件帐户",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "无法清理上一个账户的草稿",

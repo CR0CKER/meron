@@ -460,29 +460,18 @@ internal fun MeronMobileState.openQuickReplyInFullEditor(replyAll: Boolean = fal
         // A bar holding a saved quoted reply already has both.
         val alreadyQuoted = quote?.inBody(params.body) == true
         body =
-            when {
-                alreadyQuoted -> {
-                    composeSignature = null
-                    params.body
-                }
-
-                carriesEditedSignature -> {
-                    composeSignature = null
-                    params.body.trimEnd('\n') + quote?.text.orEmpty()
-                }
-
-                quote == null -> {
-                    seedBodyWithSignature(params.body, accountId)
-                }
-
-                else -> {
-                    params.body.trimEnd('\n') + seedBodyWithSignature(quote.text, accountId, SignaturePlacement.AboveQuote)
-                }
+            if (alreadyQuoted || carriesEditedSignature) {
+                composeSignature = null
+                params.body
+            } else {
+                seedBodyWithSignature(params.body, accountId)
             }
         attachments = quickReplyAttachments
         // A quick reply is plain text; nothing carries over from an earlier
-        // forward, only the quote of the message it answers.
-        applyReplyQuote(quote)
+        // forward, only the quote of the message it answers: folded away, or
+        // left where it is when the bar already holds it.
+        applyReplyQuote(quote?.takeIf { alreadyQuoted })
+        composeFoldedQuote = quote?.takeUnless { alreadyQuoted }
         composeFromAccountId = accountId
         composeFromEmail = replyFrom
         // Hand off any draft already saved for this quick reply so continuing in the

@@ -8,6 +8,7 @@ import { ComposerHeaderFields } from './ComposerHeaderFields'
 import { ComposerToolbar } from './ComposerToolbar'
 import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerFooter } from './ComposerFooter'
+import { ComposerQuote } from './ComposerQuote'
 import { closeMessageTab } from '../../states/compose'
 import { DropOverlay } from '../chat/DropOverlay'
 import { routeComposerDrop, useFileDrop } from '../../lib/useFileDrop'
@@ -27,6 +28,8 @@ export function Composer({ tabId }: { tabId: string }) {
     canSend,
     update,
     toggleRich,
+    expandQuote,
+    removeQuote,
     pickAttachmentFiles,
     pickInlineImages,
     addFiles,
@@ -105,7 +108,24 @@ export function Composer({ tabId }: { tabId: string }) {
 
       {/* Body */}
       <div ref={bodyRef} className="relative flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-4 py-3" onKeyDown={handleKeyDown}>
+        {/* With a folded quote the body only grows with what is typed, so the
+            quote's dots sit right under the text rather than below an empty
+            box; clicking the space left below still writes into the body. */}
+        <div
+          className={`flex-1 overflow-y-auto px-4 py-3${draft.quote ? ' [&_.tiptap-body]:min-h-[4.5em]' : ''}`}
+          onKeyDown={handleKeyDown}
+          onMouseDown={(event) => {
+            if (!draft.quote || event.target !== event.currentTarget) return
+            event.preventDefault()
+            if (draft.rich) {
+              editor?.commands.focus('end')
+            } else {
+              const body = textRef.current
+              body?.focus()
+              body?.setSelectionRange(body.value.length, body.value.length)
+            }
+          }}
+        >
           {draft.rich ? (
             <EditorContent editor={editor} />
           ) : (
@@ -117,9 +137,11 @@ export function Composer({ tabId }: { tabId: string }) {
               onPaste={handlePaste}
               placeholder={t('composer.placeholders.message')}
               spellCheck={spellCheck}
-              className="h-full min-h-[240px] w-full resize-none bg-transparent text-[calc(0.875rem*var(--me-message-scale))] leading-relaxed text-primary placeholder-secondary outline-none"
+              rows={draft.quote ? Math.max(3, draft.text.split('\n').length + 1) : undefined}
+              className={`${draft.quote ? 'min-h-[4.5em]' : 'h-full min-h-[240px]'} w-full resize-none bg-transparent text-[calc(0.875rem*var(--me-message-scale))] leading-relaxed text-primary placeholder-secondary outline-none`}
             />
           )}
+          {draft.quote && <ComposerQuote onExpand={expandQuote} onRemove={removeQuote} />}
         </div>
         {showInlineDrop && <DropOverlay kind="inline" className="inset-2" passThrough />}
       </div>

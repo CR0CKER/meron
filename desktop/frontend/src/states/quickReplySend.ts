@@ -18,7 +18,14 @@ import {
   discardUnsentRescue,
 } from './pendingSends'
 import { offerCertificateTrust } from './certificateTrust'
-import { draftIdOfFailedSave, escapeHtml, replyQuote, saveComposedDraft, textToHtml } from './compose'
+import {
+  bodyHasReplyQuote,
+  draftIdOfFailedSave,
+  escapeHtml,
+  replyQuote,
+  saveComposedDraft,
+  textToHtml,
+} from './compose'
 import { inlineRichStyles, prepareInlineImages } from '../components/composer/composerHelpers'
 import { buildReplyRecipients, buildReplyThreading, pickReplyTarget, resolveQuickReplyFrom } from './composeReply'
 import { allocateMessageIdentity, compose$, newDraftMessageId } from './composeState'
@@ -362,7 +369,8 @@ export async function sendReply() {
   // the conversation already shows the message it answers.
   let outgoing = { body: text, html, attachments: sendAttachments }
   const quote = replyQuote(addressed.target)
-  if (quote) {
+  // A saved quoted reply carried back into the box already holds its quote.
+  if (quote && !bodyHasReplyQuote(text, quote)) {
     const body = text.trim() ? `${text.replace(/\n+$/, '')}\n\n${quote.text}` : quote.text
     if (!quote.rich && !html) {
       outgoing = { ...outgoing, body }

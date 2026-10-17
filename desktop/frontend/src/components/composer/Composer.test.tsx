@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { accounts$ } from '../../states/accounts'
 import { settings$ } from '../../states/settings'
 import { closeMessageTab, openComposeTab, updateComposeDraft } from '../../states/compose'
@@ -552,12 +552,38 @@ describe('Composer', () => {
     const tabId = openComposeTab({
       to: 'them@example.com',
       rich: false,
-      quote: { rich: false, html: '', text: 'On Mon, Them wrote:\n> Lunch?' },
+      text: '\n\n---------- Forwarded message ---------\nLunch?',
+      signaturePlacement: 'aboveQuote',
     })!
     const view = render(<Composer tabId={tabId} />)
 
     const body = view.container.querySelector('textarea') as HTMLTextAreaElement
-    expect(body.value).toBe('\n\nOn Mon, Them wrote:\n> Lunch?')
     expect(body.selectionStart).toBe(0)
+  })
+
+  it('unfolds a folded quote into the body, or drops it', async () => {
+    accounts$.set([{ ...account('a', ''), signature: { mode: 'none', html: '' } }])
+    const quote = { rich: false, html: '<p>On Mon, Them wrote:</p>', text: 'On Mon, Them wrote:\n> Lunch?' }
+    const tabId = openComposeTab({ to: 'them@example.com', rich: false, text: 'Sounds good', quote })!
+    const view = render(<Composer tabId={tabId} />)
+
+    await act(async () => {
+      view.getByTitle('Show quoted text').click()
+    })
+    expect(draftOf(tabId)?.text).toBe('Sounds good\n\nOn Mon, Them wrote:\n> Lunch?')
+    expect(draftOf(tabId)?.quote).toBeUndefined()
+    expect(view.queryByTitle('Show quoted text')).toBeNull()
+
+    const other = openComposeTab({ to: 'them@example.com', rich: false, text: 'Sounds good', quote })!
+    cleanup()
+    const second = render(<Composer tabId={other} />)
+    await act(async () => {
+      fireEvent.contextMenu(second.getByTitle('Show quoted text'))
+    })
+    await act(async () => {
+      second.getByText('Remove quoted text').click()
+    })
+    expect(draftOf(other)?.text).toBe('Sounds good')
+    expect(draftOf(other)?.quote).toBeUndefined()
   })
 })

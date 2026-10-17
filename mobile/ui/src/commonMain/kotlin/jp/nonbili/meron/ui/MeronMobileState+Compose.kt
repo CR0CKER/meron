@@ -41,6 +41,7 @@ import jp.nonbili.meron.shared.noSignatureMark
 import jp.nonbili.meron.shared.parseAllocatedMessageId
 import jp.nonbili.meron.shared.parseAttachmentDataResponse
 import jp.nonbili.meron.shared.parseContactSuggestResponse
+import jp.nonbili.meron.shared.plainTextToHtml
 import jp.nonbili.meron.shared.recipientTail
 import jp.nonbili.meron.shared.replaceRecipientTail
 import jp.nonbili.meron.shared.replyAllAddsRecipients
@@ -168,6 +169,7 @@ internal fun MeronMobileState.clearComposeDraftState() {
     composeForwardInlineAttachments = emptyList()
     composeQuoteMarker = FORWARD_QUOTE_MARKER
     composeReplyQuote = ""
+    composeFoldedQuote = null
     composeSeed = ComposeSeed()
     recipientSuggestionField = ""
     recipientSuggestions = emptyList()
@@ -220,6 +222,20 @@ private fun recipientEntries(value: String): List<String> {
 // inline images it references. A reply whose quote the user has edited goes out
 // plain: the cached HTML quote would no longer say what the plain one does.
 private fun MeronMobileState.currentComposeDraft(): ComposeDraft {
+    composeFoldedQuote?.let { quote ->
+        // A folded quote goes out under whatever the body holds.
+        val own = body.trim()
+        val html = if (quote.html.isBlank()) "" else plainTextToHtml(own) + quote.html
+        return ComposeDraft(
+            to = to.trim(),
+            cc = cc.trim(),
+            bcc = bcc.trim(),
+            subject = subject.trim(),
+            body = if (own.isBlank()) quote.text.trim() else own + quote.text,
+            attachments = if (html.isBlank()) attachments else attachments + quote.inlineAttachments,
+            html = html,
+        )
+    }
     val quoteIntact = composeReplyQuote.isBlank() || body.trim().endsWith(composeReplyQuote)
     val html = if (quoteIntact) forwardHtmlForSend(body.trim(), composeForwardHtml, composeQuoteMarker) else ""
     return ComposeDraft(
@@ -664,13 +680,8 @@ internal fun MeronMobileState.replyToMessage(
         cc = params.cc
         bcc = params.bcc
         subject = params.subject
-        body =
-            if (quote == null) {
-                seedBodyWithSignature(params.body, accountId)
-            } else {
-                seedBodyWithSignature(quote.text, accountId, SignaturePlacement.AboveQuote)
-            }
-        applyReplyQuote(quote)
+        body = seedBodyWithSignature(params.body, accountId)
+        composeFoldedQuote = quote
         composeFromAccountId = accountId
         composeFromEmail = replyFrom
         composeInReplyTo = params.inReplyTo
@@ -743,7 +754,22 @@ internal suspend fun MeronMobileState.buildReplyQuote(
     )
 }
 
-/** Carry a reply's quote into the composer, after its body has been seeded. */
+/** Unfold the folded quote into the end of the body, where the user can trim it
+ *  like any other text; from then on it is part of the body. */
+internal fun MeronMobileState.expandComposeQuote() {
+    val quote = composeFoldedQuote ?: return
+    body = body.trimEnd('\n') + quote.text
+    applyReplyQuote(quote)
+    composeFoldedQuote = null
+}
+
+/** Drop the folded quote: the reply goes out without it. */
+internal fun MeronMobileState.removeComposeQuote() {
+    composeFoldedQuote = null
+}
+
+/** Carry a reply's quote, already in the body, into the composer: the HTML that
+ *  stands for it at send time while the plain quote stays untouched. */
 internal fun MeronMobileState.applyReplyQuote(quote: ReplyQuote?) {
     composeForwardHtml = quote?.html.orEmpty()
     composeForwardInlineAttachments = quote?.inlineAttachments.orEmpty()
@@ -1088,7 +1114,9 @@ internal fun MeronMobileState.closeCompose() {
 private fun MeronMobileState.showLocalDraftInOpenThread() {
     val thread = selectedCoreThread ?: return
     if (composeReturnScreen != Screen.Thread) return
-    val draft = ComposeDraft(to.trim(), cc.trim(), bcc.trim(), subject.trim(), body.trim(), attachments)
+    // As the draft was saved, folded quote and all, and answering the same
+    // parent: reopening it folds the quote away again (see openDraftCompose).
+    val draft = currentComposeDraft()
     if (composeIsBlank()) return
     val accountId = selectedComposeIdentity()?.accountId ?: thread.accountId.ifBlank { defaultSendAccountId() }
     if (accountId.isBlank()) return
@@ -1108,9 +1136,10 @@ private fun MeronMobileState.showLocalDraftInOpenThread() {
             dateEpochSeconds = currentTimeMillis() / 1000,
             fromAddr = selectedComposeIdentity()?.email.orEmpty(),
             messageId = draftId,
+            inReplyTo = composeInReplyTo,
             references = composeReferences,
             outgoing = true,
-            hasAttachments = draft.attachments.isNotEmpty(),
+            hasAttachments = attachments.isNotEmpty(),
         )
     messages =
         (

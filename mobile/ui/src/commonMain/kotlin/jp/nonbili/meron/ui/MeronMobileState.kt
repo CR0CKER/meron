@@ -277,6 +277,10 @@ internal class MeronMobileState(
     // still there untouched it is no more the user's writing than the seeded
     // signature is (see composeIsBlank).
     var composeReplyQuote by mutableStateOf("")
+
+    // The message a reply answers, quoted but folded away: it goes out under the
+    // body until the user unfolds it into the body or removes it.
+    var composeFoldedQuote by mutableStateOf<ReplyQuote?>(null)
     var locallyDraftedThreadIds by mutableStateOf(emptySet<String>())
     var locallyDiscardedThreadIds by mutableStateOf(emptySet<String>())
     var subject by mutableStateOf("")

@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Rakstiet savu ziņojumu...",
   "composer.placeholders.quickMessage": "Rakstiet ziņojumu...",
   "composer.placeholders.recipient": "saņēmējs@example.com",
+  "composer.removeQuotedText": "Noņemt citēto tekstu",
   "composer.status.addRecipientBeforeSending": "Pirms sūtīšanas pievienojiet saņēmēju",
   "composer.status.chooseAvailableAccount": "Izvēlieties pieejamu pasta kontu",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Neizdevās notīrīt iepriekšējā konta melnrakstu",

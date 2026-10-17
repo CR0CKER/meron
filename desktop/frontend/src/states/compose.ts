@@ -138,16 +138,66 @@ export function replyQuote(message: Message): ComposeBody | undefined {
   }
 }
 
-/** A reply body with the quote under it, and the signature, when there is one,
- * between the two. Goes rich when either part is. */
-function bodyWithReplyQuote(own: ComposeBody, quote: ComposeBody, signature?: Signature): ComposeBody {
-  const rich = own.rich || quote.rich
-  const quoted: ComposeBody = rich
-    ? { rich, html: `<p><br></p>${quote.html}`, text: '' }
-    : { rich, html: '', text: `\n\n${quote.text}` }
-  const signed = signature ? bodyWithSignature(quoted, signature, 'aboveQuote') : quoted
-  if (rich) return { ...signed, html: `${own.rich ? own.html : textToHtml(own.text)}${signed.html}` }
-  return { ...signed, text: `${own.text.replace(/\n+$/, '')}${signed.text}` }
+/** Whether a body already quotes the message `quote` answers — a saved quoted
+ * reply carried back into a reply — by the attribution line it opens with. */
+export function bodyHasReplyQuote(body: string, quote: ComposeBody): boolean {
+  const attribution = quote.text.split('\n', 1)[0]
+  return !!attribution && body.includes(attribution)
+}
+
+/** What a draft sends and saves: its body, with a folded quote under it. */
+export function composedContent(draft: Pick<ComposeDraft, 'rich' | 'html' | 'text' | 'quote'>): string {
+  const own = draft.rich ? draft.html : draft.text
+  if (!draft.quote) return own
+  if (draft.rich) return `${own}${draft.quote.html}`
+  return own.trim() ? `${own.replace(/\s+$/, '')}\n\n${draft.quote.text}` : draft.quote.text
+}
+
+/**
+ * A reopened draft's body with the quote at its tail folded away again, as it
+ * was while the reply was being written. The core marks that tail when it reads
+ * the draft back: `data-meron-quote` on the HTML elements, `body_quote_start`
+ * in the plain body. A draft without one comes back whole.
+ */
+function foldDraftQuote(message: Message): ComposeBody & { quote?: ComposeDraft['quote'] } {
+  if (message.body_html) {
+    const doc = new DOMParser().parseFromString(message.body_html, 'text/html')
+    // The core marks only a quote that ends the message, so everything from the
+    // first marked element to the end of the document is the quote — at the top
+    // level, inside a wrapper the reply shares with it, or (Outlook) running on
+    // past that wrapper. The range splits whatever wrappers it crosses.
+    const first = doc.body.querySelector('[data-meron-quote]')
+    if (!first) return { rich: true, html: message.body_html, text: '' }
+    const from = (node: Node) => {
+      const siblings: Node[] = []
+      for (let at: Node | null = node; at; at = at.nextSibling) siblings.push(at)
+      return siblings
+    }
+    let tail = from(first)
+    for (let wrapper = first.parentNode; wrapper && wrapper !== doc.body; wrapper = wrapper.parentNode) {
+      const following = wrapper.nextSibling ? from(wrapper.nextSibling) : []
+      const part = wrapper.cloneNode(false)
+      for (const node of tail) part.appendChild(node)
+      tail = [part, ...following]
+    }
+    const folded = doc.createElement('div')
+    for (const node of tail) folded.appendChild(node)
+    for (const element of Array.from(folded.querySelectorAll('[data-meron-quote]'))) {
+      element.removeAttribute('data-meron-quote')
+    }
+    const html = folded.innerHTML.trim()
+    return { rich: true, html: doc.body.innerHTML, text: '', quote: { html, text: htmlToText(html) } }
+  }
+  const body = message.body ?? ''
+  const start = message.body_quote_start
+  if (start == null || start <= 0 || start >= body.length) return { rich: false, html: '', text: body }
+  const text = body.slice(start)
+  return {
+    rich: false,
+    html: '',
+    text: body.slice(0, start).replace(/\s+$/, ''),
+    quote: { html: `<blockquote type="cite">${textToHtml(text)}</blockquote>`, text },
+  }
 }
 
 // Return to the Current conversation tab, restoring the thread it was showing
@@ -417,7 +467,8 @@ type ComposeSeed = Partial<ComposeDraft> & {
   signaturePlacement?: SignaturePlacement
   /**
    * The message a reply answers, quoted under the seeded body (see
-   * {@link replyQuote}). The signature goes between the two.
+   * {@link replyQuote}) but folded away until the user unfolds it. An HTML
+   * original makes the draft rich.
    */
   quote?: ComposeBody
   /**
@@ -441,25 +492,22 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
 
   // The signature is inserted into the body up front so it is editable (and
   // visible) like the rest of the draft, rather than appearing at send time.
-  const seeded = {
-    rich: seed?.rich ?? (hasSeededBody ? false : (account?.conversation_html ?? true)),
-    html: seed?.html ?? '',
-    text: seed?.text ?? '',
-  }
+  const quote = seed?.quote
+  const rich = seed?.rich ?? (hasSeededBody ? false : (account?.conversation_html ?? true))
+  // An HTML original is quoted as HTML, so the reply goes rich with it.
+  const seeded =
+    quote?.rich && !rich
+      ? { rich: true, html: seed?.html || textToHtml(seed?.text ?? ''), text: '' }
+      : { rich, html: seed?.html ?? '', text: seed?.text ?? '' }
   // A body this app did not compose (a saved draft, "Edit as New Message") may
   // already carry a signature, so it stays unmanaged: `undefined`, not `null`.
-  const quote = seed?.quote
-  const placement = quote ? 'aboveQuote' : (seed?.signaturePlacement ?? 'belowText')
+  const placement = seed?.signaturePlacement ?? 'belowText'
   const signature = seed?.noSignature ? undefined : resolveSignatureFor(account)
   // The placement is recorded even when the account sends no signature, so a
   // forward that later moves to an account with one still puts it above the
   // quote rather than after it.
   const tracking: SignatureTracking = signature ? { ...signature, placement } : undefined
-  const body = quote
-    ? bodyWithReplyQuote(seeded, quote, signature)
-    : signature
-      ? bodyWithSignature(seeded, signature, placement)
-      : seeded
+  const body = signature ? bodyWithSignature(seeded, signature, placement) : seeded
 
   const draft: ComposeDraft = {
     accountId,
@@ -480,6 +528,7 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
     references: seed?.references ?? '',
     draftMessageId: seed?.draftMessageId ?? newDraftMessageId(),
     signature: tracking,
+    quote: quote ? { html: quote.html, text: quote.text } : undefined,
     sourceDraft: seed?.sourceDraft,
     attachments: seed?.attachments ?? [],
   }
@@ -534,6 +583,8 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
   // found the user has written into it: it stays in the body as theirs, and the
   // composer is told not to add a second.
   const carried = quickReplyWithoutSignature()
+  // A bar holding a saved quoted reply already carries its quote.
+  const quote = replyQuote(target)
   openComposeTab({
     accountId: t.account_id || undefined,
     fromEmail: resolveQuickReplyFrom(target, replyAcc),
@@ -549,7 +600,7 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
     draftMessageId: existingDraftId,
     title: subject,
     threadId: t.thread_id,
-    quote: replyQuote(target),
+    quote: quote && !bodyHasReplyQuote(carried.text, quote) ? quote : undefined,
   })
   compose$.composerAttachments.set([])
   clearQuickReplyDraftOwnership()
@@ -623,7 +674,7 @@ export async function editAsNewMessage(message: Message) {
 }
 
 function composeFromDraftMessage(message: Message): ComposeSeed {
-  const rich = !!message.body_html
+  const body = foldDraftQuote(message)
   return {
     accountId: message.account_id || undefined,
     fromEmail: message.from_addr ?? '',
@@ -633,9 +684,10 @@ function composeFromDraftMessage(message: Message): ComposeSeed {
     replyTo: message.reply_to ?? '',
     showCcBcc: hasExtraComposeHeaders({ cc: message.cc ?? '', bcc: message.bcc ?? '' }),
     subject: message.subject ?? '',
-    rich,
-    html: rich ? (message.body_html ?? '') : '',
-    text: rich ? '' : (message.body ?? ''),
+    rich: body.rich,
+    html: body.html,
+    text: body.text,
+    quote: body.quote && { rich: body.rich, ...body.quote },
     inReplyTo: '',
     references: message.references ?? '',
     // Not an id already being expunged: that copy is going away, so this tab's

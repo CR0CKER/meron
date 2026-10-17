@@ -353,7 +353,7 @@ class ComposeSignatureTest {
     }
 
     @Test
-    fun aQuotedReplyPutsTheSignatureBetweenTheReplyAndTheQuote() =
+    fun aQuotedReplyFoldsTheQuoteAwayUnderTheSignature() =
         runBlocking {
             val state = quickReplyState(this)
             state.quoteReplies = true
@@ -361,12 +361,33 @@ class ComposeSignatureTest {
             state.replyToMessage(state.messages.single(), replyAll = false)
             yield()
 
+            assertEquals("\n\nFrom A", state.body)
+            assertEquals("\n\n${attribution()}\n> Original message", state.composeFoldedQuote?.text)
+            assertTrue(state.composeIsBlank())
+
+            // Unfolded, it joins the body under the signature, and is still not
+            // the user's writing.
+            state.expandComposeQuote()
             assertEquals("\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertNull(state.composeFoldedQuote)
             assertEquals(attribution(), state.composeQuoteMarker)
-            // The seeded quote is no more the user's writing than the signature.
             assertTrue(state.composeIsBlank())
             state.body = "Sounds good${state.body}"
             assertFalse(state.composeIsBlank())
+        }
+
+    @Test
+    fun removingAFoldedQuoteDropsIt() =
+        runBlocking {
+            val state = quickReplyState(this)
+            state.quoteReplies = true
+            state.replyToMessage(state.messages.single(), replyAll = false)
+            yield()
+
+            state.removeComposeQuote()
+
+            assertNull(state.composeFoldedQuote)
+            assertEquals("\n\nFrom A", state.body)
         }
 
     @Test
@@ -389,7 +410,8 @@ class ComposeSignatureTest {
             state.openQuickReplyInFullEditor()
             yield()
 
-            assertEquals("t2\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertEquals("t2\n\nFrom A", state.body)
+            assertEquals("\n\n${attribution()}\n> Original message", state.composeFoldedQuote?.text)
             assertEquals("From A", state.composeSignature?.text)
         }
 
@@ -407,6 +429,7 @@ class ComposeSignatureTest {
 
             assertEquals("t2\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
             assertNull(state.composeSignature)
+            assertNull(state.composeFoldedQuote)
         }
 
     @Test
@@ -422,7 +445,7 @@ class ComposeSignatureTest {
             state.quickReplyBody = "t2 and more\n\nFrom A"
             yield()
 
-            assertEquals("t2 and more\n\nFrom A\n\n${attribution()}\n> Original message", state.body)
+            assertEquals("t2 and more\n\nFrom A", state.body)
         }
 
     private fun attribution() = "On ${formatMessageFullTimestamp(0)}, Them <them@example.com> wrote:"

@@ -112,9 +112,12 @@ internal fun MeronMobileState.openDraftCompose(
             attachments = copiedAttachments
             composeForwardHtml = forwardHtml
             composeForwardInlineAttachments = inlineAttachments
-            // A saved quoted reply gets its HTML quote back from the message it
-            // answers, as long as the plain quote still ends it unchanged.
-            replyQuote?.let(::applyReplyQuote)
+            // A saved quoted reply folds its quote away again, rebuilt from the
+            // message it answers, as long as the quote still ends it unchanged.
+            replyQuote?.let { quote ->
+                body = body.trim().removeSuffix(quote.text.trim()).trimEnd()
+                composeFoldedQuote = quote
+            }
             composeFromAccountId = thread.accountId
             composeFromEmail = ""
             // A draft with no Message-ID of its own — imported, or written by

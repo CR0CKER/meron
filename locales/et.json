@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Kirjuta oma sõnum...",
   "composer.placeholders.quickMessage": "Kirjuta sõnum...",
   "composer.placeholders.recipient": "saaja@example.com",
+  "composer.removeQuotedText": "Eemalda tsiteeritud tekst",
   "composer.status.addRecipientBeforeSending": "Lisa enne saatmist saaja",
   "composer.status.chooseAvailableAccount": "Vali saadaval olev meilikonto",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Eelmise konto mustandit ei õnnestunud eemaldada",

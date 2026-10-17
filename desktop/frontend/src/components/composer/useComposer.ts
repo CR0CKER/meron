@@ -14,6 +14,7 @@ import {
   draftIdOfFailedSave,
   updateComposeDraft,
   finishClosingMessageTab,
+  composedContent,
 } from '../../states/compose'
 import { compose$, newDraftMessageId } from '../../states/composeState'
 import { htmlToText } from '../../lib/html'
@@ -324,7 +325,7 @@ export function useComposer(tabId: string) {
       setSaveStatus('saving')
       setSaveError('')
       try {
-        let content = current.rich ? current.html : current.text
+        let content = composedContent(current)
         let attachments = current.attachments
         if (current.rich) {
           const prepared = await prepareInlineImages(content, attachments)
@@ -425,6 +426,7 @@ export function useComposer(tabId: string) {
     draft?.rich,
     draft?.text,
     draft?.html,
+    draft?.quote,
     draft?.attachments,
     sending,
     editor,
@@ -453,6 +455,21 @@ export function useComposer(tabId: string) {
       update({ rich: true, html, signature })
     }
   }
+
+  // A folded quote is unfolded into the end of the body, where the user can trim
+  // it like any other text; from then on it is part of the body.
+  const expandQuote = () => {
+    const quote = draft?.quote
+    if (!quote) return
+    if (draft.rich && editor) {
+      editor.chain().insertContentAt(editor.state.doc.content.size, `<p></p>${quote.html}`).run()
+      update({ html: editor.getHTML(), quote: undefined })
+    } else {
+      update({ text: composedContent(draft), quote: undefined })
+    }
+  }
+
+  const removeQuote = () => update({ quote: undefined })
 
   // Inline images replace the selection; with `afterSelection` (a drop) they go
   // in after it, so a dropped image never replaces one that is still selected
@@ -679,7 +696,7 @@ export function useComposer(tabId: string) {
     }
     subject = current.subject.trim()
     try {
-      let content = current.rich ? current.html : current.text
+      let content = composedContent(current)
       let attachments = current.attachments
       if (current.rich) {
         const prepared = await prepareInlineImages(content, attachments)
@@ -747,6 +764,8 @@ export function useComposer(tabId: string) {
     canSend,
     update,
     toggleRich,
+    expandQuote,
+    removeQuote,
     addFiles,
     pickAttachmentFiles,
     pickInlineImages,

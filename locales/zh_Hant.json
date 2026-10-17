@@ -277,6 +277,7 @@
   "composer.placeholders.message": "撰寫您的訊息...",
   "composer.placeholders.quickMessage": "撰寫訊息...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "移除引用的文字",
   "composer.status.addRecipientBeforeSending": "傳送前請新增收件者",
   "composer.status.chooseAvailableAccount": "請選擇可用的郵件帳戶",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "無法清理上一個帳號的草稿",

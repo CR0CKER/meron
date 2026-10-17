@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Mesajınızı yazın...",
   "composer.placeholders.quickMessage": "Bir mesaj yazın...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "Alıntılanan metni kaldır",
   "composer.status.addRecipientBeforeSending": "Göndermeden önce bir alıcı ekleyin",
   "composer.status.chooseAvailableAccount": "Kullanılabilir bir posta hesabı seçin",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Önceki hesabın taslağı temizlenemedi",

@@ -277,6 +277,7 @@
   "composer.placeholders.message": "메시지를 작성하세요...",
   "composer.placeholders.quickMessage": "메시지 작성...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "인용된 텍스트 삭제",
   "composer.status.addRecipientBeforeSending": "보내기 전에 받는 사람을 추가하세요",
   "composer.status.chooseAvailableAccount": "사용 가능한 메일 계정을 선택하세요",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "이전 계정의 임시보관함 메일을 정리할 수 없습니다",

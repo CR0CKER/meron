@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Write your message...",
   "composer.placeholders.quickMessage": "Write a message...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "Remove quoted text",
   "composer.status.addRecipientBeforeSending": "Add a recipient before sending",
   "composer.status.chooseAvailableAccount": "Choose an available mail account",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Couldn't clean up the previous account's draft",

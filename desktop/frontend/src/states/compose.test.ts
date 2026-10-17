@@ -16,6 +16,7 @@ import {
   openThreadTabById,
   replyAllToMessage,
   replyToMessage,
+  composedContent,
 } from './compose'
 import { formatFullTimestamp } from '../components/chat/messageHelpers'
 import {
@@ -4147,7 +4148,7 @@ describe('quoting the original in replies', () => {
     expect(draft()?.text).toBe('')
   })
 
-  it('quotes a plain original under the signature', () => {
+  it('folds a plain original away under the signature', () => {
     accounts$.set([{ ...sendable, conversation_html: false }])
     settings$.signature.set('<p>Ping</p>')
     const m = original()
@@ -4155,10 +4156,12 @@ describe('quoting the original in replies', () => {
     replyToMessage(m)
 
     expect(draft()?.rich).toBe(false)
-    expect(draft()?.text).toBe(`\n\nPing\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+    expect(draft()?.text).toBe('\n\nPing')
+    expect(draft()?.quote?.text).toBe(`${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+    expect(composedContent(draft()!)).toBe(`\n\nPing\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
   })
 
-  it('quotes an HTML original in a cite blockquote', () => {
+  it('folds an HTML original away in a cite blockquote', () => {
     accounts$.set([{ ...sendable, conversation_html: false }])
     settings$.signature.set('<p>Ping</p>')
     const m = original({ body_html: '<p>Lunch on <b>Friday</b>?</p>' })
@@ -4166,12 +4169,13 @@ describe('quoting the original in replies', () => {
     replyToMessage(m)
 
     expect(draft()?.rich).toBe(true)
-    expect(draft()?.html).toBe(
-      `<p></p><p>Ping</p><p><br></p><p>${htmlAttribution(m)}</p><blockquote type="cite"><p>Lunch on <b>Friday</b>?</p></blockquote>`,
+    expect(draft()?.html).toBe('<p></p><p>Ping</p>')
+    expect(composedContent(draft()!)).toBe(
+      `<p></p><p>Ping</p><p>${htmlAttribution(m)}</p><blockquote type="cite"><p>Lunch on <b>Friday</b>?</p></blockquote>`,
     )
   })
 
-  it('quotes under the text carried from the quick reply into the full editor', () => {
+  it('folds the quote under the text carried from the quick reply into the full editor', () => {
     const m = original()
     mail$.threads.set([m])
     mail$.messages.set([m])
@@ -4180,7 +4184,80 @@ describe('quoting the original in replies', () => {
 
     openReplyInFullEditor()
 
-    expect(draft()?.text).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+    expect(draft()?.text).toBe('Sounds good')
+    expect(composedContent(draft()!)).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+  })
+
+  it('does not quote a saved quoted reply carried back into a reply twice', async () => {
+    const m = original()
+    mail$.threads.set([m])
+    mail$.messages.set([m])
+    ui$.selectedThread.set('t-1')
+    const saved = `Sounds good\n\n${attribution(m)}\n> Lunch on`
+    compose$.composer.set(saved)
+
+    openReplyInFullEditor()
+    expect(draft()?.text).toBe(saved)
+    expect(draft()?.quote).toBeUndefined()
+
+    compose$.tabs.set([])
+    compose$.composer.set(saved)
+    await sendReply()
+    const sent = calls.find((call) => call.command === 'mail.send')?.payload as { body: string }
+    expect(sent.body).toBe(saved)
+  })
+
+  it('folds the quote of a reopened draft away again', async () => {
+    const plain = message({
+      id: 'acc-1#Drafts#1#1',
+      account_id: 'acc-1',
+      folder_id: 'Drafts',
+      thread_id: 'acc-1#Drafts#1',
+      message_id: 'draft-plain@example.com',
+      body: 'Sounds good\n\nOn Mon, Them wrote:\n> Lunch?',
+      body_quote_start: 13,
+    })
+    const rich = message({
+      ...plain,
+      id: 'acc-1#Drafts#2#1',
+      thread_id: 'acc-1#Drafts#2',
+      message_id: 'draft-rich@example.com',
+      body_html:
+        '<p>Sounds good</p><p data-meron-quote="">On Mon, Them wrote:</p><blockquote type="cite" data-meron-quote=""><p>Lunch?</p></blockquote>',
+    })
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: any) => {
+      calls.push({ command, payload })
+      if (command === 'mail.threadRead') return { messages: [payload.thread_id === plain.thread_id ? plain : rich] }
+      return {}
+    }
+
+    await openDraftCompose(plain)
+    expect(draft()?.text).toBe('Sounds good')
+    expect(draft()?.quote?.text).toBe('On Mon, Them wrote:\n> Lunch?')
+
+    compose$.tabs.set([])
+    await openDraftCompose(rich)
+    expect(draft()?.html).toBe('<p>Sounds good</p>')
+    expect(draft()?.quote?.html).toBe('<p>On Mon, Them wrote:</p><blockquote type="cite"><p>Lunch?</p></blockquote>')
+
+    // A quote that shares a wrapper with the reply.
+    compose$.tabs.set([])
+    rich.body_html = `<div>${rich.body_html}</div>`
+    rich.message_id = 'draft-wrapped@example.com'
+    await openDraftCompose(rich)
+    expect(draft()?.html).toBe('<div><p>Sounds good</p></div>')
+    expect(draft()?.quote?.html).toBe(
+      '<div><p>On Mon, Them wrote:</p><blockquote type="cite"><p>Lunch?</p></blockquote></div>',
+    )
+
+    // An Outlook quote whose header sits in a wrapper and whose body runs past it.
+    compose$.tabs.set([])
+    rich.body_html =
+      '<div><p>Sounds good</p><div id="divRplyFwdMsg" data-meron-quote="">From: Them</div></div><p data-meron-quote="">Lunch?</p>'
+    rich.message_id = 'draft-outlook@example.com'
+    await openDraftCompose(rich)
+    expect(draft()?.html).toBe('<div><p>Sounds good</p></div>')
+    expect(draft()?.quote?.html).toBe('<div><div id="divRplyFwdMsg">From: Them</div></div><p>Lunch?</p>')
   })
 
   it('sends the quote with a quick reply but keeps it out of the bubble', async () => {

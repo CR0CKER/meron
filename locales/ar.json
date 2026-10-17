@@ -277,6 +277,7 @@
   "composer.placeholders.message": "اكتب رسالتك...",
   "composer.placeholders.quickMessage": "اكتب رسالة...",
   "composer.placeholders.recipient": "recipient@example.com",
+  "composer.removeQuotedText": "إزالة النص المقتبس",
   "composer.status.addRecipientBeforeSending": "أضف مستلمًا قبل الإرسال",
   "composer.status.chooseAvailableAccount": "اختر حساب بريد متاحًا",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "تعذر تنظيف مسودة الحساب السابق",

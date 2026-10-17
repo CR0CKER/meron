@@ -254,6 +254,12 @@ export type ComposeDraft = {
    * `SignatureTracking` in lib/signature.ts — the three states differ.
    */
   signature?: SignatureMark | null
+  /**
+   * The message this reply answers, quoted but folded away (see `replyQuote`):
+   * it goes out under the body until the user unfolds it into the body or
+   * removes it. Absent for every other draft.
+   */
+  quote?: { html: string; text: string }
   /** Server-side draft row this compose tab was restored from, if any. */
   sourceDraft?: {
     threadId: string

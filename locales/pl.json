@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Napisz swoją wiadomość...",
   "composer.placeholders.quickMessage": "Napisz wiadomość...",
   "composer.placeholders.recipient": "odbiorca@example.com",
+  "composer.removeQuotedText": "Usuń cytowany tekst",
   "composer.status.addRecipientBeforeSending": "Dodaj odbiorcę przed wysłaniem",
   "composer.status.chooseAvailableAccount": "Wybierz dostępne konto pocztowe",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Nie udało się usunąć wersji roboczej poprzedniego konta",

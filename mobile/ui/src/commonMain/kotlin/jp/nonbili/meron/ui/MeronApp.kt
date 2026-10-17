@@ -1128,6 +1128,15 @@ private fun MeronMobileScreenContent(
                     onSubjectChange = { subject = it },
                     body = body,
                     onBodyChange = { body = it },
+                    hasFoldedQuote = composeFoldedQuote != null,
+                    onExpandQuote = {
+                        expandComposeQuote()
+                        autoSaveComposeDraft()
+                    },
+                    onRemoveQuote = {
+                        removeComposeQuote()
+                        autoSaveComposeDraft()
+                    },
                     attachments = attachments,
                     recipientSuggestionField = recipientSuggestionField,
                     recipientSuggestions = recipientSuggestions,

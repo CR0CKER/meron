@@ -277,6 +277,7 @@
   "composer.placeholders.message": "Skriv ditt meddelande...",
   "composer.placeholders.quickMessage": "Skriv ett meddelande...",
   "composer.placeholders.recipient": "mottagare@example.com",
+  "composer.removeQuotedText": "Ta bort citerad text",
   "composer.status.addRecipientBeforeSending": "Lägg till en mottagare innan du skickar",
   "composer.status.chooseAvailableAccount": "Välj ett tillgängligt e-postkonto",
   "composer.status.couldNotCleanUpPreviousAccountDraft": "Det gick inte att rensa det föregående kontots utkast",
