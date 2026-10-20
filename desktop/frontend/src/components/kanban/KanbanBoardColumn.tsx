@@ -3,7 +3,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { useTranslation } from '../../lib/i18n'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Loader2, Minus, Pause, Rss } from 'lucide-react'
+import { Loader2, Minus, Pause, Rss, Search } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { clsx } from '../../lib/utils'
 import { accounts$ } from '../../states/accounts'
@@ -30,7 +30,9 @@ import {
   kanbanColumnKey,
   kanban$,
   markColumnAllRead,
+  editKanbanSearchColumn,
   removeKanbanColumn,
+  saveKanbanSearchColumn,
   switchKanbanColumnFolder,
   type KanbanColumn,
 } from '../../states/kanban'
@@ -158,7 +160,9 @@ function KanbanColumnContent({
   const hasUnread = unreadCount > 0
   const loading = allLoading[key] ?? false
   const loadingMore = allLoadingMore[key] ?? false
-  const searchActive = columnSearchActive(key, searchQuery, searchScope)
+  // The board search never reaches a saved search column (see searchTargets).
+  const searchActive = !column.query && columnSearchActive(key, searchQuery, searchScope)
+  const savedSearch = !!column.query
   const starredColumn = isUnifiedStarredColumn(column)
   // Every column pages on the single cursor now, unified included — the core
   // merges the per-account pages behind one. (The legacy per-account cursors
@@ -170,13 +174,21 @@ function KanbanColumnContent({
   const columnAccountLabel = columnAccount ? columnAccount.display_name || columnAccount.email || columnAccount.id : ''
   const isRss = isRssAccount(columnAccount, column.accountId)
   const isPaused = !!columnAccount?.paused
-  const emptyText = columnEmptyText(filterMode, searchActive, rawThreads.length > 0, isRss, attachmentsOnly)
+  const emptyText = columnEmptyText(
+    filterMode,
+    searchActive || savedSearch,
+    rawThreads.length > 0,
+    isRss,
+    attachmentsOnly,
+  )
   const [syncing, setSyncing] = useState(false)
   const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number } | null>(null)
+  const [editingQuery, setEditingQuery] = useState(false)
   // Only a per-account Trash/Junk column can be emptied — never a unified or
-  // starred column, which span folders the action must not touch.
+  // starred column, which span folders the action must not touch, nor a saved
+  // search, which shows only some of its folder.
   const emptiableTarget =
-    starredColumn || isRss || column.accountId === 'unified'
+    starredColumn || isRss || savedSearch || column.accountId === 'unified'
       ? null
       : emptiableFolder(
           labelFolders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId),
@@ -184,7 +196,7 @@ function KanbanColumnContent({
   // An ordinary folder of a single account can be deleted on the server; the
   // column goes with it, so unified/starred/RSS columns never offer this.
   const deletableTarget =
-    starredColumn || isRss || column.accountId === 'unified'
+    starredColumn || isRss || savedSearch || column.accountId === 'unified'
       ? null
       : deletableFolder(
           labelFolders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId),
@@ -193,7 +205,7 @@ function KanbanColumnContent({
   // A whole-folder export needs one real mailbox to list on the server. The
   // folder row only supplies a name: an inbox column is keyed "inbox" whatever
   // the server calls it, and the list may not have loaded yet.
-  const canExportFolder = !starredColumn && !isRss && !!columnAccount
+  const canExportFolder = !starredColumn && !isRss && !savedSearch && !!columnAccount
   const exportColumnFolder = () => {
     const folder = labelFolders.find((item) => folderMatches(item, column.accountId, column.folderId))
     void exportFolderAsEml(column.accountId, column.folderId, folder?.name ?? column.folderId)
@@ -260,7 +272,28 @@ function KanbanColumnContent({
   // reloads here with whatever search currently covers this column.
   useEffect(() => {
     void loadKanbanColumn(column, true, activeKanbanColumnQuery(column))
-  }, [column.accountId, column.folderId, filterMode, attachmentsOnly])
+  }, [column.accountId, column.folderId, column.query, filterMode, attachmentsOnly])
+
+  // The search moves into a column of its own. A search scoped to just this
+  // column has done its job then, so it clears; a board-wide one stays.
+  const saveSearch = () => {
+    const saved = saveKanbanSearchColumn(boardId, column, searchQuery)
+    if (!saved) return
+    void loadKanbanColumn(saved, true)
+    if (searchScope === key) kanban$.searchQuery.set('')
+  }
+
+  // The query is edited in the header, so a collapsed column opens first. An
+  // edit that lands re-keys the column, which remounts it on its new query; an
+  // empty, unchanged or duplicate one just puts the old query back.
+  const startEditSearch = () => {
+    settings$.kanbanMinimizedColumns[boardKey].set(false)
+    setEditingQuery(true)
+  }
+  const commitEditSearch = (query: string) => {
+    setEditingQuery(false)
+    editKanbanSearchColumn(boardId, column, query)
+  }
 
   const openHeaderMenu = (event: ReactMouseEvent<HTMLElement>) => {
     event.preventDefault()
@@ -311,8 +344,10 @@ function KanbanColumnContent({
         syncLabel={isRss ? t('feeds.actions.syncFeeds') : undefined}
         syncingLabel={isRss ? t('feeds.actions.syncingFeeds') : undefined}
         onRemove={() => removeKanbanColumn(boardId, column)}
-        onSearch={() => onSearchColumn(column)}
+        onSearch={savedSearch ? undefined : () => onSearchColumn(column)}
         searchLabel={t('kanban.actions.search', { defaultValue: 'Search' })}
+        onSaveSearch={searchActive && !savedSearch ? saveSearch : undefined}
+        onEditSearch={savedSearch ? startEditSearch : undefined}
         // A collapsed column shows no thread list, so filtering it has nothing to
         // act on until it expands.
         hideFilters={minimized}
@@ -404,18 +439,33 @@ function KanbanColumnContent({
                   label={folderLabel(column, labelFolders, accounts, t)}
                   labelClassName="-mx-2"
                   // Folders already open as their own column on this board can't
-                  // be switched to — the board would end up with duplicates.
+                  // be switched to — the board would end up with duplicates. A
+                  // saved search only collides with the same search elsewhere.
                   takenFolderIds={boardColumns
-                    .filter((item) => item.accountId === column.accountId && item.folderId !== column.folderId)
+                    .filter(
+                      (item) =>
+                        item.accountId === column.accountId &&
+                        item.folderId !== column.folderId &&
+                        item.query === column.query,
+                    )
                     .map((item) => item.folderId)}
                   onSelect={(nextFolderId) => {
                     if (!switchKanbanColumnFolder(boardId, column, nextFolderId)) return
-                    void loadKanbanColumn({ accountId: column.accountId, folderId: nextFolderId }, true)
+                    void loadKanbanColumn({ ...column, folderId: nextFolderId }, true)
                   }}
                 />
               )}
             </h3>
-            {((searchActive && loading) || syncing) && (
+            {savedSearch && (
+              <SavedSearchQuery
+                query={column.query ?? ''}
+                editing={editingQuery}
+                onStartEdit={startEditSearch}
+                onCommit={commitEditSearch}
+                onCancel={() => setEditingQuery(false)}
+              />
+            )}
+            {(((searchActive || savedSearch) && loading) || syncing) && (
               <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
             )}
             {unreadCount > 0 && (
@@ -469,8 +519,10 @@ function KanbanColumnContent({
               syncLabel={isRss ? t('feeds.actions.syncFeeds') : undefined}
               syncingLabel={isRss ? t('feeds.actions.syncingFeeds') : undefined}
               onRemove={() => removeKanbanColumn(boardId, column)}
-              onSearch={() => onSearchColumn(column)}
+              onSearch={savedSearch ? undefined : () => onSearchColumn(column)}
               searchLabel={t('kanban.actions.search', { defaultValue: 'Search' })}
+              onSaveSearch={searchActive && !savedSearch ? saveSearch : undefined}
+              onEditSearch={savedSearch ? startEditSearch : undefined}
               size={14}
               triggerClassName="h-7 w-7"
             />
@@ -576,6 +628,80 @@ function KanbanColumnContent({
         />
       )}
     </section>
+  )
+}
+
+// A saved search column's query beside its folder name, edited in place. It sits
+// inside the header's drag handle, so presses and keys in it stay its own: Enter
+// or Space would otherwise pick the column up.
+function SavedSearchQuery({
+  query,
+  editing,
+  onStartEdit,
+  onCommit,
+  onCancel,
+}: {
+  query: string
+  editing: boolean
+  onStartEdit: () => void
+  onCommit: (query: string) => void
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [draft, setDraft] = useState(query)
+  const cancelled = useRef(false)
+  useEffect(() => {
+    if (!editing) return
+    setDraft(query)
+    cancelled.current = false
+  }, [editing, query])
+  const chipClass =
+    'flex min-w-0 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-accent'
+  const keepEvent = (event: { stopPropagation: () => void }) => event.stopPropagation()
+
+  if (editing) {
+    return (
+      <span className={clsx(chipClass, 'flex-1')} onPointerDown={keepEvent} onClick={keepEvent} title="">
+        <Search size={10} className="shrink-0" />
+        <input
+          autoFocus
+          value={draft}
+          aria-label={t('kanban.actions.editSearch')}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            // Enter and Escape belong to an IME while it composes. WebKit reports
+            // the keystroke that ends a composition as keyCode 229 instead.
+            if (event.nativeEvent.isComposing || event.keyCode === 229) return
+            if (event.key === 'Enter') event.currentTarget.blur()
+            if (event.key === 'Escape') {
+              cancelled.current = true
+              onCancel()
+            }
+          }}
+          onBlur={() => {
+            if (!cancelled.current) onCommit(draft)
+          }}
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[0.625rem] font-semibold text-primary outline-none"
+        />
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={clsx(chipClass, 'cursor-pointer hover:bg-accent/15')}
+      title={query}
+      aria-label={t('kanban.actions.editSearch')}
+      onPointerDown={keepEvent}
+      onClick={(event) => {
+        event.stopPropagation()
+        onStartEdit()
+      }}
+    >
+      <Search size={10} className="shrink-0" />
+      <span className="truncate">{query}</span>
+    </button>
   )
 }
 

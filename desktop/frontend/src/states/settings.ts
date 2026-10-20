@@ -56,6 +56,8 @@ export type ConversationLayout = 'chat' | 'traditional'
 export type KanbanBoardColumn = {
   accountId: string
   folderId: string
+  /** A saved search: the column lists only this folder's matches for it. */
+  query?: string
 }
 export type KanbanBoard = {
   id: string
@@ -698,6 +700,12 @@ export function hasStoredKanbanBoards(): boolean {
   return storedKanbanBoards
 }
 
+/** A saved search query as a column stores it: one line, trimmed. The column key
+ * joins its parts with newlines, so a query must not carry one. */
+export function normalizeKanbanColumnQuery(query: string): string {
+  return query.replace(/\s+/g, ' ').trim()
+}
+
 export function sanitizeKanbanBoards(raw: unknown): KanbanBoard[] | null {
   if (!Array.isArray(raw)) return null
   const out: KanbanBoard[] = []
@@ -713,7 +721,12 @@ export function sanitizeKanbanBoards(raw: unknown): KanbanBoard[] | null {
           const col = column as Record<string, unknown>
           if (typeof col.accountId !== 'string' || typeof col.folderId !== 'string') return []
           if (!col.accountId || !col.folderId) return []
-          return [{ accountId: col.accountId, folderId: col.folderId }]
+          const query = typeof col.query === 'string' ? normalizeKanbanColumnQuery(col.query) : ''
+          return [
+            query
+              ? { accountId: col.accountId, folderId: col.folderId, query }
+              : { accountId: col.accountId, folderId: col.folderId },
+          ]
         })
       : []
     seen.add(obj.id)

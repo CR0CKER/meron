@@ -32,6 +32,19 @@ describe('sanitizeKanbanBoards', () => {
     expect(sanitizeKanbanBoards([baseBoard])).toEqual([baseBoard])
   })
 
+  it('keeps a saved search column query on one trimmed line', () => {
+    const columns = [
+      { accountId: 'acc-1', folderId: 'inbox', query: '  invoice\n due ' },
+      { accountId: 'acc-1', folderId: 'inbox', query: '   ' },
+      { accountId: 'acc-1', folderId: 'inbox', query: 42 },
+    ]
+    expect(sanitizeKanbanBoards([{ ...baseBoard, columns }])?.[0].columns).toEqual([
+      { accountId: 'acc-1', folderId: 'inbox', query: 'invoice due' },
+      { accountId: 'acc-1', folderId: 'inbox' },
+      { accountId: 'acc-1', folderId: 'inbox' },
+    ])
+  })
+
   it('accepts an app-managed avatar url', () => {
     const boards = sanitizeKanbanBoards([{ ...baseBoard, avatarUrl: '/media/avatars/kb-1/a.png' }])
     expect(boards?.[0].avatarUrl).toBe('/media/avatars/kb-1/a.png')

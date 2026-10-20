@@ -128,10 +128,13 @@ export function searchScopeColumn(scope: string): KanbanColumn | null {
   return { accountId, folderId }
 }
 
+// A saved search column keeps to its own query, so the board search never
+// reaches it.
 export function searchTargets(columns: KanbanColumn[], scope: string): KanbanColumn[] {
+  const searchable = columns.filter((column) => !column.query)
   const scopedColumn = searchScopeColumn(scope)
-  if (!scopedColumn) return columns
-  return columns.filter((column) => kanbanColumnKey(column) === kanbanColumnKey(scopedColumn))
+  if (!scopedColumn) return searchable
+  return searchable.filter((column) => kanbanColumnKey(column) === kanbanColumnKey(scopedColumn))
 }
 
 // The full folder list used for column/scope labels: an account's own folders
@@ -335,6 +338,7 @@ export function restrictColumnDragToHorizontal<T extends { x: number; y: number 
  */
 export const KANBAN_DROP_REASONS = {
   unifiedTarget: 'kanban.drop.unifiedTarget',
+  savedSearchTarget: 'kanban.drop.savedSearchTarget',
   unknownOrigin: 'kanban.drop.unknownOrigin',
   feedToMail: 'kanban.drop.feedToMail',
   mailToFeed: 'kanban.drop.mailToFeed',
@@ -374,6 +378,8 @@ export function resolveKanbanMove(
   const sameColumn = (a: KanbanColumn, b: KanbanColumn) =>
     a.accountId === b.accountId && folderMatches(a.folderId, b.folderId)
   if (target.accountId === 'unified') return { kind: 'blocked', reasonKey: KANBAN_DROP_REASONS.unifiedTarget }
+  // A saved search only lists matches; a card dropped on it might not be one.
+  if (target.query) return { kind: 'blocked', reasonKey: KANBAN_DROP_REASONS.savedSearchTarget }
   if (sameColumn(source, target)) return { kind: 'noop' }
   if (source.accountId === 'unified' && !thread) {
     return { kind: 'blocked', reasonKey: KANBAN_DROP_REASONS.unknownOrigin }
@@ -441,7 +447,8 @@ export function kanbanColumnUnreadCount(
   folderUnread: number | undefined,
   loadedThreads: Message[] = [],
 ): number {
-  if (isUnifiedStarredColumn(column)) return loadedUnreadCount(loadedThreads)
+  // The folder's total says nothing about how many of its matches are unread.
+  if (isUnifiedStarredColumn(column) || column.query) return loadedUnreadCount(loadedThreads)
   return folderUnread ?? loadedUnreadCount(loadedThreads)
 }
 
@@ -480,6 +487,7 @@ export function activeKanbanColumnAttachmentsOnly(column: KanbanColumn): boolean
 // the search's scope, '' otherwise. A reload triggered by anything other than the
 // search itself (a filter toggle, the next page) must keep the column searched.
 export function activeKanbanColumnQuery(column: KanbanColumn): string {
+  if (column.query) return column.query
   const key = kanbanColumnKey(column)
   const query = kanban$.searchQuery.peek()
   return columnSearchActive(key, query, kanban$.searchScope.peek()) ? query.trim() : ''
@@ -487,9 +495,11 @@ export function activeKanbanColumnQuery(column: KanbanColumn): string {
 
 type ColumnView = { query: string; filter: FilterMode; attachments: boolean }
 
+// A saved search column is always read with its own query, whatever the caller
+// passes for the board search.
 function currentColumnView(column: KanbanColumn, query: string): ColumnView {
   return {
-    query: query.trim(),
+    query: (column.query ?? query).trim(),
     filter: activeKanbanColumnFilter(column),
     attachments: activeKanbanColumnAttachmentsOnly(column),
   }

@@ -20,7 +20,8 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
   const searchQuery = useValue(kanban$.searchQuery)
   const searchScope = useValue(kanban$.searchScope)
   const globalSearchFocus = useValue(ui$.globalSearchFocus)
-  const visibleColumns = useMemo(() => getKanbanColumns(boardId), [boards, boardId])
+  // Saved search columns keep their own query, so they can't be a scope.
+  const visibleColumns = useMemo(() => getKanbanColumns(boardId).filter((column) => !column.query), [boards, boardId])
   // The header's bar is collapsed to an icon by default; it expands on click (or
   // the search hotkey) and folds back once it's empty and loses focus. Start open
   // if a query is already active so a persisted search stays visible.

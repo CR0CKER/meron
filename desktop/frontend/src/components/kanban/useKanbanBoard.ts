@@ -50,7 +50,8 @@ export function useKanbanBoardSync(boardId: string, visibleColumns: KanbanColumn
       if (column.folderId.toLowerCase() === 'inbox') continue
       const account = accounts.find((item) => item.id === column.accountId)
       if (!account || account.paused || isRSSAccount(column.accountId, accounts)) continue
-      desired.add(kanbanColumnKey(column))
+      // Keyed by folder alone: a saved search shares its folder's watch.
+      desired.add(kanbanColumnKey({ accountId: column.accountId, folderId: column.folderId }))
     }
 
     const current = watchedKanbanFoldersRef.current

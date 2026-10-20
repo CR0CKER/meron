@@ -50,7 +50,8 @@ export function KanbanColumnMinimized({
   const searchScope = useValue(kanban$.searchScope)
 
   const labelFolders = useMemo(() => mergeLabelFolders(folders, foldersByAccount), [folders, foldersByAccount])
-  const searchActive = columnSearchActive(key, searchQuery, searchScope)
+  // The board search never reaches a saved search column (see searchTargets).
+  const searchActive = !column.query && columnSearchActive(key, searchQuery, searchScope)
   const overWallpaper = !!boardWallpaper(
     useValue(settings$.kanbanBoards).find((board) => board.id === boardId)?.wallpaper,
   )
@@ -59,7 +60,8 @@ export function KanbanColumnMinimized({
   const columnAccountLabel = columnAccount ? columnAccount.display_name || columnAccount.email || columnAccount.id : ''
   const isPaused = !!columnAccount?.paused
   const isRss = isRssAccount(columnAccount, column.accountId)
-  const label = folderLabel(column, labelFolders, accounts, t)
+  const folder = folderLabel(column, labelFolders, accounts, t)
+  const label = column.query ? `${folder} · ${column.query}` : folder
 
   // WebKitGTK (Wails on Linux) can mis-measure the intrinsic size of vertical-rl
   // text, and horizontal and vertical glyph advances are not necessarily equal.
@@ -148,7 +150,7 @@ export function KanbanColumnMinimized({
           {columnUnreadCount}
         </div>
       )}
-      {searchActive && loading && <Loader2 size={14} className="animate-spin text-accent" />}
+      {(searchActive || !!column.query) && loading && <Loader2 size={14} className="animate-spin text-accent" />}
     </section>
   )
 }

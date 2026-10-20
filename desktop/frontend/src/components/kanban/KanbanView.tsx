@@ -78,7 +78,12 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-  const selectedKeys = useMemo(() => visibleColumns.map((column) => kanbanColumnKey(column)), [visibleColumns])
+  // The dialog picks folders; saved search columns are not among its options,
+  // so they stay out of what it can add or remove.
+  const selectedKeys = useMemo(
+    () => visibleColumns.filter((column) => !column.query).map((column) => kanbanColumnKey(column)),
+    [visibleColumns],
+  )
   // Derived from the folder cache rather than snapshotted when the dialog opens,
   // so a folder LIST that finishes while it is open shows up without reopening.
   const dialogGroups = useMemo<AccountGroup[]>(

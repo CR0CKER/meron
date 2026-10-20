@@ -297,6 +297,27 @@ describe('markColumnAllRead', () => {
     ])
   })
 
+  it('marks only the matches of a saved search, never widening an account folder write to unified', async () => {
+    settings$.kanbanBoards.set([
+      {
+        id: 'board',
+        name: 'Board',
+        columns: [
+          { accountId: 'acc1', folderId: 'INBOX' },
+          { accountId: 'unified', folderId: 'inbox', query: 'invoice' },
+        ],
+      },
+    ])
+    kanban$.threads['unified\ninbox\ninvoice'].set([message({ thread_id: 'match' })])
+    await markBoardAllRead('board')
+    expect(calls.filter((call) => call.command === 'mail.markAllRead').map((call) => call.payload)).toEqual([
+      { account_id: 'acc1', folder_id: 'INBOX' },
+    ])
+    expect(calls.filter((call) => call.command === 'mail.markRead').map((call) => call.payload)).toEqual([
+      { thread_id: 'match' },
+    ])
+  })
+
   it('clears every column before the backend answers', async () => {
     settings$.kanbanBoards.set([
       {

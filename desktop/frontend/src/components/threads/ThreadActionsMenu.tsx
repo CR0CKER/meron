@@ -6,6 +6,8 @@ import {
   Mail,
   Bell,
   BellOff,
+  BookmarkPlus,
+  Pencil,
   Star,
   Paperclip,
   Check,
@@ -49,6 +51,10 @@ export type ThreadActionsMenuItemsProps = {
   onRemove?: () => void
   onSearch?: () => void
   searchLabel?: string
+  /** Only wired while a search is showing in a kanban column; hidden otherwise. */
+  onSaveSearch?: () => void
+  /** Only wired for a saved search kanban column; hidden otherwise. */
+  onEditSearch?: () => void
   /** Set where the filtered list isn't on screen (a collapsed kanban column). */
   hideFilters?: boolean
   closeMenu: () => void
@@ -75,6 +81,8 @@ export function ThreadActionsMenuItems({
   onRemove,
   onSearch,
   searchLabel,
+  onSaveSearch,
+  onEditSearch,
   hideFilters = false,
   closeMenu,
 }: ThreadActionsMenuItemsProps) {
@@ -161,6 +169,28 @@ export function ThreadActionsMenuItems({
           }
           onClick={() => {
             onSearch()
+            closeMenu()
+          }}
+        />
+      )}
+      {onSaveSearch && (
+        <MenuItem
+          className="flex-nowrap"
+          icon={<BookmarkPlus size={13} className="text-secondary shrink-0" />}
+          label={<span className="whitespace-nowrap shrink-0">{t('kanban.actions.saveSearchAsColumn')}</span>}
+          onClick={() => {
+            onSaveSearch()
+            closeMenu()
+          }}
+        />
+      )}
+      {onEditSearch && (
+        <MenuItem
+          className="flex-nowrap"
+          icon={<Pencil size={13} className="text-secondary shrink-0" />}
+          label={<span className="whitespace-nowrap shrink-0">{t('kanban.actions.editSearch')}</span>}
+          onClick={() => {
+            onEditSearch()
             closeMenu()
           }}
         />
@@ -274,6 +304,8 @@ export function ThreadActionsMenu({
   onRemove,
   onSearch,
   searchLabel,
+  onSaveSearch,
+  onEditSearch,
   size = 16,
   triggerClassName = 'h-8 w-8',
 }: {
@@ -297,6 +329,10 @@ export function ThreadActionsMenu({
   onRemove?: () => void
   onSearch?: () => void
   searchLabel?: string
+  /** Only wired while a search is showing in a kanban column; hidden otherwise. */
+  onSaveSearch?: () => void
+  /** Only wired for a saved search kanban column; hidden otherwise. */
+  onEditSearch?: () => void
   size?: number
   triggerClassName?: string
 }) {
@@ -352,6 +388,8 @@ export function ThreadActionsMenu({
             onRemove={onRemove}
             onSearch={onSearch}
             searchLabel={searchLabel}
+            onSaveSearch={onSaveSearch}
+            onEditSearch={onEditSearch}
             closeMenu={() => setOpen(false)}
           />
         </div>

@@ -16,7 +16,7 @@ import { accountFolderForRole, unifiedFolderRole } from '../lib/unifiedFolders'
 import { openMessageTab } from './compose'
 import { compose$ } from './composeState'
 import { persistedField } from '../lib/sessionPref'
-import { hasStoredKanbanBoards, settings$, type KanbanBoard } from './settings'
+import { hasStoredKanbanBoards, normalizeKanbanColumnQuery, settings$, type KanbanBoard } from './settings'
 import { invoke } from '../lib/bridge'
 import { thread$ } from './thread'
 import { t } from '../lib/i18n'
@@ -25,6 +25,8 @@ import { boardWallpaper } from '../lib/wallpapers'
 export type KanbanColumn = {
   accountId: string
   folderId: string
+  /** Set on a saved search column: it always lists this folder's matches. */
+  query?: string
 }
 
 const DEFAULT_BOARD_NAME = 'Kanban board'
@@ -348,8 +350,11 @@ export function restoreKanbanSession(prefs: Record<string, unknown>) {
   activeBoardSession.restore(prefs)
 }
 
+// A saved search is its own column beside the folder's plain one, so its query is
+// part of the key. Splitting a key on "\n" still yields account and folder first.
 export function kanbanColumnKey(column: KanbanColumn): string {
-  return `${column.accountId}\n${column.folderId}`
+  const base = `${column.accountId}\n${column.folderId}`
+  return column.query ? `${base}\n${column.query}` : base
 }
 
 export function kanbanBoardColumnKey(boardId: string, column: KanbanColumn): string {
@@ -377,6 +382,26 @@ export function addKanbanColumn(boardId: string, column: KanbanColumn) {
     if (board.columns.some((item) => kanbanColumnKey(item) === entry)) return board
     return { ...board, columns: [...board.columns, column] }
   })
+}
+
+// Turn the board search on one column into a column of its own, placed right
+// after it. Returns the new column, or null when there is nothing to save or the
+// board already has it.
+export function saveKanbanSearchColumn(boardId: string, column: KanbanColumn, query: string): KanbanColumn | null {
+  const saved = normalizeKanbanColumnQuery(query)
+  if (!boardId || !saved || column.query) return null
+  const target: KanbanColumn = { accountId: column.accountId, folderId: column.folderId, query: saved }
+  const entry = kanbanColumnKey(target)
+  const columns = getKanbanColumns(boardId)
+  if (columns.some((item) => kanbanColumnKey(item) === entry)) return null
+  const sourceEntry = kanbanColumnKey(column)
+  updateBoard(boardId, (board) => {
+    const next = [...board.columns]
+    const at = next.findIndex((item) => kanbanColumnKey(item) === sourceEntry)
+    next.splice(at === -1 ? next.length : at + 1, 0, target)
+    return { ...board, columns: next }
+  })
+  return target
 }
 
 export function reorderKanbanColumn(boardId: string, from: KanbanColumn, to: KanbanColumn) {
@@ -415,14 +440,14 @@ export function removeKanbanColumn(boardId: string, column: KanbanColumn) {
   kanban$.accountCursors.set(nextAccountCursors)
 }
 
-// Drop every column showing a folder, on all boards. Used once the folder is
-// gone from the server: a column left behind would only fail to load.
+// Drop every column showing a folder, saved searches in it included, on all
+// boards. Used once the folder is gone from the server: a column left behind
+// would only fail to load.
 export function removeKanbanColumnsForFolder(accountId: string, folderId: string) {
   if (!accountId || !folderId) return
-  const entry = kanbanColumnKey({ accountId, folderId })
   for (const board of settings$.kanbanBoards.get()) {
-    if (board.columns.some((item) => kanbanColumnKey(item) === entry)) {
-      removeKanbanColumn(board.id, { accountId, folderId })
+    for (const column of board.columns) {
+      if (column.accountId === accountId && column.folderId === folderId) removeKanbanColumn(board.id, column)
     }
   }
 }
@@ -432,7 +457,23 @@ export function removeKanbanColumnsForFolder(accountId: string, folderId: string
 // column, or the target folder already has a column here).
 export function switchKanbanColumnFolder(boardId: string, column: KanbanColumn, folderId: string): boolean {
   if (!boardId || !folderId || folderId === column.folderId) return false
-  const target: KanbanColumn = { accountId: column.accountId, folderId }
+  return replaceKanbanColumn(boardId, column, { ...column, folderId })
+}
+
+// Give a saved search column a new query, keeping its slot on the board. Returns
+// the edited column, or null when the query is empty, unchanged, or already has
+// a column of its own here.
+export function editKanbanSearchColumn(boardId: string, column: KanbanColumn, query: string): KanbanColumn | null {
+  const next = normalizeKanbanColumnQuery(query)
+  if (!boardId || !column.query || !next || next === column.query) return null
+  const target: KanbanColumn = { ...column, query: next }
+  return replaceKanbanColumn(boardId, column, target) ? target : null
+}
+
+// Swap `column` for `target` in place, carrying the column's state over so the
+// change feels like the same column. False when the board has no such column or
+// already shows the target.
+function replaceKanbanColumn(boardId: string, column: KanbanColumn, target: KanbanColumn): boolean {
   const fromEntry = kanbanColumnKey(column)
   const toEntry = kanbanColumnKey(target)
   const columns = getKanbanColumns(boardId)
@@ -465,7 +506,7 @@ export function switchKanbanColumnFolder(boardId: string, column: KanbanColumn, 
   const attachmentsOnly = kanban$.attachmentsOnly[fromEntry].get()
   if (attachmentsOnly !== undefined) kanban$.attachmentsOnly[toEntry].set(attachmentsOnly)
 
-  // Only discard the old folder's cached page when no other board still shows it.
+  // Only discard the old column's cached page when no other board still shows it.
   if (!getAllKanbanColumns().some((item) => kanbanColumnKey(item) === fromEntry)) {
     const nextThreads = { ...kanban$.threads.get() }
     delete nextThreads[fromEntry]
@@ -504,8 +545,11 @@ async function markColumnRead(column: KanbanColumn, request: ReadRequest, baseli
   const unread = threads.filter((thread) => thread.unread)
   const accounts = accounts$.get()
   const starred = isUnifiedStarredColumn(column)
+  // A saved search marks only its matches read, never the whole folder, so it
+  // goes thread by thread like the starred aggregate.
+  const perItem = starred || !!column.query
   const columnAccount = accounts.find((account) => account.id === column.accountId)
-  const mailAccountIds = starred
+  const mailAccountIds = perItem
     ? []
     : column.accountId === 'unified'
       ? accounts
@@ -514,7 +558,7 @@ async function markColumnRead(column: KanbanColumn, request: ReadRequest, baseli
       : !isRssAccount(columnAccount, column.accountId)
         ? [column.accountId]
         : []
-  const itemTargets = starred
+  const itemTargets = perItem
     ? unread
     : unread.filter((thread) =>
         isRssAccount(
@@ -652,13 +696,17 @@ export async function markBoardAllRead(boardId: string) {
   const requests = new Map<string, Promise<void>>()
   const request: ReadRequest = (command, payload) => {
     // Reuse a unified folder write for a concrete column covering the same folder.
+    // A saved unified search marks only its matches, so it never stands in.
     if (command === 'mail.markAllRead' && payload.account_id !== 'unified') {
       const account = accounts$.get().find((account) => account.id === payload.account_id)
       const folder = mail$.foldersByAccount[payload.account_id].get()?.find((folder) => folder.id === payload.folder_id)
       const role = folder?.role || (payload.folder_id.toLowerCase() === 'inbox' ? 'inbox' : '')
       const unified = columns.find(
         (column) =>
-          column.accountId === 'unified' && column.folderId.toLowerCase() === role && !isUnifiedStarredColumn(column),
+          column.accountId === 'unified' &&
+          !column.query &&
+          column.folderId.toLowerCase() === role &&
+          !isUnifiedStarredColumn(column),
       )
       if (account && account.included_in_unified !== false && unified) {
         payload = { account_id: 'unified', folder_id: unified.folderId }

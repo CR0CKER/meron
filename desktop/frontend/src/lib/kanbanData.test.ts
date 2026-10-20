@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { accounts$ } from '../states/accounts'
 import { t } from './i18n'
-import { kanban$, setGlobalKanbanAttachmentsOnly, setGlobalKanbanFilter } from '../states/kanban'
+import {
+  editKanbanSearchColumn,
+  getKanbanColumns,
+  kanban$,
+  saveKanbanSearchColumn,
+  setGlobalKanbanAttachmentsOnly,
+  setGlobalKanbanFilter,
+} from '../states/kanban'
 import { mail$, releaseRemovedThread, suppressRemovedThread } from '../states/mail'
 import { ui$ } from '../states/ui'
 import { settings$ } from '../states/settings'
@@ -110,6 +117,63 @@ describe('searchTargets', () => {
   it('returns only the scoped column', () => {
     expect(searchTargets(columns, 'acc2\nINBOX')).toEqual([columns[1]])
   })
+
+  it('leaves saved search columns to their own query', () => {
+    const saved = { accountId: 'acc1', folderId: 'INBOX', query: 'invoice' }
+    expect(searchTargets([...columns, saved], 'all')).toEqual(columns)
+  })
+})
+
+describe('editKanbanSearchColumn', () => {
+  const inbox = { accountId: 'acc1', folderId: 'INBOX' }
+  const saved = { ...inbox, query: 'invoice' }
+  const sent = { accountId: 'acc1', folderId: 'Sent' }
+
+  beforeEach(() => {
+    settings$.kanbanBoards.set([{ id: 'kb-1', name: 'Work', columns: [inbox, saved, sent] }])
+    settings$.kanbanMinimizedColumns.set({})
+  })
+
+  it('changes the query in place and carries the column state over', () => {
+    kanban$.filters['acc1\nINBOX\ninvoice'].set('unread')
+    settings$.kanbanMinimizedColumns['kb-1\nacc1\nINBOX\ninvoice'].set(true)
+    expect(editKanbanSearchColumn('kb-1', saved, ' receipt ')).toEqual({ ...inbox, query: 'receipt' })
+    expect(getKanbanColumns('kb-1')).toEqual([inbox, { ...inbox, query: 'receipt' }, sent])
+    expect(kanban$.filters['acc1\nINBOX\nreceipt'].get()).toBe('unread')
+    expect(kanban$.filters['acc1\nINBOX\ninvoice'].get()).toBeUndefined()
+    expect(settings$.kanbanMinimizedColumns['kb-1\nacc1\nINBOX\nreceipt'].get()).toBe(true)
+  })
+
+  it('refuses an empty, unchanged or duplicate query, and a plain folder column', () => {
+    settings$.kanbanBoards.set([{ id: 'kb-1', name: 'Work', columns: [inbox, saved, { ...inbox, query: 'receipt' }] }])
+    expect(editKanbanSearchColumn('kb-1', saved, '   ')).toBeNull()
+    expect(editKanbanSearchColumn('kb-1', saved, 'invoice')).toBeNull()
+    expect(editKanbanSearchColumn('kb-1', saved, 'receipt')).toBeNull()
+    expect(editKanbanSearchColumn('kb-1', inbox, 'invoice')).toBeNull()
+    expect(getKanbanColumns('kb-1')).toEqual([inbox, saved, { ...inbox, query: 'receipt' }])
+  })
+})
+
+describe('saveKanbanSearchColumn', () => {
+  const inbox = { accountId: 'acc1', folderId: 'INBOX' }
+  const sent = { accountId: 'acc1', folderId: 'Sent' }
+
+  beforeEach(() => {
+    settings$.kanbanBoards.set([{ id: 'kb-1', name: 'Work', columns: [inbox, sent] }])
+  })
+
+  it('places the saved search right after the column it came from', () => {
+    expect(saveKanbanSearchColumn('kb-1', inbox, '  invoice \n due ')).toEqual({ ...inbox, query: 'invoice due' })
+    expect(getKanbanColumns('kb-1')).toEqual([inbox, { ...inbox, query: 'invoice due' }, sent])
+  })
+
+  it('refuses an empty query, a duplicate, and saving a saved search again', () => {
+    expect(saveKanbanSearchColumn('kb-1', inbox, '   ')).toBeNull()
+    const saved = saveKanbanSearchColumn('kb-1', inbox, 'invoice')!
+    expect(saveKanbanSearchColumn('kb-1', inbox, 'invoice')).toBeNull()
+    expect(saveKanbanSearchColumn('kb-1', saved, 'other')).toBeNull()
+    expect(getKanbanColumns('kb-1')).toHaveLength(3)
+  })
 })
 
 describe('columnEmptyText', () => {
@@ -172,6 +236,13 @@ describe('activeKanbanColumnQuery', () => {
   it('is empty when there is no search', () => {
     kanban$.searchQuery.set('   ')
     expect(activeKanbanColumnQuery(column)).toBe('')
+  })
+
+  it('keeps a saved search column on its own query', () => {
+    const saved = { ...column, query: 'invoice' }
+    expect(activeKanbanColumnQuery(saved)).toBe('invoice')
+    kanban$.searchQuery.set('receipt')
+    expect(activeKanbanColumnQuery(saved)).toBe('invoice')
   })
 })
 
@@ -302,6 +373,25 @@ describe('kanban column loading filters', () => {
       kanban$.globalAttachmentsOnly.set(false)
       kanban$.globalFilter.set('all')
     }
+  })
+
+  it('reads a saved search column with its own query, whatever the caller passes', async () => {
+    const calls: { command: string; payload: any }[] = []
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string, payload: unknown) => {
+            calls.push({ command, payload })
+            return { threads: [], next_cursor: '', folder_unread: 0 }
+          },
+        },
+      },
+    }
+    await loadKanbanColumn({ accountId: 'acc1', folderId: 'INBOX', query: 'invoice' }, false, 'receipt')
+    expect(calls.find((call) => call.command === 'mail.threadList')?.payload).toMatchObject({
+      folder_id: 'INBOX',
+      query: 'invoice',
+    })
   })
 
   it('sends the active global filter when loading a single-account column', async () => {
@@ -765,6 +855,14 @@ describe('kanbanColumnUnreadCount', () => {
     ).toBe(3)
   })
 
+  it('counts a saved search from its loaded matches, not the folder total', () => {
+    expect(
+      kanbanColumnUnreadCount({ accountId: 'acc1', folderId: 'inbox', query: 'invoice' }, 137, [
+        message({ unread: true, unread_count: 2 }),
+      ]),
+    ).toBe(2)
+  })
+
   it('always derives unified starred from its loaded items', () => {
     expect(
       kanbanColumnUnreadCount({ accountId: 'unified', folderId: 'starred' }, 99, [
@@ -1043,6 +1141,15 @@ describe('resolveKanbanMove', () => {
     expect(resolveKanbanMove(unified, { accountId: 'acc1', folderId: 'Archive' }, thread, mailAccounts)).toEqual({
       kind: 'move',
       origin: { accountId: 'acc2', folderId: 'INBOX' },
+    })
+  })
+
+  it('refuses a drop onto a saved search column', () => {
+    const source = { accountId: 'acc1', folderId: 'Archive' }
+    const target = { accountId: 'acc1', folderId: 'INBOX', query: 'invoice' }
+    expect(resolveKanbanMove(source, target, message({}), mailAccounts)).toEqual({
+      kind: 'blocked',
+      reasonKey: KANBAN_DROP_REASONS.savedSearchTarget,
     })
   })
 
