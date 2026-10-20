@@ -44,13 +44,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.nonbili.meron.shared.ContactSuggestParams
+import jp.nonbili.meron.shared.ContactSuggestion
 import jp.nonbili.meron.shared.MobileMailCommandClient
 import jp.nonbili.meron.shared.SearchFields
+import jp.nonbili.meron.shared.parseContactSuggestResponse
 import jp.nonbili.meron.shared.parseSearchBuildResponse
 import jp.nonbili.meron.shared.parseSearchFieldsResponse
 import jp.nonbili.meron.shared.requireCoreOk
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -62,6 +68,8 @@ import kotlinx.coroutines.withContext
  *
  * On a board, [saveColumns] are the columns the query can be saved into as a
  * column of its own: one is saved into directly, several offer a pick.
+ * From and To suggest [contactsAccountId]'s correspondents, or every
+ * account's when it's blank.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +82,7 @@ internal fun SearchOptionsSheet(
     /** A column's folder name and, below it, whose folder it is. */
     columnLabel: @Composable (KanbanColumnSpec) -> Pair<String, String> = { "" to "" },
     onSave: (String, KanbanColumnSpec) -> Unit = { _, _ -> },
+    contactsAccountId: String = "",
 ) {
     var fields by remember { mutableStateOf<SearchFields?>(null) }
     var pickingColumn by remember { mutableStateOf(false) }
@@ -116,8 +125,12 @@ internal fun SearchOptionsSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(tr("search.options"), style = MaterialTheme.typography.titleMedium)
-            SearchOptionsTextField(tr("composer.fields.from"), current.from, submit) { fields = current.copy(from = it) }
-            SearchOptionsTextField(tr("composer.fields.to"), current.to, submit) { fields = current.copy(to = it) }
+            SearchOptionsAddressField(state, contactsAccountId, tr("composer.fields.from"), current.from, submit) {
+                fields = current.copy(from = it)
+            }
+            SearchOptionsAddressField(state, contactsAccountId, tr("composer.fields.to"), current.to, submit) {
+                fields = current.copy(to = it)
+            }
             SearchOptionsTextField(tr("composer.fields.subject"), current.subject, submit) { fields = current.copy(subject = it) }
             SearchOptionsTextField(tr("search.hasWords"), current.words, submit) { fields = current.copy(words = it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -161,6 +174,10 @@ internal fun SearchOptionsSheet(
                 saveColumns.forEach { column ->
                     val (folder, account) = columnLabel(column)
                     ListItem(
+                        // Whose folder it is, since a board can hold the same folder of several accounts.
+                        leadingContent = {
+                            Avatar(columnAvatarLabel(column, state.coreAccounts), 32.dp, columnAvatarFallbackIcon(column, state.coreAccounts))
+                        },
                         headlineContent = { Text(folder) },
                         supportingContent = if (account.isBlank()) null else ({ Text(account) }),
                         modifier = Modifier.clickable { save(column) },
@@ -213,6 +230,69 @@ private fun SearchOptionsTextField(
     )
 }
 
+/**
+ * A text field suggesting addresses from cached mail as it's typed. A pick
+ * fills in the bare address: `from:`/`to:` take one value, not a list.
+ */
+@Composable
+private fun SearchOptionsAddressField(
+    state: MeronMobileState,
+    accountId: String,
+    label: String,
+    value: String,
+    onSubmit: () -> Unit,
+    onValueChange: (String) -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    // Suggest only after an edit, so opening the sheet on a filled field or
+    // picking a suggestion doesn't pop the list up.
+    var typed by remember { mutableStateOf(false) }
+    var suggestions by remember { mutableStateOf(emptyList<ContactSuggestion>()) }
+    LaunchedEffect(value, typed, accountId) {
+        val query = value.trim()
+        if (!typed || query.isEmpty()) {
+            suggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(120)
+        suggestions = state.suggestSearchContacts(accountId, query)
+    }
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                typed = true
+                onValueChange(it)
+            },
+            label = { Text(label) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+        )
+        if (focused && suggestions.isNotEmpty()) {
+            suggestions.forEach { contact ->
+                val name = contact.name.trim()
+                ListItem(
+                    leadingContent = { Avatar(name.ifBlank { contact.addr }, 32.dp) },
+                    headlineContent = { Text(name.ifBlank { contact.addr }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent =
+                        if (name.isBlank() || name.equals(contact.addr, ignoreCase = true)) {
+                            null
+                        } else {
+                            { Text(contact.addr, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        },
+                    modifier =
+                        Modifier.clickable {
+                            typed = false
+                            onValueChange(contact.addr)
+                        },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SearchOptionsDateChip(
     label: String,
@@ -243,6 +323,18 @@ private suspend fun MeronMobileState.parseSearchQuery(query: String): SearchFiel
             parseSearchFieldsResponse(requireCoreOk(MobileMailCommandClient(core).parseSearch(query)))
         }
     }.getOrNull()
+
+private suspend fun MeronMobileState.suggestSearchContacts(
+    accountId: String,
+    query: String,
+): List<ContactSuggestion> =
+    runCatching {
+        withContext(ioDispatcher) {
+            parseContactSuggestResponse(
+                MobileMailCommandClient(core).suggestContacts(ContactSuggestParams(accountId = accountId, query = query, limit = 6)),
+            )
+        }
+    }.getOrDefault(emptyList())
 
 private suspend fun MeronMobileState.buildSearchQuery(fields: SearchFields): String? =
     runCatching {

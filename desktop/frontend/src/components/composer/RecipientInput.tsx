@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Contact } from '../../types'
 import { suggestContacts, formatContact } from '../../lib/contacts'
+import { useEscapeKey } from '../../lib/useEscapeKey'
 
 type RecipientInputProps = {
   value: string
@@ -10,6 +11,9 @@ type RecipientInputProps = {
   autoFocus?: boolean
   inputRef?: React.Ref<HTMLInputElement>
   onTab?: () => void
+  /** One address, not a comma-separated list: a pick replaces the whole value with the bare address. */
+  single?: boolean
+  className?: string
 }
 
 // A comma-separated recipient field carries multiple addresses; autocomplete
@@ -31,6 +35,8 @@ export function RecipientInput({
   autoFocus,
   inputRef,
   onTab,
+  single = false,
+  className = inputClass,
 }: RecipientInputProps) {
   const [suggestions, setSuggestions] = useState<Contact[]>([])
   const [open, setOpen] = useState(false)
@@ -39,7 +45,7 @@ export function RecipientInput({
   const suggestionsEnabledRef = useRef(false)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const tail = splitTail(value).tail.trim()
+  const tail = (single ? value : splitTail(value).tail).trim()
   // The account and token the held suggestions were looked up for.
   const lookupKey = `${accountId}\n${tail}`
   const suggestionsKeyRef = useRef('')
@@ -72,11 +78,18 @@ export function RecipientInput({
     }
   }, [tail, accountId])
 
+  // The topmost Escape layer, so closing the list leaves a form or dialog around it open.
+  useEscapeKey(() => setOpen(false), open && suggestions.length > 0)
+
   function accept(contact: Contact) {
     suggestionsEnabledRef.current = false
-    const { head } = splitTail(value)
-    const prefix = head ? `${head} ` : ''
-    onChange(`${prefix}${formatContact(contact)}, `)
+    if (single) {
+      onChange(contact.addr)
+    } else {
+      const { head } = splitTail(value)
+      const prefix = head ? `${head} ` : ''
+      onChange(`${prefix}${formatContact(contact)}, `)
+    }
     setOpen(false)
     setSuggestions([])
     suggestionsKeyRef.current = ''
@@ -109,12 +122,6 @@ export function RecipientInput({
         accept(suggestions[active])
         return
       }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        setOpen(false)
-        return
-      }
     }
   }
 
@@ -126,7 +133,7 @@ export function RecipientInput({
         value={value}
         placeholder={placeholder}
         spellCheck={false}
-        className={inputClass}
+        className={className}
         onChange={(e) => {
           suggestionsEnabledRef.current = true
           onChange(e.target.value)

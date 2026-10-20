@@ -392,13 +392,17 @@ internal fun KanbanHeaderSearchField(
                         .height(30.dp)
                         .background(MaterialTheme.colorScheme.outlineVariant),
                 )
-                Box(
+                Row(
                     Modifier
                         .height(44.dp)
-                        .widthIn(min = 66.dp, max = 112.dp)
-                        .clickable { scopeMenuOpen = true },
-                    contentAlignment = Alignment.Center,
+                        .widthIn(min = 66.dp, max = 132.dp)
+                        .clickable { scopeMenuOpen = true }
+                        .padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Whose folder it is, since a board can hold the same folder of several accounts.
+                    scopedColumn?.let { Avatar(columnAvatarLabel(it, accounts), 18.dp, columnAvatarFallbackIcon(it, accounts)) }
                     Text(
                         scopeLabel,
                         maxLines = 1,
@@ -406,7 +410,6 @@ internal fun KanbanHeaderSearchField(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 10.dp),
                     )
                 }
             }
@@ -415,7 +418,7 @@ internal fun KanbanHeaderSearchField(
             Modifier
                 .align(Alignment.TopEnd)
                 .height(52.dp)
-                .widthIn(min = 66.dp, max = 112.dp),
+                .widthIn(min = 66.dp, max = 132.dp),
         ) {
             DropdownMenu(expanded = scopeMenuOpen, onDismissRequest = { scopeMenuOpen = false }) {
                 DropdownMenuItem(

@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { BookmarkPlus, SlidersHorizontal } from 'lucide-react'
+import { BookmarkPlus, ChevronDown, Columns3, SlidersHorizontal } from 'lucide-react'
 import { invoke } from '../../lib/bridge'
 import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import { clsx } from '../../lib/utils'
 import { kanbanColumnKey, type KanbanColumn } from '../../states/kanban'
 import { Button } from '../button/Button'
+import { RecipientInput } from '../composer/RecipientInput'
 import { Checkbox } from '../field/Checkbox'
-import { useColumnLabel } from '../kanban/ColumnLabel'
+import { ColumnAvatar, useColumnLabel } from '../kanban/ColumnLabel'
 
 /** The search options form, as the core's `search.parse` reads a query. */
 export type SearchFields = {
@@ -73,7 +74,6 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
   const { t } = useTranslation()
   const [fields, setFields] = useState<SearchFields | null>(null)
   const [scope, setScope] = useState('all')
-  const columnLabel = useColumnLabel()
   const open = fields !== null
   const close = () => {
     const focused = !!document.activeElement?.closest('[data-search-options]')
@@ -137,14 +137,24 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
   const set = <K extends keyof SearchFields>(key: K, value: SearchFields[K]) =>
     setFields((current) => (current ? { ...current, [key]: value } : current))
 
-  const text = (key: 'from' | 'to' | 'subject' | 'words', label: string, autoFocus = false) => (
+  // Suggest the scoped column's correspondents, or every account's when unscoped.
+  const contactsAccount = scopedColumn && scopedColumn.accountId !== 'unified' ? scopedColumn.accountId : ''
+  const address = (key: 'from' | 'to', label: string, autoFocus = false) => (
     <Row label={label}>
-      <input
+      <RecipientInput
+        single
         autoFocus={autoFocus}
         value={fields?.[key] ?? ''}
-        onChange={(event) => set(key, event.target.value)}
-        className={inputClass}
+        onChange={(value) => set(key, value)}
+        accountId={contactsAccount}
+        className={clsx(inputClass, 'w-full')}
       />
+    </Row>
+  )
+
+  const text = (key: 'subject' | 'words', label: string) => (
+    <Row label={label}>
+      <input value={fields?.[key] ?? ''} onChange={(event) => set(key, event.target.value)} className={inputClass} />
     </Row>
   )
 
@@ -194,21 +204,11 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
           >
             {board && (
               <Row label={t('search.searchIn')}>
-                <select value={scope} onChange={(event) => setScope(event.target.value)} className={inputClass}>
-                  <option value="all">{t('kanban.searchScope.allColumns')}</option>
-                  {board.columns.map((column) => {
-                    const label = columnLabel(column)
-                    return (
-                      <option key={kanbanColumnKey(column)} value={kanbanColumnKey(column)}>
-                        {label.account ? `${label.folder} · ${label.account}` : label.folder}
-                      </option>
-                    )
-                  })}
-                </select>
+                <ScopeSelect value={scope} onChange={setScope} columns={board.columns} />
               </Row>
             )}
-            {text('from', t('composer.fields.from'), true)}
-            {text('to', t('composer.fields.to'))}
+            {address('from', t('composer.fields.from'), true)}
+            {address('to', t('composer.fields.to'))}
             {text('subject', t('composer.fields.subject'))}
             {text('words', t('search.hasWords'))}
             {date('after', t('search.after'))}
@@ -258,5 +258,99 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <span className="w-24 shrink-0 text-xs text-secondary">{label}</span>
       {children}
     </label>
+  )
+}
+
+/** "Search in": each column with its account's avatar, since a board can hold the same folder of several accounts. */
+function ScopeSelect({
+  value,
+  onChange,
+  columns,
+}: {
+  value: string
+  onChange: (value: string) => void
+  columns: KanbanColumn[]
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const columnLabel = useColumnLabel()
+
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  useEscapeKey(() => setOpen(false), open)
+
+  const selected = value === 'all' ? undefined : columns.find((column) => kanbanColumnKey(column) === value)
+  const pick = (key: string) => {
+    onChange(key)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={containerRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className={clsx(inputClass, 'flex w-full cursor-pointer items-center gap-2 text-left')}
+      >
+        {selected ? <ColumnAvatar column={selected} size={16} /> : <Columns3 size={14} className="text-secondary" />}
+        <ScopeText
+          label={selected ? columnLabel(selected) : { folder: t('kanban.searchScope.allColumns'), account: '' }}
+        />
+        <ChevronDown
+          size={12}
+          className={clsx('shrink-0 text-secondary transition-transform duration-200', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 left-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl shadow-black/10 dark:shadow-black/35">
+          <ScopeOption selected={value === 'all'} onClick={() => pick('all')}>
+            <Columns3 size={14} className="shrink-0 text-secondary" />
+            <ScopeText label={{ folder: t('kanban.searchScope.allColumns'), account: '' }} />
+          </ScopeOption>
+          {columns.map((column) => {
+            const key = kanbanColumnKey(column)
+            return (
+              <ScopeOption key={key} selected={value === key} onClick={() => pick(key)}>
+                <ColumnAvatar column={column} size={18} />
+                <ScopeText label={columnLabel(column)} />
+              </ScopeOption>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScopeOption({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors select-none',
+        selected ? 'bg-accent/10 text-accent' : 'text-primary hover:bg-hover',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ScopeText({ label }: { label: { folder: string; account: string } }) {
+  return (
+    <span className="min-w-0 flex-1 truncate">
+      {label.folder}
+      {label.account && <span className="text-secondary"> · {label.account}</span>}
+    </span>
   )
 }

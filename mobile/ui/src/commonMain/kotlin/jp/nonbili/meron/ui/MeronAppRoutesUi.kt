@@ -137,6 +137,13 @@ internal fun KanbanRouteContent(
                     columnTitle(column, coreAccounts, foldersByAccount) to account?.let { it.displayName.ifBlank { it.email } }.orEmpty()
                 },
                 onSave = { query, column -> saveKanbanSearchColumn(column, query, clearsScopedSearch = false) },
+                contactsAccountId =
+                    activeKanbanBoard
+                        ?.columns
+                        ?.firstOrNull { kanbanColumnKey(it) == kanbanSearchScope }
+                        ?.accountId
+                        ?.takeUnless { it == UNIFIED_ACCOUNT_ID }
+                        .orEmpty(),
             )
         }
         ModalNavigationDrawer(
@@ -542,6 +549,7 @@ internal fun MailRouteContent(
                     mailSearch = query
                     syncCoreThreads(syncFirst = false)
                 },
+                contactsAccountId = selectedCoreAccountId.takeUnless { it == UNIFIED_ACCOUNT_ID }.orEmpty(),
             )
         }
         val mailListKey =
