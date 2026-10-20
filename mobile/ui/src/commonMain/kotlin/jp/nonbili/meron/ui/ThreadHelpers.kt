@@ -209,14 +209,26 @@ internal fun threadMessageSearchText(message: MessageBody): String =
         message.attachments.joinToString(" ") { it.filename },
     ).joinToString(" ").lowercase()
 
-internal fun threadDeleteActionLabel(
+/** The catalog key naming what deleting a thread in [folder] does. */
+internal fun threadDeleteActionKey(
     folder: String,
     folderRole: String = "folder",
 ): String =
     when {
-        folderRole == "drafts" || (folderRole == "folder" && folderIsDrafts(folder)) -> "Discard draft"
-        folderRole == "trash" || (folderRole == "folder" && folderIsTrash(folder)) -> "Delete forever"
-        else -> "Move to Trash"
+        folderRole == "drafts" || (folderRole == "folder" && folderIsDrafts(folder)) -> "threads.actions.discardDraft"
+        folderRole == "trash" || (folderRole == "folder" && folderIsTrash(folder)) -> "threads.actions.deleteForever"
+        else -> "threads.actions.moveToTrash"
+    }
+
+/** The catalog key for having deleted a thread in [folder]; takes a `count`. */
+internal fun threadDeletedStatusKey(
+    folder: String,
+    folderRole: String = "folder",
+): String =
+    when (threadDeleteActionKey(folder, folderRole)) {
+        "threads.actions.discardDraft" -> "mail.toast.draftDiscarded"
+        "threads.actions.deleteForever" -> "mail.toast.deletedCount"
+        else -> "mail.toast.threadMovedToTrash"
     }
 
 internal fun messagePlainText(message: MessageBody): String =

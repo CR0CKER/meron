@@ -135,10 +135,10 @@ internal fun MeronMobileState.openDraftCompose(
             composeReturnScreen = returnScreen
             rememberComposeSeed()
             screen = Screen.Compose
-            status = "Draft ready"
+            status = trs("mobile.status.draftReady")
         }.onFailure {
             if (generation != composeSessionGeneration) return@onFailure
-            status = "Draft open failed: ${it.message}"
+            status = trsError("compose.toast.couldNotOpenDraft", it)
         }
     }
 }
@@ -226,7 +226,7 @@ internal fun MeronMobileState.readCoreThread(
             }
         }.onFailure {
             if (activeThreadReadToken != readToken) return@onFailure
-            status = "Could not open message: ${it.message}"
+            status = trsError("mobile.status.openMessageFailed", it)
         }
     }
 }
@@ -410,7 +410,7 @@ internal fun refreshReachedBoundary(
 internal fun MeronMobileState.retryOpenThreadLoad() {
     scope.launch {
         runCatching { reloadCurrentThreadMessages(reportOlderPageFailure = true) }
-            .onFailure { status = "Could not open message: ${it.message}" }
+            .onFailure { status = trsError("mobile.status.openMessageFailed", it) }
     }
 }
 
@@ -616,7 +616,7 @@ private fun MeronMobileState.openNotificationMailbox(target: NotificationThreadT
             screen = Screen.Mail
         }.onFailure {
             syncing = false
-            status = "Could not open notification: ${it.message}"
+            status = trsError("compose.toast.couldNotOpenNotificationThread", it)
         }
     }
 }
@@ -645,10 +645,10 @@ internal fun MeronMobileState.loadMoreThreadMessages() {
             messages = (older + messages).sortedBy { message -> message.dateEpochSeconds }
             messageCursor = page.nextCursor
             loadingMoreMessages = false
-            if (older.isEmpty()) status = "No older messages in this thread."
+            if (older.isEmpty()) status = trs("mobile.status.noOlderMessagesInThread")
         }.onFailure {
             loadingMoreMessages = false
-            status = "Could not load older messages: ${it.message}"
+            status = trsError("mobile.status.loadOlderMessagesFailed", it)
         }
     }
 }

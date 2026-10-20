@@ -217,7 +217,7 @@ internal fun ThreadScreen(
     snackbarHost: SnackbarHostState,
 ) {
     val isRss = thread?.let { threadIdIsRss(it.id) } ?: false
-    val deleteLabel = thread?.let { threadDeleteActionLabel(it.folder, it.folderRole) } ?: "Move to Trash"
+    val deleteLabel = tr(thread?.let { threadDeleteActionKey(it.folder, it.folderRole) } ?: "threads.actions.moveToTrash")
     val chat = LocalChatColors.current
     val services = LocalPlatformServices.current
     var searchOpen by remember(thread?.id) { mutableStateOf(false) }
@@ -1436,8 +1436,9 @@ internal fun ConversationDetailsScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        val feedUrlLabel = tr("chat.feedUrl")
                         IconButton(
-                            onClick = { onCopy("Feed URL", feedUrl) },
+                            onClick = { onCopy(feedUrlLabel, feedUrl) },
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(
@@ -1497,8 +1498,9 @@ internal fun ConversationDetailsScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            val emailLabel = tr("accounts.fields.emailAddress")
                             IconButton(
-                                onClick = { onCopy("Email address", person.email) },
+                                onClick = { onCopy(emailLabel, person.email) },
                                 modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(

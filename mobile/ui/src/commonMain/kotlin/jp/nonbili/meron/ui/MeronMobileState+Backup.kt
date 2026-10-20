@@ -23,16 +23,6 @@ import kotlinx.coroutines.withContext
 internal enum class BackupPassphraseMode { Export, Restore }
 
 /**
- * Catalog lookup outside a composition. `tr` needs `LocalAppLocale`, which these
- * state functions have no access to, so resolve the tag from prefs the same way
- * the root composable does.
- */
-internal fun MeronMobileState.trs(
-    key: String,
-    args: Map<String, Any?> = emptyMap(),
-): String = localizedString(loadAppLanguageTag(prefs).ifBlank { "en" }, key, args)
-
-/**
  * Serialize a backup and hand it to the platform save-file picker.
  *
  * `passphrase` encrypts the document; `includeSecrets` additionally embeds
@@ -79,7 +69,7 @@ internal fun MeronMobileState.exportBackup(
                 launchBackupExport(backupFileName())
             }
         }.onFailure {
-            status = "${trs("settings.backup.exportFailed")}: ${it.message}"
+            status = trsError("settings.backup.exportFailed", it)
         }
         backupBusy = false
     }
@@ -198,7 +188,7 @@ internal fun MeronMobileState.importBackup(
                 backupPassphraseError = trs("settings.backup.wrongPassphrase")
             } else {
                 closeBackupPassphrase()
-                status = "${trs("settings.backup.restoreFailed")}: $message"
+                status = withReason(trs("settings.backup.restoreFailed"), message) { key, args -> trs(key, args) }
             }
         }
         if (generation == backupRestoreGeneration) backupBusy = false

@@ -468,9 +468,9 @@ internal fun MailList(
                                 if (deleting || isRss) Icons.Filled.Delete else Icons.Filled.Archive,
                                 contentDescription =
                                     when {
-                                        deleting -> "Delete"
-                                        isRss -> "Remove"
-                                        else -> "Archive"
+                                        deleting -> tr("buttons.delete")
+                                        isRss -> tr("mobile.actions.removeFeed")
+                                        else -> tr("notification.actionArchive")
                                     },
                                 tint =
                                     if (deleting) {
@@ -644,7 +644,7 @@ internal fun MailRow(
             Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Filled.CheckCircle,
-                    contentDescription = if (selected) "Selected" else "Not selected",
+                    contentDescription = tr(if (selected) "common.selected" else "common.notSelected"),
                     tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.size(24.dp),
                 )
@@ -758,7 +758,7 @@ internal fun MailRow(
                     IconButton(onClick = onToggleStar, modifier = Modifier.size(30.dp)) {
                         Icon(
                             if (thread.starred) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (thread.starred) "Unstar" else "Star",
+                            contentDescription = tr(if (thread.starred) "chat.unstar" else "chat.star"),
                             tint = if (thread.starred) chat.star else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(22.dp),
                         )

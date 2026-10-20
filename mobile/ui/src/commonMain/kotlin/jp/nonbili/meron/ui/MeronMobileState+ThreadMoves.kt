@@ -32,7 +32,7 @@ internal fun MeronMobileState.ensureThreadActionFolders(
     onReady: () -> Unit,
 ) {
     if (threadIdIsRss(thread.id)) {
-        status = "RSS feeds move between RSS accounts from Kanban."
+        status = trs("mobile.status.rssMoveBetweenAccounts")
         return
     }
     if (!coreLoaded) {
@@ -46,10 +46,10 @@ internal fun MeronMobileState.ensureThreadActionFolders(
             coreAccounts.filter { it.id == thread.accountId && !accountSummaryIsRss(it) }
         }
     if (accounts.isEmpty()) {
-        status = "No mail folders available."
+        status = trs("mobile.status.noMailFolders")
         return
     }
-    status = "Loading folders..."
+    status = trs("folders.loading")
     scope.launch {
         val folderReadVersion = folderReadGuard.version
         runCatching {
@@ -76,10 +76,10 @@ internal fun MeronMobileState.ensureThreadActionFolders(
             }
         }.onSuccess { loadedFolders ->
             foldersByAccount = foldersByAccount + loadedFolders.mapValues { (_, folders) -> reconcileFolderUnread(folders, folderReadVersion) }
-            status = "Loaded folders"
+            status = trs("mobile.status.foldersLoaded")
             onReady()
         }.onFailure {
-            status = "Load folders failed: ${it.message}"
+            status = trsError("mobile.status.loadFoldersFailed", it)
         }
     }
 }
@@ -90,11 +90,11 @@ internal fun MeronMobileState.moveThreadToFolder(
     onMoved: () -> Unit = {},
 ) {
     if (threadIdIsRss(thread.id)) {
-        status = "RSS feeds move between RSS accounts from Kanban."
+        status = trs("mobile.status.rssMoveBetweenAccounts")
         return
     }
     if (targetFolderId.equals(thread.folder, ignoreCase = true)) {
-        status = "Already in ${targetFolderId.replaceFirstChar { it.uppercase() }}."
+        status = trs("mobile.status.alreadyInFolder", mapOf("folder" to targetFolderId.replaceFirstChar { it.uppercase() }))
         return
     }
     if (!coreLoaded) {
@@ -114,7 +114,7 @@ internal fun MeronMobileState.moveThreadToFolder(
         kanbanColumns.mapValues { (_, state) ->
             state.copy(threads = state.threads.filterNot { it.id == thread.id })
         }
-    status = "Moving..."
+    status = trs("mobile.status.moving")
     scope.launch {
         runCatching {
             requireCoreOk(
@@ -131,7 +131,7 @@ internal fun MeronMobileState.moveThreadToFolder(
                 selectedCoreThread = null
                 messages = emptyList()
             }
-            status = "Move complete"
+            status = trs("mobile.status.moveComplete")
             onMoved()
         }.onFailure {
             removal.rollback()
@@ -140,7 +140,7 @@ internal fun MeronMobileState.moveThreadToFolder(
             kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal.filter(state.threads)) }
             selectedCoreThread = selectedBefore
             messages = messagesBefore
-            status = "Move failed: ${it.message}"
+            status = trsError("mail.toast.moveFailed", it)
         }
     }
 }
@@ -150,20 +150,20 @@ internal fun MeronMobileState.copyThreadToFolder(
     target: FolderSummary,
 ) {
     if (threadIdIsRss(thread.id)) {
-        status = "RSS feeds can't be copied to mail folders."
+        status = trs("mobile.status.rssCannotCopyToMail")
         return
     }
     val targetAccountId = target.accountId.ifBlank { thread.accountId }
     val targetAccount = coreAccounts.firstOrNull { it.id == targetAccountId }
     if (targetAccount == null || accountSummaryIsRss(targetAccount)) {
-        status = "Choose a mail account folder."
+        status = trs("mobile.status.chooseMailFolder")
         return
     }
     if (!coreLoaded) {
         status = coreUnavailableMessage
         return
     }
-    status = "Copying..."
+    status = trs("mobile.status.copying")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -176,9 +176,9 @@ internal fun MeronMobileState.copyThreadToFolder(
                 )
             }
         }.onSuccess {
-            status = "Copy complete"
+            status = trs("mobile.status.copyComplete")
         }.onFailure {
-            status = "Copy failed: ${it.message}"
+            status = trsError("mail.toast.copyFailed", it)
         }
     }
 }
@@ -190,23 +190,23 @@ internal fun MeronMobileState.createFolderAndMoveThread(
 ) {
     val trimmed = name.trim()
     if (threadIdIsRss(thread.id)) {
-        status = "RSS feeds move between RSS accounts from Kanban."
+        status = trs("mobile.status.rssMoveBetweenAccounts")
         return
     }
     if (trimmed.isBlank()) {
-        status = "Folder name is required."
+        status = trs("folders.nameRequired")
         return
     }
     val account = coreAccounts.firstOrNull { it.id == thread.accountId }
     if (account == null) {
-        status = "Account not found."
+        status = trs("mobile.status.accountNotFound")
         return
     }
     if (!coreLoaded) {
         status = coreUnavailableMessage
         return
     }
-    status = "Creating folder..."
+    status = trs("mobile.status.creatingFolder")
     val removal = suppressRemovedThread(thread.id)
     scope.launch {
         val folderReadVersion = folderReadGuard.version
@@ -220,7 +220,7 @@ internal fun MeronMobileState.createFolderAndMoveThread(
                 val createdFolder = folders.folderCreatedAs(trimmed)
                 val created = createdFolder?.name ?: trimmed
                 if (created.equals(thread.folder, ignoreCase = true)) {
-                    throw IllegalStateException("Already in ${createdFolder?.displayName ?: trimmed}.")
+                    throw IllegalStateException(trs("mobile.status.alreadyInFolder", mapOf("folder" to (createdFolder?.displayName ?: trimmed))))
                 }
                 val response =
                     withManagedGoogleAuth(client, thread.accountId) {
@@ -237,12 +237,12 @@ internal fun MeronMobileState.createFolderAndMoveThread(
                 selectedCoreThread = null
                 messages = emptyList()
             }
-            status = "Folder created and move complete"
+            status = trs("mobile.status.folderCreatedAndMoved")
             onMoved()
         }.onFailure {
             removal.rollback()
             reloadFailedMoveSource(thread)
-            status = "Create folder failed: ${it.message}"
+            status = trsError("mobile.status.createFolderFailed", it)
         }
     }
 }
@@ -252,17 +252,17 @@ internal fun MeronMobileState.moveThreadToColumn(
     target: KanbanColumnSpec,
 ) {
     if (target.accountId == UNIFIED_ACCOUNT_ID) {
-        status = "Move to an account folder column."
+        status = trs("mobile.status.moveToFolderColumn")
         return
     }
     val targetAccount = coreAccounts.firstOrNull { it.id == target.accountId }
     if (targetAccount == null) {
-        status = "Target account not found."
+        status = trs("mobile.status.targetAccountNotFound")
         return
     }
     if (threadIdIsRss(thread.id)) {
         if (!accountSummaryIsRss(targetAccount)) {
-            status = "RSS feeds can only move to RSS accounts."
+            status = trs("mobile.status.rssOnlyToRssAccounts")
             return
         }
         val removal = suppressRemovedThread(thread.id)
@@ -280,17 +280,17 @@ internal fun MeronMobileState.moveThreadToColumn(
                 releaseMovedThread(response)
                 removeThreadEverywhere(thread.id)
                 loadKanbanColumn(target, refresh = false)
-                status = "Move complete"
+                status = trs("mobile.status.moveComplete")
             }.onFailure {
                 removal.rollback()
                 reloadFailedMoveSource(thread)
-                status = "Move failed: ${it.message}"
+                status = trsError("mail.toast.moveFailed", it)
             }
         }
         return
     }
     if (accountSummaryIsRss(targetAccount)) {
-        status = "Mail threads can't move into RSS feeds."
+        status = trs("mobile.status.mailCannotMoveToFeeds")
         return
     }
     val removal = suppressRemovedThread(thread.id)
@@ -308,11 +308,11 @@ internal fun MeronMobileState.moveThreadToColumn(
             releaseMovedThread(response)
             removeThreadEverywhere(thread.id)
             loadKanbanColumn(target, refresh = false)
-            status = "Move complete"
+            status = trs("mobile.status.moveComplete")
         }.onFailure {
             removal.rollback()
             reloadFailedMoveSource(thread)
-            status = "Move failed: ${it.message}"
+            status = trsError("mail.toast.moveFailed", it)
         }
     }
 }

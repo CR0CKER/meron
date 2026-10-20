@@ -302,18 +302,18 @@ internal fun MeronMobileState.acceptRecipientSuggestion(
 internal fun MeronMobileState.sendMail() {
     if (composeSendInFlight) return
     if (composeSignaturePending || !appSignatureLoaded) {
-        status = "Waiting for signature before sending."
+        status = trs("mobile.status.waitingForSignatureSend")
         return
     }
     val identity = selectedComposeIdentity()
     val accountId = identity?.accountId ?: defaultSendAccountId()
     if (accountId.isBlank()) {
-        status = "Select or add an account before sending."
+        status = trs("mobile.status.selectAccountBeforeSending")
         return
     }
     val draft = currentComposeDraft()
     if (!draft.canSend) {
-        status = "Complete To, Subject, and Body or Attachments before sending."
+        status = trs("mobile.status.completeBeforeSending")
         return
     }
     composeSendInFlight = true
@@ -321,7 +321,7 @@ internal fun MeronMobileState.sendMail() {
     pendingCertificateRetry = null
     val generation = composeSessionGeneration
     val initialDraftOwners = composeDraftOwnerSnapshot()
-    status = "Sending..."
+    status = trs("composer.status.sending")
     scope.launch {
         composeSaveMutex.withLock {
             val draftOwners =
@@ -383,7 +383,7 @@ internal fun MeronMobileState.retryComposeSend(pending: PendingComposeSend) {
     if (composeSendInFlight) return
     pendingComposeSend = pending
     composeSendInFlight = true
-    status = "Sending..."
+    status = trs("composer.status.sending")
     scope.launch {
         composeSaveMutex.withLock {
             dispatchComposeSend(pending)
@@ -408,7 +408,7 @@ private suspend fun MeronMobileState.finishComposeSend(pending: PendingComposeSe
         if (screen == Screen.Compose) closeCompose()
     }
     errorBanner = null
-    status = "Message sent"
+    status = trs("mobile.status.messageSent")
     syncCoreThreads()
 }
 
@@ -417,9 +417,9 @@ private fun MeronMobileState.failComposeSend(
     error: Throwable,
 ) {
     composeSendInFlight = false
-    val message = error.message ?: "Send failed"
+    val message = error.message ?: trs("compose.toast.sendFailed")
     errorBanner = message
-    status = "Send failed: $message"
+    status = trsError("compose.toast.sendFailed", error)
     // Trusting the certificate has to resume the send, not fall back to a
     // sync: the message is still unsent and the composer may be closed by then.
     if (pending != null && untrustedCertificateProtocol(message) != null) {
@@ -520,14 +520,14 @@ private suspend fun MeronMobileState.saveComposeDraft(
         // A send is about to discard the draft; saving now could resurrect it.
         if (composeSendInFlight) return@withLock false
         if (composeSignaturePending || !appSignatureLoaded) {
-            if (showStatus) status = "Waiting for signature before saving."
+            if (showStatus) status = trs("mobile.status.waitingForSignatureSave")
             return@withLock false
         }
         val identityGeneration = composeIdentityGeneration
         val identity = selectedComposeIdentity()
         val accountId = identity?.accountId ?: defaultSendAccountId()
         if (accountId.isBlank()) {
-            if (showStatus) status = "Select or add an account before saving."
+            if (showStatus) status = trs("mobile.status.selectAccountBeforeSaving")
             return@withLock false
         }
         val draft = currentComposeDraft()
@@ -539,7 +539,7 @@ private suspend fun MeronMobileState.saveComposeDraft(
             // Same reason the save path rechecks below: a status line belongs to
             // whichever composer is open now.
             if (generation != composeSessionGeneration) return@withLock false
-            if (showStatus) status = if (discarded) "Draft discarded" else "Nothing to save."
+            if (showStatus) status = trs(if (discarded) "mail.toast.draftDiscarded" else "mobile.status.nothingToSave")
             return@withLock false
         }
         val draftId = composeDraftId.ifBlank { newDraftMessageId(accountId) }
@@ -547,7 +547,7 @@ private suspend fun MeronMobileState.saveComposeDraft(
         val draftThreadId = composeDraftThreadId().ifBlank { null }
         val inReplyTo = composeInReplyTo
         val references = composeReferences
-        if (showStatus) status = "Saving draft..."
+        if (showStatus) status = trs("composer.status.savingDraft")
         var resolvedDraftId = draftId
         var allocatedRemoteDraft = false
         val result =
@@ -597,7 +597,7 @@ private suspend fun MeronMobileState.saveComposeDraft(
                 composeDraftAccountId = accountId
                 discardComposeDraftOwners(cleanupOwners)
                 selectedCoreThread?.let { markThreadDraftEverywhere(it.id) }
-                if (showStatus) status = "Draft saved"
+                if (showStatus) status = trs("mobile.status.draftSaved")
                 syncCoreThreads(syncFirst = false)
                 runCatching { reloadCurrentThreadMessages() }
                 true
@@ -605,9 +605,9 @@ private suspend fun MeronMobileState.saveComposeDraft(
             onFailure = {
                 status =
                     if (showStatus) {
-                        "Draft save failed: ${it.message}"
+                        trsError("mobile.status.draftSaveFailed", it)
                     } else {
-                        "Draft autosave failed: ${it.message}"
+                        trsError("composer.status.draftAutosaveFailed", it)
                     }
                 false
             },
@@ -652,11 +652,11 @@ internal fun MeronMobileState.replyToMessage(
     val thread = selectedCoreThread
     val accountId = thread?.accountId?.ifBlank { defaultSendAccountId() }.orEmpty()
     if (accountId.isBlank() || thread == null) {
-        status = "Open a mail thread before replying."
+        status = trs("mobile.status.openThreadBeforeReplying")
         return
     }
     if (threadIdIsRss(thread.id)) {
-        status = "RSS items do not support replies."
+        status = trs("mobile.status.rssNoReplies")
         return
     }
     val account = coreAccounts.firstOrNull { it.id == accountId }
@@ -808,7 +808,7 @@ internal fun MeronMobileState.discardComposeDraft() {
     val thread = selectedCoreThread
     val draftThread = thread?.takeIf { folderIsDrafts(it.folder) }
     if (!draftId.isNullOrBlank() && accountId.isBlank()) {
-        status = "Select or add an account before discarding."
+        status = trs("mobile.status.selectAccountBeforeDiscarding")
         return
     }
     val previousMessages = messages
@@ -822,12 +822,12 @@ internal fun MeronMobileState.discardComposeDraft() {
     }
     clearComposeDraftState()
     screen = returnScreen
-    status = "Discarding draft..."
+    status = trs("mobile.status.discardingDraft")
     scope.launch(start = CoroutineStart.UNDISPATCHED) {
         composeSaveMutex.withLock {
             val outcome = discardComposeDraftOwners(draftOwners)
             if (outcome.failedOwners.isEmpty()) {
-                status = "Draft discarded"
+                status = trs("mail.toast.draftDiscarded")
                 syncCoreThreads(syncFirst = true)
                 if (thread != null) {
                     refreshKanbanColumnsForMailEvent(accountId, thread.folder, refresh = true)
@@ -858,7 +858,7 @@ internal fun MeronMobileState.discardComposeDraft() {
                 if (openDraftFailed) {
                     optimisticallyClearedThreadId?.let { markThreadDraftEverywhere(it) }
                 }
-                status = "Draft discard failed: one or more drafts could not be discarded"
+                status = trs("mobile.status.draftDiscardFailed")
             }
         }
     }
@@ -1016,10 +1016,10 @@ internal fun MeronMobileState.openMessageCompose(
             composeReturnScreen = Screen.Thread
             rememberComposeSeed()
             screen = Screen.Compose
-            status = if (forward) "Forward draft ready" else "Copied message into compose"
+            status = trs(if (forward) "mobile.status.forwardDraftReady" else "mobile.status.copiedIntoCompose")
         }.onFailure {
             if (generation != composeSessionGeneration) return@onFailure
-            status = if (forward) "Forward failed: ${it.message}" else "Edit as new failed: ${it.message}"
+            status = trsError(if (forward) "mobile.status.forwardFailed" else "mobile.status.editAsNewFailed", it)
         }
     }
 }

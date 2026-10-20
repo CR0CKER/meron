@@ -256,8 +256,8 @@ internal fun MeronMobileState.loadKanbanColumn(
             }
         }.onFailure {
             if (kanbanColumnLoadTokens[key] != token) return@onFailure
-            updateKanbanColumn(key) { state -> state.copy(loading = false, error = it.message ?: "Load failed") }
-            status = "Kanban load failed: ${it.message}"
+            updateKanbanColumn(key) { state -> state.copy(loading = false, error = it.message ?: trs("mobile.status.loadFailed")) }
+            status = trsError("mobile.status.kanbanLoadFailed", it)
         }
     }
 }
@@ -307,8 +307,8 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
                 )
             }
         }.onFailure {
-            updateKanbanColumn(key) { state -> state.copy(loadingMore = false, error = it.message ?: "Load failed") }
-            status = "Kanban load more failed: ${it.message}"
+            updateKanbanColumn(key) { state -> state.copy(loadingMore = false, error = it.message ?: trs("mobile.status.loadFailed")) }
+            status = trsError("mobile.status.loadMoreFailed", it)
         }
     }
 }
@@ -394,7 +394,7 @@ internal fun MeronMobileState.loadKanbanBoard(refresh: Boolean = false) {
 private fun MeronMobileState.addKanbanBoard(columns: List<KanbanColumnSpec>): KanbanBoardSpec {
     val board =
         defaultKanbanBoard(coreAccounts).copy(
-            name = "Kanban board ${kanbanBoards.size + 1}",
+            name = trs("mobile.ios.boardNumberName", mapOf("number" to kanbanBoards.size + 1)),
             columns = columns,
         )
     persistKanbanBoards(kanbanBoards + board)
@@ -667,7 +667,7 @@ internal fun MeronMobileState.createFolderForKanban(
 ) {
     val trimmed = name.trim()
     if (trimmed.isBlank()) {
-        status = "Folder name is required."
+        status = trs("folders.nameRequired")
         return
     }
     if (!coreLoaded) {
@@ -690,9 +690,9 @@ internal fun MeronMobileState.createFolderForKanban(
             addKanbanColumn(KanbanColumnSpec(account.id, created))
             showKanbanCreateFolderDialog = null
             kanbanFolderNameInput = ""
-            status = "Folder created"
+            status = trs("mobile.status.folderCreated")
         }.onFailure {
-            status = "Create folder failed: ${it.message}"
+            status = trsError("mobile.status.createFolderFailed", it)
         }
     }
 }

@@ -47,7 +47,7 @@ class MarkAllReadFolderBadgeTest {
 
             assertEquals(0, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             core.gate.complete(Unit)
-            waitUntil { state.status.startsWith("Mark all read failed") }
+            waitUntil { state.status.startsWith("Couldn't mark all as read") }
             assertEquals(12, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             assertEquals(12, folderUnread(state.coreFolders, INBOX_FOLDER))
         }
@@ -211,10 +211,12 @@ class MarkAllReadFolderBadgeTest {
             state.runCoreThreadAction(
                 thread = state.coreThreads.first(),
                 label = "Mark unread",
+                doneStatus = "Marked unread",
+                failedStatus = "Couldn't mark as unread",
                 action = { """{"ok":true,"folder_counts":[{"account_id":"a","folder_id":"INBOX","unread":1}]}""" },
                 update = { it },
             )
-            waitUntil { state.status == "Mark unread complete" }
+            waitUntil { state.status == "Marked unread" }
             assertEquals(1, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             assertEquals(1, folderUnread(state.coreFolders, INBOX_FOLDER))
             core.gate.complete(Unit)
@@ -266,7 +268,7 @@ class MarkAllReadFolderBadgeTest {
 
             state.markVisibleMailboxAllRead()
 
-            waitUntil { state.status.startsWith("Mark all read failed") }
+            waitUntil { state.status.startsWith("Couldn't mark all as read") }
             assertEquals(12, folderUnread(state.foldersByAccount["a"], INBOX_FOLDER))
             assertEquals(true, state.coreThreads.single().unread)
         }

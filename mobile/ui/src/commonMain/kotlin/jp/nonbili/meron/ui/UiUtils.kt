@@ -171,11 +171,12 @@ internal fun normalizeKanbanColumnQuery(query: String): String = query.replace(R
 
 internal fun identityKey(identity: SendIdentity): String = "${identity.accountId}|${identity.email}"
 
+@Composable
 internal fun FilterMode.label(): String =
     when (this) {
-        FilterMode.All -> "All"
-        FilterMode.Unread -> "Unread"
-        FilterMode.Starred -> "Starred"
+        FilterMode.All -> tr("filters.all")
+        FilterMode.Unread -> tr("filters.unread")
+        FilterMode.Starred -> tr("filters.starred")
     }
 
 internal fun FilterMode.protocolValue(): String =
@@ -285,7 +286,7 @@ internal fun folderTitle(
     foldersByAccount: Map<String, List<FolderSummary>>,
 ): String {
     if (accountId == UNIFIED_ACCOUNT_ID) {
-        if (folderId.equals(STARRED_FOLDER, ignoreCase = true)) return "Unified starred"
+        if (folderId.equals(STARRED_FOLDER, ignoreCase = true)) return tr("kanban.columns.unifiedStarred")
         // The unified view now switches folders, so the header names the folder
         // ("Sent", "Archive") the way a single account's does.
         return unifiedFolderLabel(folderId)
@@ -298,7 +299,7 @@ internal fun folderTitle(
             ?: folderId
     val folderLabel =
         if (folder.equals(INBOX_FOLDER, ignoreCase = true)) {
-            if (account?.let(::accountSummaryIsRss) == true) "Feed" else "Inbox"
+            tr(if (account?.let(::accountSummaryIsRss) == true) "mobile.feedTitle" else "folders.roles.inbox")
         } else {
             folder
         }
@@ -336,12 +337,15 @@ internal fun KanbanBoardTile(
 }
 
 @OptIn(ExperimentalUuidApi::class)
-internal fun defaultKanbanBoard(accounts: List<AccountSummary>): KanbanBoardSpec {
+internal fun defaultKanbanBoard(
+    accounts: List<AccountSummary>,
+    name: String = "Kanban board",
+): KanbanBoardSpec {
     val columns = mutableListOf(KanbanColumnSpec(UNIFIED_ACCOUNT_ID, INBOX_FOLDER))
     accounts.forEach { account -> columns += KanbanColumnSpec(account.id, INBOX_FOLDER) }
     return KanbanBoardSpec(
         id = "kb-${Uuid.random()}",
-        name = "Kanban board",
+        name = name,
         columns = columns.distinctBy(::kanbanColumnKey),
     )
 }

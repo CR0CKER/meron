@@ -479,10 +479,13 @@ enum IosBackgroundRefresh {
         let failed: Int
 
         var summary: String {
-            BackgroundRefreshKt.backgroundRefreshSummary(
-                refreshed: Int32(refreshed),
-                skipped: Int32(skipped),
-                failed: Int32(failed)
+            localizedCatalogString(
+                BackgroundRefreshKt.backgroundRefreshSummaryKey(
+                    refreshed: Int32(refreshed),
+                    skipped: Int32(skipped),
+                    failed: Int32(failed)
+                ),
+                args: ["refreshed": refreshed, "skipped": skipped, "failed": failed]
             )
         }
     }

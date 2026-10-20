@@ -534,7 +534,7 @@ internal fun AliasEditorRow(
                         ) {
                             Icon(
                                 Icons.Filled.ContentPaste,
-                                contentDescription = "Paste",
+                                contentDescription = tr("common.paste"),
                             )
                         }
                     }
@@ -564,7 +564,7 @@ internal fun AliasEditorRow(
                         ) {
                             Icon(
                                 Icons.Filled.ContentPaste,
-                                contentDescription = "Paste",
+                                contentDescription = tr("common.paste"),
                             )
                         }
                     }

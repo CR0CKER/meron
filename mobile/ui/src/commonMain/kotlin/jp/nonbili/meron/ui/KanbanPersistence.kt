@@ -110,7 +110,9 @@ internal fun ensureKanbanDefaults(
     // deleted every one of them; only a profile that never stored any gets the
     // starter board, otherwise deleting the last board would undo itself.
     if (prefs.getString(KANBAN_BOARDS_PREF, "").isNotBlank()) return boards
-    val next = listOf(defaultKanbanBoard(accounts))
+    // The starter board is stored, so it is named in the app's language once.
+    val name = localizedString(loadAppLanguageTag(prefs).ifBlank { "en" }, "kanban.board.defaultName")
+    val next = listOf(defaultKanbanBoard(accounts, name))
     saveKanbanBoards(prefs, next)
     return next
 }

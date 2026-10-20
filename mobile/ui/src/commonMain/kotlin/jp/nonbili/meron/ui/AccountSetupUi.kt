@@ -466,7 +466,7 @@ internal fun SetupField(
                             }) {
                                 Icon(
                                     Icons.Filled.ContentPaste,
-                                    contentDescription = "Paste",
+                                    contentDescription = tr("common.paste"),
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
@@ -475,7 +475,7 @@ internal fun SetupField(
                             IconButton(onClick = { revealed = !revealed }) {
                                 Icon(
                                     if (revealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (revealed) "Hide password" else "Show password",
+                                    contentDescription = tr(if (revealed) "accounts.actions.hidePassword" else "accounts.actions.showPassword"),
                                     modifier = Modifier.size(20.dp),
                                 )
                             }

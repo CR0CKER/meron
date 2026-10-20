@@ -270,7 +270,7 @@ internal fun MeronMobileState.syncCoreThreads(
         }
     if (selectedAccounts.isEmpty() && !unifiedStarred) {
         Log.w("MailLoad", "syncCoreThreads no selected accounts account=$accountId folder=$requestedFolder")
-        status = if (accountId == UNIFIED_ACCOUNT_ID) "No accounts are included in Unified inbox." else "No account selected."
+        status = trs(if (accountId == UNIFIED_ACCOUNT_ID) "mobile.status.noAccountsInUnified" else "mobile.status.noAccountSelected")
         initialThreadsLoaded = true
         return
     }
@@ -490,14 +490,14 @@ internal fun MeronMobileState.syncCoreThreads(
             val failedAccountId =
                 contextual?.accountId
                     ?: accountId.takeUnless { candidate -> candidate == UNIFIED_ACCOUNT_ID }
-            val message = contextual?.cause?.message ?: it.message ?: "Sync failed"
+            val message = contextual?.cause?.message ?: it.message ?: trs("mail.toast.syncFailed")
             syncError = MobileSyncError(failedAccountId, message)
             // The failing account is named by the request, not read out of the text.
             if (failedAccountId != null && message.contains("account needs reconnect")) {
                 refreshAccountReconnectState(failedAccountId)
             }
             errorBanner = null
-            status = "Sync failed: ${it.message}"
+            status = trsError("mail.toast.syncFailed", it)
             Log.w("MailLoad", "sync failed account=$accountId folder=$requestedFolder initialThreadsLoaded=$initialThreadsLoaded syncing=$syncing", it)
         }
     }
@@ -578,11 +578,11 @@ internal fun MeronMobileState.addFeedToSelectedRssAccount() {
     val account = coreAccounts.firstOrNull { it.id == selectedCoreAccountId }
     val feedUrl = addFeedUrl.trim()
     if (account == null || !accountSummaryIsRss(account)) {
-        addFeedError = "Select an RSS account first."
+        addFeedError = trs("mobile.status.selectRssAccountFirst")
         return
     }
     if (feedUrl.isBlank()) {
-        addFeedError = "Feed URL is required."
+        addFeedError = trs("mobile.status.feedUrlRequired")
         return
     }
     if (!coreLoaded) {
@@ -591,7 +591,7 @@ internal fun MeronMobileState.addFeedToSelectedRssAccount() {
     }
     addFeedError = ""
     addFeedSubmitting = true
-    status = "Adding feed..."
+    status = trs("mobile.status.addingFeed")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -604,13 +604,13 @@ internal fun MeronMobileState.addFeedToSelectedRssAccount() {
             addFeedUrl = ""
             addFeedError = ""
             showAddFeedDialog = false
-            status = "Feed added"
+            status = trs("feeds.added")
             // feed.add already fetched and stored the new feed's items, so
             // re-fetching here would be a redundant (and slow) network round-trip.
-            syncCoreThreads(accountOverride = account.id, syncFirst = false, successStatus = "Feed added")
+            syncCoreThreads(accountOverride = account.id, syncFirst = false, successStatus = trs("feeds.added"))
         }.onFailure {
             addFeedSubmitting = false
-            addFeedError = "Add feed failed: ${it.message}"
+            addFeedError = trsError("mobile.status.addFeedFailed", it)
         }
     }
 }
@@ -705,12 +705,12 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
                 // what this device has cached.
                 status = trs("threads.searchServerUnavailable")
             } else if (!quiet) {
-                status = if (appended.isEmpty()) "No older messages." else "Loaded ${appended.size} older message(s)."
+                status = if (appended.isEmpty()) trs("mobile.status.noOlderMessages") else trs("mobile.ios.loadedOlderMessageCount", mapOf("count" to appended.size))
             }
         }.onFailure {
             loadingMoreThreads = false
-            errorBanner = it.message ?: "Load more failed"
-            status = "Load more failed: ${it.message}"
+            errorBanner = it.message ?: trs("mobile.status.loadMoreFailed")
+            status = trsError("mobile.status.loadMoreFailed", it)
         }
     }
 }

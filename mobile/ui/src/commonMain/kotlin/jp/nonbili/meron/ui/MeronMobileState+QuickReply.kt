@@ -228,11 +228,11 @@ private suspend fun MeronMobileState.saveQuickReplyDraftLocked(showStatus: Boole
     val accountId = thread?.accountId?.ifBlank { defaultSendAccountId() }.orEmpty()
     val parent = quickReplyParent()
     if (accountId.isBlank() || thread == null || parent == null) {
-        if (showStatus) status = "Open a mail thread before saving a reply draft."
+        if (showStatus) status = trs("mobile.status.openThreadBeforeSavingReply")
         return false
     }
     if (quickReplyIsBlank()) {
-        if (showStatus) status = "Nothing to save."
+        if (showStatus) status = trs("mobile.status.nothingToSave")
         return false
     }
     val account = coreAccounts.firstOrNull { it.id == accountId }
@@ -248,7 +248,7 @@ private suspend fun MeronMobileState.saveQuickReplyDraftLocked(showStatus: Boole
     quickReplyInReplyTo = replyParams.inReplyTo
     quickReplyReferences = replyParams.references
     val draft = ComposeDraft(replyParams.to, replyParams.cc, "", replyParams.subject, quickReplyBody.trim(), quickReplyAttachments)
-    if (showStatus) status = "Saving draft..."
+    if (showStatus) status = trs("composer.status.savingDraft")
     return runCatching {
         withContext(ioDispatcher) {
             val client = MobileMailCommandClient(core)
@@ -295,12 +295,12 @@ private suspend fun MeronMobileState.saveQuickReplyDraftLocked(showStatus: Boole
                 quickReplyDraftId = savedDraftId
                 quickReplyDraftSaved = true
                 markThreadDraftEverywhere(threadId)
-                if (showStatus) status = "Draft saved"
+                if (showStatus) status = trs("mobile.status.draftSaved")
                 true
             }
         },
         onFailure = {
-            if (showStatus) status = "Draft save failed: ${it.message}"
+            if (showStatus) status = trsError("mobile.status.draftSaveFailed", it)
             false
         },
     )
@@ -420,11 +420,11 @@ internal fun MeronMobileState.openQuickReplyInFullEditor(replyAll: Boolean = fal
     val accountId = thread?.accountId?.ifBlank { defaultSendAccountId() }.orEmpty()
     val parent = quickReplyParent()
     if (accountId.isBlank() || thread == null || parent == null) {
-        status = "Open a mail thread before replying."
+        status = trs("mobile.status.openThreadBeforeReplying")
         return
     }
     if (threadIdIsRss(thread.id)) {
-        status = "RSS items do not support replies."
+        status = trs("mobile.status.rssNoReplies")
         return
     }
     ++quickReplyGeneration
@@ -517,16 +517,16 @@ internal fun MeronMobileState.sendQuickReply() {
     val sentBody = quickReplyBody.trim()
     val sentAttachments = quickReplyAttachments
     if (accountId.isBlank() || thread == null || parent == null) {
-        status = "Open a mail thread before replying."
+        status = trs("mobile.status.openThreadBeforeReplying")
         return
     }
     if (threadIdIsRss(thread.id)) {
-        status = "RSS items do not support replies."
+        status = trs("mobile.status.rssNoReplies")
         return
     }
     // A box holding only the seeded signature is not a reply worth sending.
     if (quickReplyIsBlank()) {
-        status = "Write a reply or attach a file before sending."
+        status = trs("mobile.status.writeReplyBeforeSending")
         return
     }
     quickReplyFailure = ""
@@ -587,7 +587,7 @@ internal fun MeronMobileState.sendQuickReply() {
         MessageBody(
             id = tempId,
             folderId = parent.folderId,
-            from = "You",
+            from = trs("chat.you"),
             fromAddr = replyFrom.ifBlank { account?.email.orEmpty() },
             to = baseParams.to,
             cc = baseParams.cc,
@@ -645,7 +645,7 @@ internal fun MeronMobileState.sendQuickReply() {
                             quickReplyAttachments = sentAttachments
                         }
                         quickReplyFailure = it.message.orEmpty()
-                        status = "Send failed: ${it.message}"
+                        status = trsError("compose.toast.sendFailed", it)
                         return@launch
                     }
                 // The quote goes out with the mail but stays out of the bar and
@@ -670,7 +670,7 @@ internal fun MeronMobileState.sendQuickReply() {
                 )
             }
         pendingQuickReplySend = pending
-        status = "Sending reply..."
+        status = trs("mobile.status.sendingReply")
         dispatchQuickReplySend(pending)
     }
 }
@@ -694,7 +694,7 @@ internal fun MeronMobileState.retryQuickReplySend(pending: PendingQuickReplySend
     quickReplySendThreadId = pending.threadId
     quickReplyFailure = ""
     messages = messages.map { if (it.id == pending.tempMessageId) it.copy(sendStatus = SendStatus.Sending) else it }
-    status = "Sending reply..."
+    status = trs("mobile.status.sendingReply")
     scope.launch { dispatchQuickReplySend(pending) }
 }
 
@@ -766,7 +766,7 @@ private suspend fun MeronMobileState.dispatchQuickReplySend(pending: PendingQuic
             ++quickReplyGeneration
             seedQuickReplySignature()
         }
-        status = "Reply sent"
+        status = trs("mobile.status.replySent")
         val threadStillOpen = selectedCoreThread?.backendThreadId() == pending.threadId
         if (threadStillOpen) {
             messages = messages.map { if (it.id == pending.tempMessageId) it.copy(sendStatus = SendStatus.None) else it }
@@ -802,8 +802,8 @@ private suspend fun MeronMobileState.dispatchQuickReplySend(pending: PendingQuic
         if (consumedDraftId.isNotBlank()) quickReplyConsumedDraftIds -= consumedDraftId
         quickReplySendInFlight = false
         quickReplySendThreadId = ""
-        val message = it.message ?: "Send failed"
-        status = "Reply failed: $message"
+        val message = it.message ?: trs("compose.toast.sendFailed")
+        status = trsError("mobile.status.replyFailed", it)
         // The bubble belongs to this send, not to whoever holds the bar now.
         // Gating it on the editor left it reading "Sending…" for good once the
         // user started their next reply — the one state it must never show is a
@@ -860,7 +860,7 @@ internal fun MeronMobileState.retrySentDraftDiscard(owner: ComposeDraftOwner) {
         }
         // Still hidden, so it cannot come back into the reply bar this session;
         // the Drafts folder is where the user can remove it.
-        status = "Could not discard draft"
+        status = trs("composer.status.couldNotDiscardDraft")
     }
 }
 

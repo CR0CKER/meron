@@ -832,7 +832,7 @@ internal fun ColumnScope.MessageBodyContent(
     when (message.sendStatus) {
         SendStatus.Sending -> {
             Text(
-                "Sending…",
+                tr("composer.status.sending"),
                 modifier = Modifier.align(Alignment.End).padding(horizontal = chromeInset),
                 fontSize = 10.5.sp,
                 color = textColor.copy(alpha = 0.55f),
@@ -841,7 +841,7 @@ internal fun ColumnScope.MessageBodyContent(
 
         SendStatus.Failed -> {
             Text(
-                "Failed to send",
+                tr("mobile.status.failedToSend"),
                 modifier = Modifier.align(Alignment.End).padding(horizontal = chromeInset),
                 fontSize = 10.5.sp,
                 color = MaterialTheme.colorScheme.error,

@@ -12,7 +12,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import jp.nonbili.meron.shared.backgroundRefreshSummary
 import jp.nonbili.meron.shared.backgroundRefreshUsesRssProtocol
 import jp.nonbili.meron.shared.parseFolderListResponse
 import jp.nonbili.meron.shared.shouldBackgroundRefreshAccount
@@ -140,14 +139,13 @@ class AndroidBackgroundSyncWorker(
             "background refresh done: refreshed=$refreshed skipped=$skipped failed=$failed hasTransient=$hasTransientNetworkError",
         )
         AndroidUnreadWidget.refreshAsync(applicationContext)
-        val body = backgroundRefreshSummary(refreshed = refreshed, skipped = skipped, failed = failed)
         if (
             shouldNotifyRefreshComplete(
                 manualRun = inputData.getBoolean(KEY_MANUAL_RUN, false),
                 failed = failed,
             )
         ) {
-            AndroidNotificationService.notifyRefreshComplete(applicationContext, body)
+            AndroidNotificationService.notifyRefreshComplete(applicationContext, refreshed = refreshed, skipped = skipped, failed = failed)
         }
         return if (hasTransientNetworkError) {
             Log.i(TAG, "retrying background refresh due to transient network error")

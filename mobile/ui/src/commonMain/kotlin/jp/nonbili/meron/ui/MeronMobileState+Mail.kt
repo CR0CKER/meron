@@ -40,7 +40,12 @@ import kotlinx.coroutines.withContext
 
 internal fun MeronMobileState.runCoreThreadAction(
     thread: ThreadSummary,
+    /** For the log only. */
     label: String,
+    /** Shown once the action is done, unless the undo snackbar is. */
+    doneStatus: String?,
+    /** Shown, with the reason, if the action fails. */
+    failedStatus: String,
     action: suspend MobileMailCommandClient.() -> String,
     update: (List<ThreadSummary>) -> List<ThreadSummary>,
     undoMessage: String? = null,
@@ -84,7 +89,7 @@ internal fun MeronMobileState.runCoreThreadAction(
             removal?.complete()
             if (removesThread) releaseMovedThread(response)
             applyCoreFolderUnreadChanges(response)
-            if (undoMessage == null || onUndo == null) status = "$label complete"
+            if ((undoMessage == null || onUndo == null) && doneStatus != null) status = doneStatus
             committed.complete(response)
             afterSuccess?.invoke()
         }.onFailure {
@@ -92,7 +97,7 @@ internal fun MeronMobileState.runCoreThreadAction(
             Log.w("Mail", "$label failed", it)
             coreThreads = removal?.filter?.invoke(threadsBefore) ?: threadsBefore
             kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal?.filter?.invoke(state.threads) ?: state.threads) }
-            status = "$label failed: ${it.message}"
+            status = withReason(failedStatus, it.message) { key, args -> trs(key, args) }
             snackbarHost.currentSnackbarData?.dismiss()
             committed.complete(null)
         }
@@ -104,7 +109,7 @@ internal fun MeronMobileState.runCoreThreadAction(
             val result =
                 snackbarHost.showSnackbar(
                     message = undoMessage,
-                    actionLabel = "Undo",
+                    actionLabel = trs("buttons.undo"),
                     duration = SnackbarDuration.Long,
                 )
             if (result == SnackbarResult.ActionPerformed) {
@@ -205,7 +210,7 @@ internal fun MeronMobileState.restoreThread(
     val undoThreadId =
         undoSourceThreadId(thread, actionResponse)
             ?: run {
-                status = "Undo unavailable"
+                status = trs("mobile.status.undoUnavailable")
                 return
             }
     scope.launch {
@@ -221,9 +226,9 @@ internal fun MeronMobileState.restoreThread(
             threadRemovalGuard.release(thread.id)
             coreThreads = threadsSnapshot
             kanbanColumns = kanbanSnapshot
-            status = "Restored"
+            status = trs("mobile.status.restored")
         }.onFailure {
-            status = "Undo failed: ${it.message}"
+            status = trsError("mobile.status.undoFailed", it)
         }
     }
 }
@@ -254,6 +259,8 @@ internal fun MeronMobileState.toggleStar(thread: ThreadSummary) {
     runCoreThreadAction(
         thread = thread,
         label = if (thread.starred) "Unstar" else "Star",
+        doneStatus = trs(if (thread.starred) "mobile.status.starRemoved" else "mobile.status.starAdded"),
+        failedStatus = trs(if (thread.starred) "mobile.status.unstarFailed" else "mobile.status.starFailed"),
         action = {
             if (isRssThread) {
                 markRssStarred(
@@ -281,6 +288,8 @@ internal fun MeronMobileState.toggleRead(thread: ThreadSummary) {
     runCoreThreadAction(
         thread = thread,
         label = if (thread.unread) "Mark read" else "Mark unread",
+        doneStatus = trs(if (thread.unread) "mail.toast.markedReadCount" else "mail.toast.markedUnreadCount", mapOf("count" to 1)),
+        failedStatus = trs(if (thread.unread) "notification.markReadFailed" else "mobile.status.markUnreadFailed"),
         action = {
             readMarkMutex.withLock {
                 if (isRssThread) {
@@ -318,7 +327,7 @@ internal fun MeronMobileState.toggleMessageRead(message: MessageBody) {
     val seen = message.unread
     val (op, changes) = readLedger.begin(listOf(Triple(message.id, message.folderId, message.unread)), unread = !seen)
     applyReadChanges(thread, changes)
-    status = if (seen) "Marking read..." else "Marking unread..."
+    status = trs(if (seen) "mobile.status.markingRead" else "mobile.status.markingUnread")
     scope.launch {
         readMarkMutex.withLock {
             runCatching {
@@ -347,11 +356,11 @@ internal fun MeronMobileState.toggleMessageRead(message: MessageBody) {
                 )
             }.onSuccess {
                 applyReadChanges(thread, readLedger.finish(op, succeeded = true))
-                status = if (seen) "Marked read" else "Marked unread"
+                status = trs(if (seen) "mail.toast.markedReadCount" else "mail.toast.markedUnreadCount", mapOf("count" to 1))
             }.onFailure {
                 applyReadChanges(thread, readLedger.finish(op, succeeded = false))
                 Log.w("Mail", "toggle message read failed", it)
-                status = "Message update failed: ${it.message}"
+                status = trsError("mobile.status.messageUpdateFailed", it)
             }
         }
     }
@@ -549,13 +558,13 @@ internal fun MeronMobileState.toggleMessageStarred(message: MessageBody) {
             )
         }.onSuccess {
             refreshUnifiedStarredAfterFlagChange()
-            status = if (starred) "Starred" else "Unstarred"
+            status = trs(if (starred) "mobile.status.starAdded" else "mobile.status.starRemoved")
         }.onFailure {
             messages = messagesBefore
             coreThreads = threadsBefore
             kanbanColumns = kanbanBefore
             selectedCoreThread = selectedBefore
-            status = "Star failed: ${it.message}"
+            status = trsError(if (starred) "mobile.status.starFailed" else "mobile.status.unstarFailed", it)
         }
     }
 }
@@ -585,7 +594,7 @@ internal fun MeronMobileState.deleteMessage(message: MessageBody) {
                     messages.none { other -> folderIsDrafts(other.folderId) }
             }
     clearedDraftThreadId?.let { clearThreadDraftEverywhere(it) }
-    status = "Deleting message..."
+    status = trs("mobile.status.deletingMessage")
     scope.launch {
         runCatching {
             val response =
@@ -603,12 +612,12 @@ internal fun MeronMobileState.deleteMessage(message: MessageBody) {
                 }
             requireCoreOk(response)
         }.onSuccess {
-            status = "Delete complete"
+            status = trs("mobile.status.deleteComplete")
         }.onFailure {
             Log.w("Mail", "delete message failed", it)
             messages = messagesBefore
             clearedDraftThreadId?.let { threadId -> markThreadDraftEverywhere(threadId) }
-            status = "Delete failed: ${it.message}"
+            status = trsError("mail.toast.deleteFailed", it)
         }
     }
 }
@@ -656,7 +665,7 @@ internal fun MeronMobileState.markVisibleMailboxAllRead() {
         }
     val rssTargets = unread.filter { threadIdIsRss(it.backendThreadId()) }
     if (mailTargets.isEmpty() && unifiedMailAccounts.isEmpty() && starredTargets.isEmpty() && rssTargets.isEmpty()) {
-        status = "No unread messages."
+        status = trs("mobile.status.noUnreadMessages")
         return
     }
     val threadsBefore = coreThreads
@@ -721,7 +730,7 @@ internal fun MeronMobileState.markVisibleMailboxAllRead() {
             }
         }.onSuccess { responses ->
             responses.forEach(::applyCoreFolderUnreadChanges)
-            status = "Marked ${unread.size} unread item(s) read"
+            status = trs("mobile.ios.markedUnreadItemCountRead", mapOf("count" to unread.size))
             syncCoreThreads(syncFirst = false)
         }.onFailure {
             Log.w("Mail", "mark all read failed", it)
@@ -729,7 +738,7 @@ internal fun MeronMobileState.markVisibleMailboxAllRead() {
             kanbanColumns = kanbanBefore
             foldersByAccount = foldersBefore
             coreFolders = coreFoldersBefore
-            status = "Mark all read failed: ${it.message}"
+            status = trsError("mobile.status.markAllReadFailed", it)
         }
     }
 }
@@ -1016,14 +1025,14 @@ internal fun MeronMobileState.emptyMailFolder(
         }.onSuccess { response ->
             removal.complete()
             applyCoreFolderUnreadChanges(response)
-            status = "Folder emptied"
+            status = trs("mobile.status.folderEmptied")
             if (column != null) loadKanbanColumn(column, refresh = true) else syncCoreThreads(syncFirst = false)
         }.onFailure {
             removal.rollback()
             Log.w("Mail", "empty folder failed", it)
             coreThreads = removal.filter(threadsBefore)
             kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal.filter(state.threads)) }
-            status = "Empty folder failed: ${it.message}"
+            status = trsError("mobile.status.emptyFolderFailed", it)
         }
     }
 }
@@ -1081,10 +1090,10 @@ internal fun MeronMobileState.deleteMailFolder(
                 selectCoreMailbox(accountId, INBOX_FOLDER)
                 syncCoreThreads(accountOverride = accountId, folderOverride = INBOX_FOLDER, syncFirst = false)
             }
-            status = result.warning ?: "Folder deleted"
+            status = result.warning ?: trs("mobile.status.folderDeleted")
         }.onFailure {
             Log.w("Mail", "delete folder failed", it)
-            status = "Delete folder failed: ${it.message}"
+            status = trsError("mobile.status.deleteFolderFailed", it)
         }
     }
 }
@@ -1138,12 +1147,14 @@ internal fun MeronMobileState.setMailFolderNotify(
 internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
     if (threadIdIsRss(thread.id)) {
         if (thread.rssItemKeys().isNotEmpty()) {
-            status = "RSS items cannot be removed."
+            status = trs("mobile.status.rssItemsCannotBeRemoved")
             return
         }
         runCoreThreadAction(
             thread = thread,
             label = "Remove feed",
+            doneStatus = trs("feeds.toast.feedRemoved"),
+            failedStatus = trs("feeds.toast.failedToRemove"),
             removesThread = true,
             action = { removeRssFeed(RemoveRssFeedParams(threadId = thread.id)) },
             update = { threads -> threads.filterNot { it.id == thread.id } },
@@ -1152,7 +1163,7 @@ internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
                     accountOverride = thread.accountId,
                     folderOverride = INBOX_FOLDER,
                     syncFirst = false,
-                    successStatus = "Feed removed",
+                    successStatus = trs("feeds.toast.feedRemoved"),
                 )
             },
         )
@@ -1162,10 +1173,12 @@ internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
         runCoreThreadAction(
             thread = thread,
             label = "Archive",
+            doneStatus = null,
+            failedStatus = trs("mail.toast.archiveFailed"),
             removesThread = true,
             action = { archive(ThreadActionParams(threadId = thread.id)) },
             update = { threads -> threads.filterNot { it.id == thread.id } },
-            undoMessage = "Archived",
+            undoMessage = trs("mail.toast.archivedCount", mapOf("count" to 1)),
             onUndo = { response -> restoreThread(thread, threadsSnapshot, kanbanSnapshot, response) },
         )
     }
@@ -1173,18 +1186,20 @@ internal fun MeronMobileState.archiveOrRemove(thread: ThreadSummary) {
 
 internal fun MeronMobileState.deleteThread(thread: ThreadSummary) {
     if (threadIdIsRss(thread.backendThreadId())) {
-        status = if (thread.rssItemKeys().isNotEmpty()) "RSS items cannot be deleted." else "Use Remove feed for RSS feeds."
+        status = trs(if (thread.rssItemKeys().isNotEmpty()) "mobile.status.rssItemsCannotBeDeleted" else "mobile.status.useRemoveFeed")
         return
     }
     val threadsSnapshot = coreThreads
     val kanbanSnapshot = kanbanColumns
     runCoreThreadAction(
         thread = thread,
-        label = threadDeleteActionLabel(thread.folder, thread.folderRole),
+        label = "Delete",
+        doneStatus = null,
+        failedStatus = trs("mail.toast.deleteFailed"),
         removesThread = true,
         action = { delete(ThreadActionParams(threadId = thread.id, folderId = thread.folder)) },
         update = { threads -> threads.filterNot { it.id == thread.id } },
-        undoMessage = "Deleted",
+        undoMessage = trs(threadDeletedStatusKey(thread.folder, thread.folderRole), mapOf("count" to 1)),
         onUndo = { response -> restoreThread(thread, threadsSnapshot, kanbanSnapshot, response) },
     )
 }

@@ -613,7 +613,7 @@ private fun MeronMobileScreenContent(
                     .onSuccess { opml ->
                         val accountId = selectedCoreAccountId
                         if (accountId == UNIFIED_ACCOUNT_ID || accountId.isBlank()) {
-                            status = "Select an RSS account first."
+                            status = trs("mobile.status.selectRssAccountFirst")
                             return@onSuccess
                         }
                         if (!coreLoaded) {
@@ -647,13 +647,13 @@ private fun MeronMobileScreenContent(
                                 visibleMailboxKey =
                                     mailboxCacheKey(accountId, INBOX_FOLDER, mailSearch, mailFilter, mailAttachmentsOnly)
                                 mailboxPageDepth = MAILBOX_PAGE_SIZE
-                                status = if (imported == 0) "No new feeds imported" else "Imported $imported feed(s)"
+                                status = if (imported == 0) trs("feeds.toast.noNewFeedsToImport") else trs("feeds.toast.importedFeeds", mapOf("count" to imported))
                             }.onFailure {
-                                status = "OPML import failed: ${it.message}"
+                                status = trsError("mobile.status.opmlImportFailed", it)
                             }
                         }
                     }.onFailure {
-                        status = "OPML file read failed: ${it.message}"
+                        status = trsError("mobile.status.opmlReadFailed", it)
                     }
             }
         }
@@ -664,9 +664,9 @@ private fun MeronMobileScreenContent(
                     .onSuccess { saved ->
                         if (saved) {
                             pendingOpmlExport = ""
-                            status = "Exported OPML"
+                            status = trs("feeds.toast.feedsExported")
                         }
-                    }.onFailure { status = "OPML export failed: ${it.message}" }
+                    }.onFailure { status = trsError("mobile.status.opmlExportFailed", it) }
             }
         }
         launchBackupExport = { fileName ->
@@ -676,7 +676,7 @@ private fun MeronMobileScreenContent(
                 result
                     .onSuccess { saved ->
                         if (saved) status = trs("settings.backup.exported")
-                    }.onFailure { status = "Backup export failed: ${it.message}" }
+                    }.onFailure { status = trsError("mobile.status.backupExportFailed", it) }
             }
         }
         // Restore starts at the file picker; the core decides whether what came
@@ -686,7 +686,7 @@ private fun MeronMobileScreenContent(
                 if (picked != null) {
                     runCatching { picked.bytes.decodeToString() }
                         .onSuccess { document -> importBackup(document) }
-                        .onFailure { status = "${trs("settings.backup.restoreFailed")}: ${it.message}" }
+                        .onFailure { status = trsError("settings.backup.restoreFailed", it) }
                 }
             }
         }
@@ -701,11 +701,11 @@ private fun MeronMobileScreenContent(
                         services.saveFile(bytes, fileName, attachment.mimeType.ifBlank { "application/octet-stream" }) { result ->
                             result
                                 .onSuccess { saved ->
-                                    if (saved) status = "Saved ${attachment.filename.ifBlank { "attachment" }}"
-                                }.onFailure { status = "Attachment save failed: ${it.message}" }
+                                    if (saved) status = trs("chat.savedAttachment", mapOf("filename" to attachment.filename.ifBlank { fileName }))
+                                }.onFailure { status = trsError("mobile.status.attachmentSaveFailed", it) }
                         }
                     }.onFailure {
-                        status = "Attachment save failed: ${it.message}"
+                        status = trsError("mobile.status.attachmentSaveFailed", it)
                     }
                 }
             }
@@ -716,9 +716,9 @@ private fun MeronMobileScreenContent(
                     runCatching { picked.toDraftAttachment() }
                         .onSuccess {
                             onPicked(it)
-                            status = "Attached ${it.displayName}"
+                            status = trs("mobile.status.attachedFile", mapOf("name" to it.displayName))
                         }.onFailure {
-                            status = "Attachment failed: ${it.message}"
+                            status = trsError("mobile.status.attachFailed", it)
                         }
                 }
             }
@@ -763,13 +763,13 @@ private fun MeronMobileScreenContent(
                             }.onSuccess {
                                 accountJson = it
                                 coreAccounts = parseAccountListResponse(it)
-                                status = if (target.wallpaper) "Updated chat wallpaper" else "Updated avatar"
+                                status = trs(if (target.wallpaper) "mobile.status.chatWallpaperUpdated" else "mobile.status.avatarUpdated")
                             }.onFailure {
-                                status = "Media upload failed: ${it.message}"
+                                status = trsError(if (target.wallpaper) "wallpaper.uploadFailed" else "settings.toast.failedToUploadAvatar", it)
                             }
                         }
                     }.onFailure {
-                        status = "Media read failed: ${it.message}"
+                        status = trsError("mobile.status.mediaReadFailed", it)
                     }
                 }
             }
@@ -789,7 +789,7 @@ private fun MeronMobileScreenContent(
                             "",
                             mediaUrl,
                         )
-                        status = "Updated board wallpaper"
+                        status = trs("mobile.status.boardWallpaperUpdated")
                     } else {
                         updateKanbanBoard(
                             target.board.id,
@@ -798,7 +798,7 @@ private fun MeronMobileScreenContent(
                             target.board.wallpaperPresetId,
                             target.board.wallpaperUrl,
                         )
-                        status = "Updated board avatar"
+                        status = trs("mobile.status.boardAvatarUpdated")
                     }
                 }
             }
@@ -826,7 +826,7 @@ private fun MeronMobileScreenContent(
             incomingMailtoDraft?.let { draft ->
                 openMailtoCompose(draft) {
                     onMailtoDraftConsumed()
-                    status = "Loaded compose draft"
+                    status = trs("mobile.status.composeDraftLoaded")
                 }
             }
         }
@@ -883,10 +883,10 @@ private fun MeronMobileScreenContent(
                 conversationHtmlOverrides[account.id] ?: account.conversationHtml
             } ?: true
         val activeKanbanBoard = kanbanBoards.firstOrNull { it.id == activeKanbanBoardId } ?: kanbanBoards.firstOrNull()
-        val appBarTitle = if (selectedCoreAccountId == UNIFIED_ACCOUNT_ID) "Unified inbox" else "Inbox"
+        val appBarTitle = tr(if (selectedCoreAccountId == UNIFIED_ACCOUNT_ID) "kanban.columns.unifiedInbox" else "folders.roles.inbox")
         val appBarSubtitle =
             if (selectedCoreAccountId == UNIFIED_ACCOUNT_ID) {
-                "All accounts"
+                tr("kanban.allAccounts")
             } else {
                 selectedAccount?.email?.ifBlank { selectedAccount.displayName }.orEmpty()
             }
@@ -1087,7 +1087,7 @@ private fun MeronMobileScreenContent(
                     },
                     onCopyMessageText = { label, value ->
                         services.copyText(label, value)
-                        status = "Copied ${label.lowercase()}"
+                        status = trs("common.copied")
                     },
                     onRetryLoadMessages = { retryOpenThreadLoad() },
                     onMessagesRead = ::markMessagesReadOnScroll,
@@ -1436,7 +1436,7 @@ private fun MeronMobileScreenContent(
                         liveMailPushEnabled = next
                         saveAppBoolean(prefs, LIVE_MAIL_PUSH_PREF, next)
                         mobileHost.syncLiveMailPush(next)
-                        status = if (next) "Live mail push enabled" else "Live mail push disabled"
+                        status = trs(if (next) "mobile.status.liveMailPushEnabled" else "mobile.ios.liveMailPushDisabled")
                     },
                     backgroundSyncEnabled = backgroundSyncEnabled,
                     onToggleBackgroundSync = {
@@ -1444,11 +1444,11 @@ private fun MeronMobileScreenContent(
                         backgroundSyncEnabled = next
                         saveAppBoolean(prefs, BACKGROUND_SYNC_ENABLED_PREF, next)
                         mobileHost.syncBackgroundRefresh(next)
-                        status = if (next) "Background sync enabled" else "Background sync disabled"
+                        status = trs(if (next) "mobile.status.backgroundSyncEnabled" else "mobile.status.backgroundSyncDisabled")
                     },
                     onRefreshBackground = {
                         mobileHost.runBackgroundRefreshOnce()
-                        status = "Queued background refresh"
+                        status = trs("mobile.status.backgroundRefreshQueued")
                     },
                     readDiagnosticLog = { mobileHost.readDiagnosticLog() },
                     onShareDiagnosticLog = { mobileHost.shareDiagnosticLog() },
@@ -1721,8 +1721,8 @@ private fun MeronMobileScreenContent(
                 },
                 onCopyFeedUrl = {
                     kanbanActionThread = null
-                    services.copyText("Feed URL", thread.feedUrl)
-                    status = "Copied feed URL"
+                    services.copyText(trs("chat.feedUrl"), thread.feedUrl)
+                    status = trs("common.copied")
                 },
                 onMove = { target ->
                     kanbanActionThread = null

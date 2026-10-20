@@ -502,7 +502,7 @@ internal fun AttachmentImageGrid(
                             retryKey = mediaMissing,
                             ref = attachmentMediaRef(attachment),
                             loadImageAttachment = loadImageAttachment,
-                            contentDescription = attachment.filename.ifBlank { "Image" },
+                            contentDescription = attachment.filename.ifBlank { tr("mobile.status.imageTitle") },
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )
@@ -535,7 +535,7 @@ internal fun AttachmentRow(
             Icon(fileIconFor(attachment.filename, attachment.mimeType), contentDescription = null, modifier = Modifier.size(18.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    attachment.filename.ifBlank { "Attachment" },
+                    attachment.filename.ifBlank { tr("chat.attachment") },
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

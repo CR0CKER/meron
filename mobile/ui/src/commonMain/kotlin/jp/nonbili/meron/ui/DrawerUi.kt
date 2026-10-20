@@ -626,7 +626,7 @@ internal fun EmptyState(
 // Shown while the first load is still in flight, so a cold start reads as
 // "loading" rather than an empty inbox.
 @Composable
-internal fun LoadingState(text: String = "Loading…") {
+internal fun LoadingState(text: String = tr("common.loading")) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,

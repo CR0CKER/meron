@@ -294,7 +294,7 @@ internal fun MeronMobileState.openLinkedThread(
                 ),
             )
         }.onFailure {
-            status = "Could not open message: ${it.message}"
+            status = trsError("mobile.status.openMessageFailed", it)
         }
     }
 }

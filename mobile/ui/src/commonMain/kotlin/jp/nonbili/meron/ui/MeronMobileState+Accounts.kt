@@ -131,7 +131,7 @@ internal fun MeronMobileState.listAccounts(): Job? {
             mobileHost.syncLiveMailPush(liveMailPushEnabled)
         }.onFailure {
             if (generation != accountLoadGeneration) return@onFailure
-            status = "Account list failed: ${it.message}"
+            status = trsError("mobile.status.accountListFailed", it)
         }
         if (generation == accountLoadGeneration) {
             accountsLoading = false
@@ -173,10 +173,10 @@ internal fun MeronMobileState.saveAppProxy(spec: ProxySpec) {
                 MobileMailCommandClient(core).setProxy(ProxyParams(spec))
             }
         }.onSuccess {
-            status = if (spec.mode == "off") "Proxy disabled" else "Proxy saved"
+            status = trs(if (spec.mode == "off") "mobile.status.proxyDisabled" else "mobile.status.proxySaved")
         }.onFailure {
             appProxy = previous
-            status = "Proxy update failed: ${it.message}"
+            status = trsError("accounts.toast.failedToUpdateProxy", it)
         }
     }
 }
@@ -318,7 +318,7 @@ internal fun MeronMobileState.setRemoteImageSender(
                 // blanket restore of the pre-edit snapshot would take back the
                 // edits that succeeded in between.
                 remoteImageSenders = withRemoteSender(remoteImageSenders, addr, !allowed)
-                status = "Remote content update failed: ${it.message}"
+                status = trsError("mobile.status.remoteContentUpdateFailed", it)
             }
         }
     }
@@ -358,7 +358,7 @@ internal fun MeronMobileState.saveAppSignature(html: String) {
         }.onFailure {
             appSignatureHtml = previous
             reseedUntouchedQuickReply()
-            status = "Signature update failed: ${it.message}"
+            status = trsError("mobile.status.signatureUpdateFailed", it)
         }
     }
 }
@@ -383,7 +383,7 @@ internal fun MeronMobileState.saveAccountSignature(
             listAccounts()?.join()
             reseedUntouchedQuickReply()
         }.onFailure {
-            status = "Signature update failed: ${it.message}"
+            status = trsError("mobile.status.signatureUpdateFailed", it)
         }
     }
 }
@@ -404,9 +404,9 @@ internal fun MeronMobileState.saveAccountProxy(
             }
         }.onSuccess {
             listAccounts()
-            status = "Proxy saved"
+            status = trs("mobile.status.proxySaved")
         }.onFailure {
-            status = "Proxy update failed: ${it.message}"
+            status = trsError("accounts.toast.failedToUpdateProxy", it)
         }
     }
 }
@@ -445,7 +445,7 @@ internal fun MeronMobileState.saveAccountServerSettings(
             smtpTls = draft.smtpSecurity == MailSecurity.TLS,
             smtpStarttls = draft.smtpSecurity == MailSecurity.STARTTLS,
         )
-    status = "Saving server settings..."
+    status = trs("mobile.status.savingServerSettings")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -457,10 +457,10 @@ internal fun MeronMobileState.saveAccountServerSettings(
             applyAccounts(it, preferEmail = account.email)
             errorBanner = null
             syncError = null
-            status = "Server settings saved"
+            status = trs("mobile.status.serverSettingsSaved")
             syncCoreThreads(accountOverride = account.id, folderOverride = INBOX_FOLDER, syncFirst = true)
         }.onFailure { failure ->
-            val message = failure.message ?: "Server settings save failed"
+            val message = failure.message ?: trs("mobile.status.serverSettingsSaveFailed")
             if (untrustedCertificateProtocol(message) != null) {
                 showTypedServerCertificate(
                     accountId = account.id,
@@ -476,7 +476,7 @@ internal fun MeronMobileState.saveAccountServerSettings(
                 )
             } else {
                 errorBanner = message
-                status = "Server settings save failed: $message"
+                status = withReason(trs("mobile.status.serverSettingsSaveFailed"), failure.message) { key, args -> trs(key, args) }
             }
         }
     }
@@ -492,9 +492,9 @@ internal fun MeronMobileState.loadStorageUsage(showStatus: Boolean = false) {
             }
         }.onSuccess {
             storageUsage = parseStorageUsageResponse(it)
-            if (showStatus) status = "Loaded storage usage"
+            if (showStatus) status = trs("mobile.status.storageUsageLoaded")
         }.onFailure {
-            if (showStatus) status = "Storage usage failed: ${it.message}"
+            if (showStatus) status = trsError("mobile.status.storageUsageFailed", it)
         }
         storageBusy = false
     }
@@ -503,7 +503,7 @@ internal fun MeronMobileState.loadStorageUsage(showStatus: Boolean = false) {
 internal fun MeronMobileState.clearStorageCache() {
     if (!storageClearConfirming) {
         storageClearConfirming = true
-        status = "Tap clear cache again to confirm."
+        status = trs("mobile.status.tapClearCacheAgain")
         return
     }
     if (!coreLoaded) {
@@ -519,9 +519,9 @@ internal fun MeronMobileState.clearStorageCache() {
             }
         }.onSuccess {
             storageUsage = parseStorageUsageResponse(it)
-            status = "Cleared cached attachments"
+            status = trs("mobile.status.cacheCleared")
         }.onFailure {
-            status = "Clear cache failed: ${it.message}"
+            status = trsError("mobile.status.clearCacheFailed", it)
         }
         storageBusy = false
     }
@@ -566,7 +566,7 @@ internal fun MeronMobileState.addPasswordAccount(params: AddPasswordAccountParam
         status = coreUnavailableMessage
         return
     }
-    status = "Adding password account..."
+    status = trs("mobile.status.addingPasswordAccount")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -580,10 +580,10 @@ internal fun MeronMobileState.addPasswordAccount(params: AddPasswordAccountParam
             screen = Screen.Mail
             errorBanner = null
             certPrompt = null
-            status = "Added ${params.email}"
+            status = trs("mobile.status.accountAdded", mapOf("account" to params.email))
             syncCoreThreads(accountOverride = selectedCoreAccountId, folderOverride = INBOX_FOLDER, syncFirst = true)
         }.onFailure { failure ->
-            val message = failure.message ?: "Add account failed"
+            val message = failure.message ?: trs("mobile.status.addAccountFailed")
             if (untrustedCertificateProtocol(message) != null &&
                 shouldPromptForNewCertificate(params, message)
             ) {
@@ -601,7 +601,7 @@ internal fun MeronMobileState.addPasswordAccount(params: AddPasswordAccountParam
                 )
             } else {
                 errorBanner = message
-                status = "Add account failed: $message"
+                status = withReason(trs("mobile.status.addAccountFailed"), failure.message) { key, args -> trs(key, args) }
             }
         }
     }
@@ -659,7 +659,7 @@ internal fun MeronMobileState.autodiscoverPasswordAccount(auto: Boolean = false)
     val emailValue = email.trim()
     if (!emailValue.contains('@') || emailValue.endsWith('@')) {
         // Don't nag while the user is still typing the address.
-        if (!auto) status = "Enter an email address first."
+        if (!auto) status = trs("mobile.status.enterEmailFirst")
         return
     }
     // The on-blur trigger fires whenever focus leaves the email field; skip the
@@ -672,7 +672,7 @@ internal fun MeronMobileState.autodiscoverPasswordAccount(auto: Boolean = false)
     }
     passwordAutodiscoverGeneration += 1
     val requestGeneration = passwordAutodiscoverGeneration
-    status = "Finding mail settings..."
+    status = trs("accounts.discovery.lookingUp")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -732,18 +732,20 @@ internal fun MeronMobileState.autodiscoverPasswordAccount(auto: Boolean = false)
             status =
                 when {
                     discovered.appPasswordProvider.isNotBlank() -> {
-                        "${discovered.providerName.ifBlank {
-                            discovered.appPasswordProvider
-                        }} settings found. Use an app password."
+                        trs(
+                            "mobile.ios.settingsFoundUseAppPassword",
+                            mapOf("provider" to discovered.providerName.ifBlank { discovered.appPasswordProvider }),
+                        )
                     }
 
                     discovered.source == "guess" -> {
                         passwordServerSettingsOpen = true
-                        "Settings guessed. Verify the servers before adding."
+                        trs("mobile.status.settingsGuessed")
                     }
 
                     else -> {
-                        "Settings found${discovered.providerName.takeIf { it.isNotBlank() }?.let { " for $it" }.orEmpty()}."
+                        discovered.providerName.takeIf { it.isNotBlank() }?.let { trs("mobile.ios.settingsFoundForProvider", mapOf("provider" to it)) }
+                            ?: trs("mobile.ios.settingsFound")
                     }
                 }
         }.onFailure {
@@ -754,7 +756,7 @@ internal fun MeronMobileState.autodiscoverPasswordAccount(auto: Boolean = false)
                 return@onFailure
             }
             passwordServerSettingsOpen = true
-            status = "Settings lookup failed: ${it.message}"
+            status = trsError("mobile.status.settingsLookupFailed", it)
         }
     }
 }
@@ -811,7 +813,7 @@ internal fun MeronMobileState.addRssAccount() {
         return
     }
     rssAccountAdding = true
-    status = "Adding RSS account..."
+    status = trs("mobile.status.addingRssAccount")
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
@@ -833,18 +835,18 @@ internal fun MeronMobileState.addRssAccount() {
             rssDisplayName = ""
             rssFeedUrl = ""
             screen = Screen.Mail
-            status = "RSS account added"
+            status = trs("mobile.status.rssAccountAdded")
             // account.addRss already fetched and stored the starter feed's items,
             // so re-fetching here would be a redundant (and slow) network round-trip.
             syncCoreThreads(
                 accountOverride = selectedCoreAccountId,
                 folderOverride = INBOX_FOLDER,
                 syncFirst = false,
-                successStatus = "RSS account added",
+                successStatus = trs("mobile.status.rssAccountAdded"),
             )
         }.onFailure {
             rssAccountAdding = false
-            status = "Add RSS failed: ${it.message}"
+            status = trsError("mobile.status.addRssFailed", it)
         }
     }
 }
@@ -870,7 +872,7 @@ internal fun nextRssAccountDisplayName(accounts: List<AccountSummary>): String {
 internal fun MeronMobileState.exportOpmlForSelectedAccount() {
     val accountId = selectedCoreAccountId
     if (accountId == UNIFIED_ACCOUNT_ID || accountId.isBlank()) {
-        status = "Select an RSS account first."
+        status = trs("mobile.status.selectRssAccountFirst")
         return
     }
     if (!coreLoaded) {
@@ -885,13 +887,13 @@ internal fun MeronMobileState.exportOpmlForSelectedAccount() {
         }.onSuccess {
             val opml = parseOpmlExportResponse(it)
             if (opml.isBlank()) {
-                status = "No OPML content to export."
+                status = trs("mobile.status.noOpmlToExport")
             } else {
                 pendingOpmlExport = opml
                 launchOpmlExport("meron-feeds.opml")
             }
         }.onFailure {
-            status = "OPML export failed: ${it.message}"
+            status = trsError("mobile.status.opmlExportFailed", it)
         }
     }
 }
@@ -948,9 +950,9 @@ internal fun MeronMobileState.saveAccountSettings(
         }.onSuccess {
             applyAccounts(it)
             accountSettingsTargetId = null
-            status = "Saved account settings"
+            status = trs("mobile.status.accountSettingsSaved")
         }.onFailure {
-            status = "Account settings failed: ${it.message}"
+            status = trsError("mobile.status.accountSettingsFailed", it)
         }
     }
 }
@@ -997,10 +999,10 @@ internal fun MeronMobileState.removeAccount(account: AccountSummary) {
             coreThreads = emptyList()
             applyAccounts(it)
             clearMailFolderForAccount(prefs, account.id)
-            status = "Removed account"
-            syncCoreThreads(syncFirst = false, successStatus = "Removed account")
+            status = trs("mobile.status.accountRemoved")
+            syncCoreThreads(syncFirst = false, successStatus = trs("mobile.status.accountRemoved"))
         }.onFailure {
-            status = "Remove account failed: ${it.message}"
+            status = trsError("mobile.status.removeAccountFailed", it)
         }
     }
 }
@@ -1028,9 +1030,9 @@ internal fun MeronMobileState.moveAccount(
             }
         }.onSuccess {
             applyAccounts(it, preferEmail = account.email.ifBlank { account.id })
-            status = "Moved account"
+            status = trs("mobile.status.accountMoved")
         }.onFailure {
-            status = "Move account failed: ${it.message}"
+            status = trsError("mobile.status.moveAccountFailed", it)
         }
     }
 }

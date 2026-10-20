@@ -1093,11 +1093,13 @@ internal fun MailRouteContent(
                     when {
                         reconnectAccount2 != null -> {
                             StatusBanner(
-                                message = "Can't sign in to ${reconnectAccount2.email.ifBlank {
-                                    reconnectAccount2.displayName
-                                }}. Update the credentials to reconnect.",
+                                message =
+                                    tr(
+                                        "mobile.status.cantSignIn",
+                                        mapOf("account" to reconnectAccount2.email.ifBlank { reconnectAccount2.displayName }),
+                                    ),
                                 isError = true,
-                                actionLabel = "Reconnect",
+                                actionLabel = tr("settings.account.reconnectButton"),
                                 onAction = { reconnectAccount(reconnectAccount2) },
                                 onDismiss = null,
                             )
@@ -1141,7 +1143,7 @@ internal fun MailRouteContent(
                                     when {
                                         untrustedCert -> tr("accounts.certificate.show")
                                         proxyEndpoint != null -> tr("settings.network.proxy")
-                                        authLike && failedAccount != null -> "Reconnect"
+                                        authLike && failedAccount != null -> tr("settings.account.reconnectButton")
                                         else -> tr("connectivity.retry")
                                     },
                                 onAction = {
@@ -1188,8 +1190,8 @@ internal fun MailRouteContent(
                                 actionLabel =
                                     when {
                                         untrustedCert -> tr("accounts.certificate.show")
-                                        authLike && selectedAccount != null -> "Reconnect"
-                                        else -> "Retry"
+                                        authLike && selectedAccount != null -> tr("settings.account.reconnectButton")
+                                        else -> tr("connectivity.retry")
                                     },
                                 onAction = {
                                     when {
@@ -1306,7 +1308,7 @@ internal fun MailRouteContent(
                             syncing = false
                             initialThreadsLoaded = true
                             blockingMailboxLoadSlow = false
-                            errorBanner = "Inbox load timed out. Pull to refresh or tap Retry."
+                            errorBanner = trs("mobile.status.inboxLoadTimedOut")
                         }
                     }
                     PullToRefreshBox(
@@ -1316,7 +1318,7 @@ internal fun MailRouteContent(
                     ) {
                         when {
                             !initialAccountsLoaded || accountsLoading -> {
-                                LoadingState("Loading your inbox…")
+                                LoadingState(tr("mobile.status.loadingInbox"))
                             }
 
                             coreAccounts.isEmpty() -> {
@@ -1337,15 +1339,15 @@ internal fun MailRouteContent(
                                 LoadingState(
                                     if (selectedAccountIsRss) {
                                         if (blockingMailboxLoadSlow) {
-                                            "Still syncing feeds… The first sync can take a while."
+                                            tr("mobile.status.stillSyncingFeeds")
                                         } else {
-                                            "Loading feeds…"
+                                            tr("mobile.status.loadingFeeds")
                                         }
                                     } else {
                                         if (blockingMailboxLoadSlow) {
-                                            "Still syncing your inbox… The first sync can take a while."
+                                            tr("mobile.status.stillSyncingInbox")
                                         } else {
-                                            "Loading your inbox…"
+                                            tr("mobile.status.loadingInbox")
                                         }
                                     },
                                 )

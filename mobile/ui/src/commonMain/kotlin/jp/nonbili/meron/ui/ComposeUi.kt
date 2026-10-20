@@ -1149,7 +1149,7 @@ internal fun ComposeField(
                 ) {
                     Icon(
                         Icons.Filled.ContentPaste,
-                        contentDescription = "Paste",
+                        contentDescription = tr("common.paste"),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
