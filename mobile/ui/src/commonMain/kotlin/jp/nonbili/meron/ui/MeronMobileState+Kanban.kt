@@ -526,12 +526,14 @@ internal fun MeronMobileState.removeKanbanColumnsForFolder(
 /**
  * Turn the board search on [column] into a column of its own, placed right after
  * it. A search scoped to just that column has done its job then, so it clears;
- * a board-wide one stays. Does nothing when there is nothing to save or the
- * board already has it.
+ * a board-wide one stays. [clearsScopedSearch] is false when [query] came from
+ * the search options rather than the board search, which it then leaves alone.
+ * Does nothing when there is nothing to save or the board already has it.
  */
 internal fun MeronMobileState.saveKanbanSearchColumn(
     column: KanbanColumnSpec,
     query: String,
+    clearsScopedSearch: Boolean = true,
 ) {
     val saved = normalizeKanbanColumnQuery(query)
     if (saved.isBlank() || column.query.isNotBlank()) return
@@ -543,7 +545,7 @@ internal fun MeronMobileState.saveKanbanSearchColumn(
     val columns = board.columns.toMutableList().apply { add(if (at < 0) size else at + 1, target) }
     persistKanbanBoards(kanbanBoards.map { if (it.id == board.id) it.copy(columns = columns) else it })
     loadKanbanColumn(target, refresh = true)
-    if (kanbanSearchScope == sourceKey) {
+    if (clearsScopedSearch && kanbanSearchScope == sourceKey) {
         persistKanbanSearch("")
         loadKanbanColumn(column, refresh = false)
     }

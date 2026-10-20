@@ -633,6 +633,20 @@ fun parseMediaFileUrlResponse(responseJson: String): String = responseJson.findJ
 
 fun parseAttachmentDataResponse(responseJson: String): String = responseJson.findJsonStringProperty("data").orEmpty()
 
+fun parseSearchFieldsResponse(responseJson: String): SearchFields =
+    SearchFields(
+        from = responseJson.findJsonStringProperty("from").orEmpty(),
+        to = responseJson.findJsonStringProperty("to").orEmpty(),
+        subject = responseJson.findJsonStringProperty("subject").orEmpty(),
+        words = responseJson.findJsonStringProperty("words").orEmpty(),
+        after = responseJson.findJsonStringProperty("after").orEmpty(),
+        before = responseJson.findJsonStringProperty("before").orEmpty(),
+        unread = responseJson.findJsonBooleanProperty("unread") == true,
+        starred = responseJson.findJsonBooleanProperty("starred") == true,
+    )
+
+fun parseSearchBuildResponse(responseJson: String): String = responseJson.findJsonStringProperty("query").orEmpty()
+
 fun parseChangelogResponse(responseJson: String): List<ChangelogRelease> {
     val releasesJson = responseJson.findJsonArrayProperty("releases") ?: return emptyList()
     return releasesJson.jsonArrayElements().mapNotNull { item ->

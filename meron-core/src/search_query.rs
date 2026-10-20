@@ -8,6 +8,7 @@
 //! typed. Negation, `OR` and grouping are deliberately not supported.
 
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SearchQuery {
@@ -66,35 +67,210 @@ impl SearchQuery {
 
     /// Record `term` if it is a known operator with a usable value.
     fn take_operator(&mut self, term: &str) -> bool {
-        let Some((key, value)) = term.split_once(':') else {
+        let Some(operator) = Operator::parse(term) else {
             return false;
         };
-        let value = unquote(value);
-        if value.is_empty() {
-            return false;
-        }
-        match key.to_ascii_lowercase().as_str() {
-            "from" => self.from.push(value.to_string()),
-            "to" => self.to.push(value.to_string()),
-            "subject" => self.subject.push(value.to_string()),
-            "is" => match value.to_ascii_lowercase().as_str() {
-                "unread" => self.seen = Some(false),
-                "read" => self.seen = Some(true),
-                "starred" => self.starred = true,
-                _ => return false,
-            },
-            "after" => match parse_date(value) {
-                Some(date) => self.after = Some(date),
-                None => return false,
-            },
-            "before" => match parse_date(value) {
-                Some(date) => self.before = Some(date),
-                None => return false,
-            },
-            _ => return false,
+        match operator {
+            Operator::From(value) => self.from.push(value),
+            Operator::To(value) => self.to.push(value),
+            Operator::Subject(value) => self.subject.push(value),
+            Operator::Seen(seen) => self.seen = Some(seen),
+            Operator::Starred => self.starred = true,
+            Operator::After(date) => self.after = Some(date),
+            Operator::Before(date) => self.before = Some(date),
         }
         true
     }
+}
+
+/// One recognised `key:value` term.
+enum Operator {
+    From(String),
+    To(String),
+    Subject(String),
+    Seen(bool),
+    Starred,
+    After(NaiveDate),
+    Before(NaiveDate),
+}
+
+impl Operator {
+    fn parse(term: &str) -> Option<Self> {
+        let (key, value) = term.split_once(':')?;
+        let value = unquote(value);
+        if value.is_empty() {
+            return None;
+        }
+        Some(match key.to_ascii_lowercase().as_str() {
+            "from" => Operator::From(value.to_string()),
+            "to" => Operator::To(value.to_string()),
+            "subject" => Operator::Subject(value.to_string()),
+            "is" => match value.to_ascii_lowercase().as_str() {
+                "unread" => Operator::Seen(false),
+                "read" => Operator::Seen(true),
+                "starred" => Operator::Starred,
+                _ => return None,
+            },
+            "after" => Operator::After(parse_date(value)?),
+            "before" => Operator::Before(parse_date(value)?),
+            _ => return None,
+        })
+    }
+}
+
+/// The search options form: one field per operator, read from and written
+/// back to query text so the text stays the single source of truth. A term the
+/// form has no field for (a second `from:`, `is:read`) is kept verbatim in
+/// `words`, so opening the form and searching again never drops part of a
+/// query.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SearchFields {
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    /// Free text, plus any terms the other fields can't hold.
+    pub words: String,
+    /// `yyyy-mm-dd`, or empty.
+    pub after: String,
+    /// `yyyy-mm-dd`, or empty.
+    pub before: String,
+    pub unread: bool,
+    pub starred: bool,
+}
+
+impl SearchFields {
+    pub fn parse(query: &str) -> Self {
+        let query = query.trim();
+        let mut fields = SearchFields::default();
+        let mut words = Vec::new();
+        let mut taken = false;
+        // The last read-state term decides, as in `SearchQuery`. Only that one
+        // survives: `is:unread` in its checkbox, `is:read` in the words, so the
+        // rebuilt query can't put them back in an order that flips it.
+        let seen = terms(query)
+            .filter_map(|term| match Operator::parse(term) {
+                Some(Operator::Seen(seen)) => Some(seen),
+                _ => None,
+            })
+            .last();
+        for term in terms(query) {
+            let slot = match Operator::parse(term) {
+                Some(Operator::From(value)) => fill(&mut fields.from, value),
+                Some(Operator::To(value)) => fill(&mut fields.to, value),
+                Some(Operator::Subject(value)) => fill(&mut fields.subject, value),
+                Some(Operator::After(date)) => fill(&mut fields.after, iso(date)),
+                Some(Operator::Before(date)) => fill(&mut fields.before, iso(date)),
+                Some(Operator::Seen(false)) => {
+                    fields.unread |= seen == Some(false);
+                    true
+                }
+                Some(Operator::Seen(true)) => seen != Some(true),
+                Some(Operator::Starred) => {
+                    fields.starred = true;
+                    true
+                }
+                None => false,
+            };
+            if slot {
+                taken = true;
+            } else {
+                words.push(term);
+            }
+        }
+        // As in `SearchQuery::parse`, a plain query keeps its exact spacing.
+        fields.words = if taken {
+            words.join(" ")
+        } else {
+            query.to_string()
+        };
+        fields
+    }
+
+    /// The query text for these fields: operators, then the words, then
+    /// `is:unread` — last, so the checkbox wins over an `is:read` kept in the
+    /// words, as the last read-state term is the one that counts.
+    pub fn to_query(&self) -> String {
+        let mut terms = Vec::new();
+        for (key, value) in [
+            ("from", &self.from),
+            ("to", &self.to),
+            ("subject", &self.subject),
+        ] {
+            let value = value.replace('"', "");
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+            if value.contains(char::is_whitespace) {
+                terms.push(format!("{key}:\"{value}\""));
+            } else {
+                terms.push(format!("{key}:{value}"));
+            }
+        }
+        if self.starred {
+            terms.push("is:starred".to_string());
+        }
+        for (key, value) in [("after", &self.after), ("before", &self.before)] {
+            if let Some(date) = parse_date(value.trim()) {
+                terms.push(format!("{key}:{}", date.format("%Y/%m/%d")));
+            }
+        }
+        let words = self.words.trim();
+        if !words.is_empty() {
+            terms.push(words.to_string());
+        }
+        if self.unread {
+            terms.push("is:unread".to_string());
+        }
+        terms.join(" ")
+    }
+}
+
+/// `search.parse` / `search.build`, the search options form's round trip,
+/// shared by the desktop sidecar and the mobile bridge. `None` for any other
+/// method.
+pub fn handle_request(method: &str, params: &serde_json::Value) -> Option<serde_json::Value> {
+    match method {
+        "search.parse" => {
+            let query = params
+                .get("query")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            serde_json::to_value(SearchFields::parse(query)).ok()
+        }
+        "search.build" => {
+            let fields: SearchFields =
+                serde_json::from_value(params.get("fields").cloned().unwrap_or_default())
+                    .unwrap_or_default();
+            Some(serde_json::json!({ "query": fields.to_query() }))
+        }
+        _ => None,
+    }
+}
+
+/// Put `value` in an empty form field; a full one leaves it to `words`.
+fn fill(field: &mut String, value: String) -> bool {
+    if !field.is_empty() {
+        return false;
+    }
+    *field = value;
+    true
+}
+
+fn iso(date: NaiveDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
+/// Epoch seconds of local midnight starting `date`, which is what a user means
+/// by `after:2026/01/02`. Falls back to UTC midnight for a day that has no
+/// local midnight (a DST gap at 00:00).
+pub fn local_midnight(date: NaiveDate) -> i64 {
+    let midnight = date.and_time(chrono::NaiveTime::MIN);
+    midnight
+        .and_local_timezone(chrono::Local)
+        .earliest()
+        .map_or_else(|| midnight.and_utc().timestamp(), |dt| dt.timestamp())
 }
 
 /// Split on whitespace, except inside a double-quoted span, so
@@ -178,5 +354,71 @@ mod tests {
         assert_eq!(q.before, NaiveDate::from_ymd_opt(2026, 2, 3));
         assert!(q.text.is_empty());
         assert!(!q.is_empty());
+    }
+
+    #[test]
+    fn fields_round_trip_through_query_text() {
+        let fields = SearchFields::parse(
+            r#"budget from:"Ann Lee" to:d@e.f is:unread is:starred after:2026/01/02 before:2026-02-03"#,
+        );
+        assert_eq!(
+            fields,
+            SearchFields {
+                from: "Ann Lee".into(),
+                to: "d@e.f".into(),
+                subject: String::new(),
+                words: "budget".into(),
+                after: "2026-01-02".into(),
+                before: "2026-02-03".into(),
+                unread: true,
+                starred: true,
+            }
+        );
+        assert_eq!(
+            fields.to_query(),
+            r#"from:"Ann Lee" to:d@e.f is:starred after:2026/01/02 before:2026/02/03 budget is:unread"#
+        );
+        assert_eq!(SearchFields::parse(&fields.to_query()), fields);
+    }
+
+    #[test]
+    fn fields_keep_terms_they_cannot_hold_in_words() {
+        let fields = SearchFields::parse("from:a@b.c from:x@y.z is:read re:foo");
+        assert_eq!(fields.from, "a@b.c");
+        assert_eq!(fields.words, "from:x@y.z is:read re:foo");
+        assert_eq!(fields.to_query(), "from:a@b.c from:x@y.z is:read re:foo");
+        // A plain query is all words, spacing intact.
+        assert_eq!(SearchFields::parse(" a  b ").words, "a  b");
+    }
+
+    #[test]
+    fn fields_keep_the_last_read_state() {
+        let unread = SearchFields::parse("is:read budget is:unread");
+        assert!(unread.unread);
+        assert_eq!(unread.words, "budget");
+        assert_eq!(SearchQuery::parse(&unread.to_query()).seen, Some(false));
+
+        let read = SearchFields::parse("is:unread is:read budget is:read");
+        assert!(!read.unread);
+        assert_eq!(read.words, "is:read budget is:read");
+        assert_eq!(SearchQuery::parse(&read.to_query()).seen, Some(true));
+
+        // Ticking Unread on a read search wins over the kept `is:read`.
+        let ticked = SearchFields {
+            unread: true,
+            ..SearchFields::parse("is:read budget")
+        };
+        assert_eq!(SearchQuery::parse(&ticked.to_query()).seen, Some(false));
+    }
+
+    #[test]
+    fn fields_drop_unusable_values() {
+        let fields = SearchFields {
+            from: r#" "x" "#.into(),
+            subject: "  ".into(),
+            after: "soon".into(),
+            ..Default::default()
+        };
+        assert_eq!(fields.to_query(), "from:x");
     }
 }

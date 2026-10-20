@@ -46,6 +46,16 @@ func (a *App) watchFolder(command string, payload map[string]any) (any, error) {
 	return a.sidecar.Call(command, payload)
 }
 
+// searchQuery converts between a search query's text and the search options
+// form's fields. The parser lives in the shared core so every platform reads
+// operators the same way.
+func (a *App) searchQuery(command string, payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, a.engineUnavailable()
+	}
+	return a.sidecar.Call(command, payload)
+}
+
 func (a *App) folderList(payload map[string]any) (any, error) {
 	var req FolderListRequest
 	_ = decode(payload, &req)

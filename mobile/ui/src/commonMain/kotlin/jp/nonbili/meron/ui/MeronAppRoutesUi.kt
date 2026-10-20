@@ -52,7 +52,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -114,6 +117,28 @@ internal fun KanbanRouteContent(
     activeKanbanBoard: KanbanBoardSpec?,
 ) {
     with(state) {
+        var searchOptionsOpen by remember { mutableStateOf(false) }
+        if (searchOptionsOpen) {
+            SearchOptionsSheet(
+                state = state,
+                query = kanbanSearch,
+                onDismiss = { searchOptionsOpen = false },
+                onSearch = { query ->
+                    persistKanbanSearch(query)
+                    loadKanbanBoard(refresh = true)
+                },
+                // A search scoped to one column saves into it; a board-wide one picks.
+                saveColumns =
+                    activeKanbanBoard?.columns.orEmpty().filter {
+                        it.query.isBlank() && (kanbanSearchScope.ifBlank { "all" } == "all" || kanbanColumnKey(it) == kanbanSearchScope)
+                    },
+                columnLabel = { column ->
+                    val account = coreAccounts.firstOrNull { it.id == column.accountId }
+                    columnTitle(column, coreAccounts, foldersByAccount) to account?.let { it.displayName.ifBlank { it.email } }.orEmpty()
+                },
+                onSave = { query, column -> saveKanbanSearchColumn(column, query, clearsScopedSearch = false) },
+            )
+        }
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -197,6 +222,7 @@ internal fun KanbanRouteContent(
                                     onSearchChange = ::persistKanbanSearch,
                                     onSearchScopeChange = ::persistKanbanSearchScope,
                                     onSearchSubmit = { loadKanbanBoard(refresh = true) },
+                                    onOpenOptions = { searchOptionsOpen = true },
                                 )
                             }
                         },
@@ -506,6 +532,18 @@ internal fun MailRouteContent(
     mailListStates: MutableMap<MailboxCacheKey, MailListPosition>,
 ) {
     with(state) {
+        var searchOptionsOpen by remember { mutableStateOf(false) }
+        if (searchOptionsOpen) {
+            SearchOptionsSheet(
+                state = state,
+                query = mailSearch,
+                onDismiss = { searchOptionsOpen = false },
+                onSearch = { query ->
+                    mailSearch = query
+                    syncCoreThreads(syncFirst = false)
+                },
+            )
+        }
         val mailListKey =
             visibleMailboxKey
                 ?: mailboxCacheKey(selectedCoreAccountId, selectedCoreFolder, mailSearch, mailFilter, mailAttachmentsOnly)
@@ -662,6 +700,8 @@ internal fun MailRouteContent(
                                                 },
                                             onSearchChange = { mailSearch = it },
                                             onSearchSubmit = { syncCoreThreads(syncFirst = false) },
+                                            // Feed search is plain text; the operators are mail's.
+                                            onOpenOptions = if (selectedAccountIsRss) null else ({ searchOptionsOpen = true }),
                                         )
                                     }
                                 }

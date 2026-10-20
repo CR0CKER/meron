@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewKanban
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -303,13 +304,14 @@ internal fun KanbanHeaderSearchField(
     onSearchChange: (String) -> Unit,
     onSearchScopeChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
+    onOpenOptions: (() -> Unit)? = null,
 ) {
     var scopeMenuOpen by remember { mutableStateOf(false) }
     // Saved search columns keep their own query, so they can't be a scope.
     val columns = columns.filter { it.query.isBlank() }
     val normalizedScope = searchScope.ifBlank { "all" }
     val scopedColumn = columns.firstOrNull { kanbanColumnKey(it) == normalizedScope }
-    val scopeLabel = scopedColumn?.let { columnTitle(it, accounts, foldersByAccount) } ?: "All"
+    val scopeLabel = scopedColumn?.let { columnTitle(it, accounts, foldersByAccount) } ?: tr("kanban.searchScope.allColumns")
     Box(Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
@@ -356,7 +358,7 @@ internal fun KanbanHeaderSearchField(
                         Box(contentAlignment = Alignment.CenterStart) {
                             if (search.isBlank()) {
                                 Text(
-                                    "Search board",
+                                    tr("kanban.searchBoard"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -367,6 +369,11 @@ internal fun KanbanHeaderSearchField(
                         }
                     },
                 )
+                if (onOpenOptions != null) {
+                    IconButton(onClick = onOpenOptions, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.Tune, contentDescription = tr("search.options"), modifier = Modifier.size(18.dp))
+                    }
+                }
                 if (search.isNotBlank()) {
                     IconButton(
                         onClick = {

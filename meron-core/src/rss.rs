@@ -21,6 +21,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use crate::search_query::{SearchQuery, local_midnight};
 use crate::store::{self, RssItemExtra, RssMedia};
 
 const RSS_FOLDER_ID: &str = "inbox";
@@ -504,6 +505,10 @@ fn sync_subscription(db: &Mutex<Connection>, sub: &Subscription) -> Result<Vec<N
 /// One bridge `Message` per subscription (subscription = thread), newest first.
 /// `filter` mirrors the mail thread list: "unread" keeps feeds with an unread
 /// item, "starred" keeps feeds with a starred item, anything else keeps all.
+///
+/// `query` keeps feeds with an item that matches it, operators included, as
+/// they read for a feed: `from:` is the feed or the item's author, `subject:`
+/// the item's title. A feed item is addressed to no one, so `to:` matches none.
 pub fn recent(
     conn: &Connection,
     account: &str,
@@ -512,7 +517,7 @@ pub fn recent(
     limit: i64,
 ) -> Result<Vec<Value>> {
     let limit = if limit <= 0 { 50 } else { limit };
-    let q = query.trim().to_lowercase();
+    let query = SearchQuery::parse(query);
     let mut sql = String::from(
         "SELECT s.id, s.account, s.url, s.title,
            COALESCE(MAX(NULLIF(json_extract(m.json,'$.published_at'),0)),
@@ -536,11 +541,48 @@ pub fn recent(
          WHERE s.account = ?1 AND s.enabled = 1",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(account.to_string())];
-    if !q.is_empty() {
-        sql.push_str(
-            " AND (lower(s.title) LIKE ?2 OR lower(m.subject) LIKE ?2 OR lower(json_extract(m.json,'$.summary')) LIKE ?2)",
+    // Each text condition: any of `columns` holds `value`.
+    let mut like = |columns: &[&str], value: &str| {
+        let pattern = format!("%{}%", value.to_lowercase());
+        let clauses = columns
+            .iter()
+            .map(|column| {
+                args.push(Box::new(pattern.clone()));
+                format!("lower({column}) LIKE ?")
+            })
+            .collect::<Vec<_>>();
+        sql.push_str(&format!(" AND ({})", clauses.join(" OR ")));
+    };
+    if !query.text.is_empty() {
+        like(
+            &["s.title", "m.subject", "json_extract(m.json,'$.summary')"],
+            &query.text,
         );
-        args.push(Box::new(format!("%{q}%")));
+    }
+    for from in &query.from {
+        like(&["s.title", "m.from_name"], from);
+    }
+    for subject in &query.subject {
+        like(&["m.subject"], subject);
+    }
+    if !query.to.is_empty() {
+        sql.push_str(" AND 0");
+    }
+    match query.seen {
+        Some(true) => sql.push_str(" AND m.seen <> 0"),
+        Some(false) => sql.push_str(" AND m.seen = 0"),
+        None => {}
+    }
+    if query.starred {
+        sql.push_str(" AND m.starred <> 0");
+    }
+    if let Some(after) = query.after {
+        sql.push_str(" AND m.date >= ?");
+        args.push(Box::new(local_midnight(after)));
+    }
+    if let Some(before) = query.before {
+        sql.push_str(" AND m.date < ?");
+        args.push(Box::new(local_midnight(before)));
     }
     sql.push_str(" GROUP BY s.id");
     match filter {

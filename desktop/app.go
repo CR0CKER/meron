@@ -258,6 +258,8 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.setNativeLabels(payload)
 	case "changelog.fetch":
 		return a.changelogFetch()
+	case "search.parse", "search.build":
+		return a.searchQuery(command, payload)
 	case "update.status":
 		return a.updateStatus()
 	case "update.check":

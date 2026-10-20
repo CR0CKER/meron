@@ -131,6 +131,10 @@ pub fn dispatch_protocol_request(req: &Request) -> Result<Value, String> {
 
 pub fn dispatch_mobile_protocol_request(req: &Request, data_dir: &str) -> Result<Value, String> {
     match req.method.as_str() {
+        "search.parse" | "search.build" => {
+            crate::search_query::handle_request(&req.method, &req.params)
+                .ok_or_else(|| format!("bad {} request", req.method))
+        }
         "avatar.resolve" => {
             serde_json::to_value(crate::avatar::resolve(&req.params)).map_err(|err| err.to_string())
         }

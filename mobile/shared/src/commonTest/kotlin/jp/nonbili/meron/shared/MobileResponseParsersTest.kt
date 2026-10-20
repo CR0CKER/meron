@@ -9,6 +9,23 @@ import kotlin.test.assertTrue
 
 class MobileResponseParsersTest {
     @Test
+    fun parsesSearchFieldsAndBuiltQuery() {
+        val fields =
+            parseSearchFieldsResponse(
+                """{"id":1,"result":{"from":"Ann Lee","to":"","subject":"plan","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false}}""",
+            )
+        assertEquals(
+            SearchFields(from = "Ann Lee", subject = "plan", words = "budget", after = "2026-01-02", unread = true),
+            fields,
+        )
+        assertEquals(
+            """{"from":"Ann Lee","to":"","subject":"plan","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false}""",
+            fields.toJson(),
+        )
+        assertEquals("from:a@b.c", parseSearchBuildResponse("""{"id":2,"result":{"query":"from:a@b.c"}}"""))
+    }
+
+    @Test
     fun parsesStarredPageAndAllocatedIdentity() {
         val page =
             parseStarredItemsPage(

@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import { accounts$ } from '../../states/accounts'
-import { kanbanColumnKey } from '../../states/kanban'
 import { settings$ } from '../../states/settings'
 import type { Account } from '../../types'
-import { SearchScopeDropdown } from './SearchScopeDropdown'
+import { ColumnAvatar } from './ColumnLabel'
 
 const account: Account = {
   id: 'acc1',
@@ -54,9 +53,7 @@ afterEach(() => {
 })
 
 function renderScoped() {
-  return render(
-    <SearchScopeDropdown value={kanbanColumnKey(column)} onChange={() => undefined} visibleColumns={[column]} />,
-  )
+  return render(<ColumnAvatar column={column} size={16} />)
 }
 
 // The account's own picture is set (or removed) in its settings. A Gravatar for

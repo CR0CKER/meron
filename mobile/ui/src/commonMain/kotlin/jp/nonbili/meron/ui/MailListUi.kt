@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewKanban
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -517,6 +518,7 @@ internal fun MailHeaderSearchField(
     placeholder: String? = null,
     onSearchChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
+    onOpenOptions: (() -> Unit)? = null,
 ) {
     val effectivePlaceholder = placeholder ?: tr("mobile.mail.searchMail")
     Surface(
@@ -573,6 +575,11 @@ internal fun MailHeaderSearchField(
                     }
                 },
             )
+            if (onOpenOptions != null) {
+                IconButton(onClick = onOpenOptions, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Filled.Tune, contentDescription = tr("search.options"), modifier = Modifier.size(18.dp))
+                }
+            }
             if (search.isNotBlank()) {
                 IconButton(
                     onClick = {

@@ -2,15 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
-import { clsx } from '../../lib/utils'
-import { getKanbanColumns, kanban$, kanbanBoardColumnKey, kanbanColumnKey } from '../../states/kanban'
+import {
+  getKanbanColumns,
+  kanban$,
+  kanbanBoardColumnKey,
+  kanbanColumnKey,
+  saveKanbanSearchColumn,
+} from '../../states/kanban'
+import { loadKanbanColumn } from '../../lib/kanbanData'
 import { settings$ } from '../../states/settings'
 import { ui$ } from '../../states/ui'
 import { IconButton } from '../button/IconButton'
-import { SearchScopeDropdown } from './SearchScopeDropdown'
+import { SearchBox } from '../search/SearchBox'
+import { ColumnAvatar, useColumnLabel } from './ColumnLabel'
 
 /**
- * A kanban board's search box and its column scope. It sits in the title bar
+ * A kanban board's search box, with the column it is scoped to. It sits in the title bar
  * when Meron draws one, always open there; in the board's header otherwise,
  * collapsed to an icon until it is wanted.
  */
@@ -22,6 +29,8 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
   const globalSearchFocus = useValue(ui$.globalSearchFocus)
   // Saved search columns keep their own query, so they can't be a scope.
   const visibleColumns = useMemo(() => getKanbanColumns(boardId).filter((column) => !column.query), [boards, boardId])
+  const scopedColumn = visibleColumns.find((column) => kanbanColumnKey(column) === searchScope)
+  const columnLabel = useColumnLabel()
   // The header's bar is collapsed to an icon by default; it expands on click (or
   // the search hotkey) and folds back once it's empty and loses focus. Start open
   // if a query is already active so a persisted search stays visible.
@@ -62,74 +71,67 @@ export function KanbanSearch({ boardId, compact = false }: { boardId: string; co
     return <IconButton icon={Search} label={t('kanban.searchBoardAction')} onClick={() => setExpanded(true)} />
   }
 
-  const iconSize = 14
+  const setScope = (scope: string) => {
+    kanban$.searchScope.set(scope)
+    expandSearchScope(boardId, scope)
+  }
+  const scopeLabel = scopedColumn ? columnLabel(scopedColumn) : null
+
   return (
-    <div
-      ref={barRef}
-      className={clsx(
-        'group flex min-w-0 items-center overflow-visible border focus-within:bg-chats',
-        compact
-          ? 'h-full w-full rounded-lg border-transparent bg-sidenav-ink/4 hover:not-focus-within:bg-sidenav-ink/8 focus-within:border-accent'
-          : 'h-9 basis-72 shrink rounded-xl border-transparent bg-hover focus-within:border-accent/40',
-      )}
-    >
-      <div className="relative h-full min-w-0 flex-1">
-        <Search
-          className={clsx(
-            'absolute top-1/2 -translate-y-1/2',
-            compact ? 'left-2.5 text-sidenav-ink/60 group-focus-within:text-secondary' : 'left-3 text-secondary',
-          )}
-          size={iconSize}
-        />
-        <input
-          ref={inputRef}
-          value={searchQuery}
-          onChange={(event) => kanban$.searchQuery.set(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return
-            if (searchQuery) kanban$.searchQuery.set('')
-            else if (compact) event.currentTarget.blur()
-            else setExpanded(false)
-          }}
-          placeholder={t('kanban.searchBoard')}
-          className={clsx(
-            'block h-full w-full appearance-none border-0 bg-transparent pr-8 text-xs outline-none transition-all',
-            compact
-              ? 'py-0 pl-8 text-sidenav-ink placeholder-sidenav-ink/60 group-focus-within:text-primary group-focus-within:placeholder-secondary'
-              : 'py-1.5 pl-9.5 text-primary placeholder-secondary',
-          )}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => {
-              kanban$.searchQuery.set('')
-              inputRef.current?.focus()
-            }}
-            className={clsx(
-              'absolute top-1/2 -translate-y-1/2 cursor-pointer transition-colors',
-              compact
-                ? 'right-2.5 text-sidenav-ink/60 hover:text-sidenav-ink group-focus-within:text-secondary group-focus-within:hover:text-primary'
-                : 'right-2.5 text-secondary hover:text-primary',
-            )}
-            aria-label={t('common.clearSearch')}
-            title={t('common.clearSearch')}
+    <SearchBox
+      value={searchQuery}
+      onChange={(query) => kanban$.searchQuery.set(query)}
+      placeholder={t('kanban.searchBoard')}
+      compact={compact}
+      className={compact ? 'w-full' : 'basis-72 shrink'}
+      inputRef={inputRef}
+      boxRef={barRef}
+      // A search narrowed to one column says which; clearing it searches them all.
+      chip={
+        scopedColumn &&
+        scopeLabel && (
+          <span
+            title={scopeLabel.account ? `${scopeLabel.folder} · ${scopeLabel.account}` : scopeLabel.folder}
+            className="flex max-w-[40%] shrink-0 items-center gap-1 rounded-md bg-accent/10 py-0.5 pr-0.5 pl-1 text-[0.6875rem] font-semibold text-accent"
           >
-            <X size={iconSize} />
-          </button>
-        )}
-      </div>
-      <SearchScopeDropdown
-        value={searchScope}
-        onChange={(scope) => {
-          kanban$.searchScope.set(scope)
-          expandSearchScope(boardId, scope)
+            <ColumnAvatar column={scopedColumn} size={14} />
+            <span className="truncate">{scopeLabel.folder}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setScope('all')
+                inputRef.current?.focus()
+              }}
+              aria-label={t('kanban.searchScope.allColumns')}
+              title={t('kanban.searchScope.allColumns')}
+              className="flex cursor-pointer rounded p-0.5 hover:bg-accent/15"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        )
+      }
+      // Backspace in an empty box takes the scope off, as with any token before a caret.
+      onKeyDown={(event) => {
+        if (event.key === 'Backspace' && !searchQuery && scopedColumn) setScope('all')
+      }}
+      onEscapeEmpty={compact ? undefined : () => setExpanded(false)}
+      options={{
+        onSearch: (query, scope) => {
+          if (scope !== undefined && scope !== searchScope) setScope(scope)
+          kanban$.searchQuery.set(query)
           inputRef.current?.focus()
-        }}
-        visibleColumns={visibleColumns}
-        compact={compact}
-        quiet={!searchQuery.trim()}
-      />
-    </div>
+        },
+        board: {
+          scope: searchScope,
+          columns: visibleColumns,
+          onSave: (query, column) => {
+            const saved = saveKanbanSearchColumn(boardId, column, query)
+            if (saved) void loadKanbanColumn(saved, true)
+          },
+        },
+      }}
+    />
   )
 }
 

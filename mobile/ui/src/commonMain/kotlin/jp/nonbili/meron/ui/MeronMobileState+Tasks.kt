@@ -330,7 +330,7 @@ internal fun pickerMillisToTaskDue(utcMillis: Long): Long {
 }
 
 // Howard Hinnant's days-from-civil algorithms, proleptic Gregorian.
-private fun daysFromCivil(
+internal fun daysFromCivil(
     year: Int,
     month: Int,
     day: Int,
@@ -343,7 +343,7 @@ private fun daysFromCivil(
     return era * 146_097 + doe - 719_468
 }
 
-private fun civilFromDays(days: Long): Triple<Int, Int, Int> {
+internal fun civilFromDays(days: Long): Triple<Int, Int, Int> {
     val z = days + 719_468
     val era = z.floorDiv(146_097L)
     val doe = z - era * 146_097

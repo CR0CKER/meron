@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::imap::MessageHeader;
-use crate::search_query::SearchQuery;
+use crate::search_query::{SearchQuery, local_midnight};
 
 use super::*;
 
@@ -167,17 +167,6 @@ pub fn search_messages(
         }
     }
     Ok(messages)
-}
-
-/// Epoch seconds of local midnight starting `date`, which is what a user means
-/// by `after:2026/01/02`. Falls back to UTC midnight for a day that has no
-/// local midnight (a DST gap at 00:00).
-fn local_midnight(date: chrono::NaiveDate) -> i64 {
-    let midnight = date.and_time(chrono::NaiveTime::MIN);
-    midnight
-        .and_local_timezone(chrono::Local)
-        .earliest()
-        .map_or_else(|| midnight.and_utc().timestamp(), |dt| dt.timestamp())
 }
 
 /// Search several folders (typically the open mailbox plus Sent) as one

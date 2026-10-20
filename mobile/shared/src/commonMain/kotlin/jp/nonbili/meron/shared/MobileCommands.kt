@@ -53,6 +53,8 @@ object MobileCommand {
     const val AttachmentRead = "mail.attachmentRead"
     const val AvatarResolve = "avatar.resolve"
     const val ChangelogFetch = "changelog.fetch"
+    const val SearchParse = "search.parse"
+    const val SearchBuild = "search.build"
     const val StorageUsage = "storage.usage"
     const val StorageClearCache = "storage.clearCache"
     const val Sync = "mail.sync"
@@ -87,6 +89,33 @@ object MobileCommand {
     const val TaskReorder = "tasks.reorder"
     const val TaskClearCompleted = "tasks.clearCompleted"
     const val TaskRestore = "tasks.restore"
+}
+
+/**
+ * The search options form, as the core's `search.parse` reads a query and
+ * `search.build` writes it back. Dates are `yyyy-mm-dd`, or empty.
+ */
+data class SearchFields(
+    val from: String = "",
+    val to: String = "",
+    val subject: String = "",
+    val words: String = "",
+    val after: String = "",
+    val before: String = "",
+    val unread: Boolean = false,
+    val starred: Boolean = false,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "from" to from.jsonString(),
+            "to" to to.jsonString(),
+            "subject" to subject.jsonString(),
+            "words" to words.jsonString(),
+            "after" to after.jsonString(),
+            "before" to before.jsonString(),
+            "unread" to unread.toString(),
+            "starred" to starred.toString(),
+        )
 }
 
 data class AddRssAccountParams(
@@ -1185,6 +1214,10 @@ class MobileMailCommandClient(
     suspend fun readAttachment(params: AttachmentReadParams): String = core.invoke(MobileCommand.AttachmentRead, params.toJson())
 
     suspend fun fetchChangelog(): String = core.invoke(MobileCommand.ChangelogFetch)
+
+    suspend fun parseSearch(query: String): String = core.invoke(MobileCommand.SearchParse, jsonObject("query" to query.jsonString()))
+
+    suspend fun buildSearch(fields: SearchFields): String = core.invoke(MobileCommand.SearchBuild, jsonObject("fields" to fields.toJson()))
 
     suspend fun storageUsage(): String = core.invoke(MobileCommand.StorageUsage)
 
