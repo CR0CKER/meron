@@ -277,7 +277,7 @@ function KanbanColumnContent({
       offset={4}
       onClose={() => setHeaderMenu(null)}
       overlay
-      className="fixed z-50 min-w-[176px] rounded-xl border border-border bg-chats p-1 shadow-2xl animate-fade-in text-primary"
+      className="fixed z-50 min-w-[176px] rounded-xl border border-border bg-chats p-1 shadow-2xl text-primary"
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()

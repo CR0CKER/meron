@@ -221,7 +221,7 @@ export function ThreadContextMenu({
       <FloatingContextMenu
         x={menu.x}
         y={menu.y}
-        className="fixed z-50 min-w-[160px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+        className="fixed z-50 min-w-[160px] rounded-xl border border-border bg-chats p-1 shadow-xl"
         dataAttribute="data-thread-context-menu"
         onClick={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
@@ -274,7 +274,7 @@ export function ThreadContextMenu({
               <FloatingContextMenu
                 x={moveFlyoutPosition.x}
                 y={moveFlyoutPosition.y}
-                className="fixed z-[51] max-h-[calc(100vh-1rem)] min-w-[190px] overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+                className="fixed z-[51] max-h-[calc(100vh-1rem)] min-w-[190px] overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl"
                 dataAttribute="data-thread-context-menu"
               >
                 {targetAccounts.map((account) => (
@@ -307,7 +307,7 @@ export function ThreadContextMenu({
     <FloatingContextMenu
       x={menu.x}
       y={menu.y}
-      className="fixed z-50 min-w-[190px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+      className="fixed z-50 min-w-[190px] rounded-xl border border-border bg-chats p-1 shadow-xl"
       dataAttribute="data-thread-context-menu"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
