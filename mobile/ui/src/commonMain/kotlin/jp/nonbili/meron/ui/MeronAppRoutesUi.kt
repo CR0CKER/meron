@@ -479,6 +479,8 @@ internal fun KanbanRouteContent(
                         persistKanbanSearchScope(kanbanColumnKey(column))
                         if (kanbanSearch.isNotBlank()) loadKanbanBoard(refresh = true)
                     },
+                    onSaveSearchColumn = ::saveKanbanSearchColumn,
+                    onEditSearchColumn = ::editKanbanSearchColumn,
                     onRequestColumnFolders = { column -> ensureAccountFolders(column.accountId) },
                     onSwitchColumnFolder = ::switchKanbanColumnFolder,
                     onAddColumn = { showKanbanColumnDialog = true },

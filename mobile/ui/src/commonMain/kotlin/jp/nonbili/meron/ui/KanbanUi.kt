@@ -41,6 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -304,6 +305,8 @@ internal fun KanbanHeaderSearchField(
     onSearchSubmit: () -> Unit,
 ) {
     var scopeMenuOpen by remember { mutableStateOf(false) }
+    // Saved search columns keep their own query, so they can't be a scope.
+    val columns = columns.filter { it.query.isBlank() }
     val normalizedScope = searchScope.ifBlank { "all" }
     val scopedColumn = columns.firstOrNull { kanbanColumnKey(it) == normalizedScope }
     val scopeLabel = scopedColumn?.let { columnTitle(it, accounts, foldersByAccount) } ?: "All"
@@ -460,6 +463,8 @@ internal fun KanbanScreen(
     onRemoveColumn: (KanbanColumnSpec) -> Unit,
     onMoveColumn: (KanbanColumnSpec, Int) -> Unit,
     onSearchColumn: (KanbanColumnSpec) -> Unit,
+    onSaveSearchColumn: (KanbanColumnSpec, String) -> Unit,
+    onEditSearchColumn: (KanbanColumnSpec, String) -> Unit,
     onRequestColumnFolders: (KanbanColumnSpec) -> Unit,
     onSwitchColumnFolder: (KanbanColumnSpec, String) -> Unit,
     onAddColumn: () -> Unit,
@@ -547,9 +552,12 @@ internal fun KanbanScreen(
                                 onMoveRight = { onMoveColumn(column, 1) },
                                 onMinimize = { minimizedColumns = minimizedColumns + key },
                                 onSearch = { onSearchColumn(column) },
+                                onSaveSearch = { query -> onSaveSearchColumn(column, query) },
+                                onEditSearch = { query -> onEditSearchColumn(column, query) },
+                                // A saved search only collides with the same search on another folder.
                                 otherColumnFolderIds =
                                     boardColumns
-                                        .filter { it.accountId == column.accountId && it.folderId != column.folderId }
+                                        .filter { it.accountId == column.accountId && it.folderId != column.folderId && it.query == column.query }
                                         .map { it.folderId }
                                         .toSet(),
                                 onRequestFolders = { onRequestColumnFolders(column) },
@@ -651,6 +659,8 @@ internal fun KanbanColumn(
     onMoveRight: () -> Unit,
     onMinimize: () -> Unit,
     onSearch: () -> Unit,
+    onSaveSearch: (String) -> Unit,
+    onEditSearch: (String) -> Unit,
     otherColumnFolderIds: Set<String>,
     onRequestFolders: () -> Unit,
     onSwitchFolder: (String) -> Unit,
@@ -658,7 +668,12 @@ internal fun KanbanColumn(
     kanbanColumnWidth: Dp,
 ) {
     val columnKey = kanbanColumnKey(column)
-    val columnSearch = if (searchScope.ifBlank { "all" } == "all" || searchScope == columnKey) search else ""
+    val columnSearch =
+        when {
+            column.query.isNotBlank() -> column.query
+            searchScope.ifBlank { "all" } == "all" || searchScope == columnKey -> search
+            else -> ""
+        }
     val visibleThreads =
         state.threads.filteredKanbanThreads(
             filter = filter,
@@ -695,6 +710,11 @@ internal fun KanbanColumn(
                 onMoveRight = onMoveRight,
                 onMinimize = onMinimize,
                 onSearch = onSearch,
+                // Offered once the column is showing a search's results, with
+                // the query that produced them.
+                shownSearch = state.cursorView.query,
+                onSaveSearch = onSaveSearch,
+                onEditSearch = onEditSearch,
                 onRequestFolders = onRequestFolders,
                 onSwitchFolder = onSwitchFolder,
             )
@@ -720,7 +740,7 @@ internal fun KanbanColumn(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        if (search.isBlank()) {
+                        if (search.isBlank() && column.query.isBlank()) {
                             tr(
                                 when (filter) {
                                     FilterMode.All -> "kanban.emptyAllColumn"
@@ -822,10 +842,15 @@ internal fun KanbanColumnHeader(
     onMoveRight: () -> Unit,
     onMinimize: () -> Unit,
     onSearch: () -> Unit,
+    shownSearch: String,
+    onSaveSearch: (String) -> Unit,
+    onEditSearch: (String) -> Unit,
     onRequestFolders: () -> Unit,
     onSwitchFolder: (String) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var editingSearch by remember { mutableStateOf(false) }
+    val savedSearch = column.query.isNotBlank()
     val account = accounts.firstOrNull { it.id == column.accountId }
     // A unified column is repointed by role — each account answers from its own
     // Sent/Archive/… — so it offers the fixed role list rather than any one
@@ -838,8 +863,9 @@ internal fun KanbanColumnHeader(
         }
     // Emptying is offered only for a per-account Trash or Junk column; a unified
     // column spans accounts and has no single folder to empty.
+    // Nor a saved search, which shows only some of its folder.
     val emptiableFolder =
-        if (column.accountId == UNIFIED_ACCOUNT_ID) {
+        if (column.accountId == UNIFIED_ACCOUNT_ID || savedSearch) {
             null
         } else {
             foldersByAccount[column.accountId]?.firstOrNull { folder ->
@@ -849,7 +875,7 @@ internal fun KanbanColumnHeader(
     // Deleting the folder itself is offered only for an ordinary per-account
     // folder; anything nested under it goes too — see `deletableFolder`.
     val deletableColumnFolder =
-        deletableFolder(foldersByAccount[column.accountId].orEmpty(), column.accountId, column.folderId)
+        if (savedSearch) null else deletableFolder(foldersByAccount[column.accountId].orEmpty(), column.accountId, column.folderId)
     Row(
         Modifier
             .fillMaxWidth()
@@ -876,6 +902,9 @@ internal fun KanbanColumnHeader(
                 enabled = canSwitchFolder,
                 takenFolderIds = otherColumnFolderIds,
             )
+            if (savedSearch) {
+                SavedSearchChip(column.query, onClick = { editingSearch = true }, modifier = Modifier.weight(1f, fill = false))
+            }
             if (unread > 0) {
                 KanbanUnreadBadge(unread)
             }
@@ -911,12 +940,29 @@ internal fun KanbanColumnHeader(
                         onEmptyFolder(folder)
                     })
                 }
-                DropdownMenuItem(text = { Text(tr("kanban.actions.searchColumn")) }, leadingIcon = {
-                    Icon(Icons.Filled.Search, contentDescription = null)
-                }, onClick = {
-                    menuOpen = false
-                    onSearch()
-                })
+                if (savedSearch) {
+                    DropdownMenuItem(text = { Text(tr("kanban.actions.editSearch")) }, leadingIcon = {
+                        Icon(Icons.Filled.Edit, contentDescription = null)
+                    }, onClick = {
+                        menuOpen = false
+                        editingSearch = true
+                    })
+                } else {
+                    DropdownMenuItem(text = { Text(tr("kanban.actions.searchColumn")) }, leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = null)
+                    }, onClick = {
+                        menuOpen = false
+                        onSearch()
+                    })
+                    if (shownSearch.isNotBlank()) {
+                        DropdownMenuItem(text = { Text(tr("kanban.actions.saveSearchAsColumn")) }, leadingIcon = {
+                            Icon(Icons.Filled.BookmarkAdd, contentDescription = null)
+                        }, onClick = {
+                            menuOpen = false
+                            onSaveSearch(shownSearch)
+                        })
+                    }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 DropdownMenuItem(text = { Text(tr("kanban.actions.moveColumnLeft")) }, leadingIcon = {
                     Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null)
@@ -961,6 +1007,71 @@ internal fun KanbanColumnHeader(
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    if (editingSearch) {
+        EditSavedSearchDialog(
+            query = column.query,
+            onSave = { query ->
+                editingSearch = false
+                onEditSearch(query)
+            },
+            onDismiss = { editingSearch = false },
+        )
+    }
+}
+
+// A saved search column's query beside its folder name; tapping it edits it.
+@Composable
+private fun SavedSearchChip(
+    query: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        contentColor = MaterialTheme.colorScheme.primary,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Icon(Icons.Filled.Search, contentDescription = tr("kanban.actions.editSearch"), modifier = Modifier.size(12.dp))
+            Text(query, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun EditSavedSearchDialog(
+    query: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draft by remember { mutableStateOf(query) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("kanban.actions.editSearch")) },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) onSave(draft) }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(draft) }, enabled = draft.isNotBlank()) { Text(tr("buttons.save")) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(tr("buttons.cancel")) }
+        },
+    )
 }
 
 @Composable
@@ -987,7 +1098,8 @@ internal fun KanbanMinimizedColumn(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Avatar(columnAvatarLabel(column, accounts), 26.dp, columnAvatarFallbackIcon(column, accounts))
-            CollapsedColumnTitle(columnTitle(column, accounts, foldersByAccount))
+            val title = columnTitle(column, accounts, foldersByAccount)
+            CollapsedColumnTitle(if (column.query.isBlank()) title else "$title · ${column.query}")
             if (unread > 0) {
                 KanbanUnreadBadge(unread)
             }
@@ -1289,7 +1401,8 @@ internal fun KanbanThreadActionDialog(
                     board
                         ?.columns
                         .orEmpty()
-                        .filter { it.accountId != UNIFIED_ACCOUNT_ID }
+                        // A saved search only lists matches; the thread might not be one.
+                        .filter { it.accountId != UNIFIED_ACCOUNT_ID && it.query.isBlank() }
                         .filter { target ->
                             val targetAccount = accounts.firstOrNull { it.id == target.accountId }
                             targetAccount != null && (threadIdIsRss(thread.id) == accountSummaryIsRss(targetAccount))

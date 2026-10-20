@@ -96,6 +96,63 @@ class KanbanBoardPersistenceTest {
         assertEquals("", parseKanbanBoards(raw).single().wallpaperPresetId)
     }
 
+    @Test
+    fun aSavedSearchColumnRoundTripsBesideItsFoldersPlainColumn() {
+        val raw =
+            """[{"id":"kb-1","name":"Board","columns":[""" +
+                """{"accountId":"a","folderId":"INBOX"},""" +
+                """{"accountId":"a","folderId":"INBOX","query":"  invoice\n due "},""" +
+                """{"accountId":"a","folderId":"INBOX","query":"   "}]}]"""
+
+        val columns = parseKanbanBoards(raw).single().columns
+
+        // The blank query reads as the plain column, which the board already has.
+        assertEquals(listOf(KanbanColumnSpec("a", "INBOX"), KanbanColumnSpec("a", "INBOX", "invoice due")), columns)
+        val board = KanbanBoardSpec(id = "kb-1", name = "Board", columns = columns)
+        assertEquals(columns, parseKanbanBoards(serializeKanbanBoards(listOf(board))).single().columns)
+    }
+
+    @Test
+    fun aColumnKeyStillNamesItsFolderWhenAQueryFollows() {
+        val saved = KanbanColumnSpec(UNIFIED_ACCOUNT_ID, STARRED_FOLDER, "invoice")
+        assertEquals(UNIFIED_ACCOUNT_ID to STARRED_FOLDER, kanbanKeyAccountFolder(kanbanColumnKey(saved)))
+        assertEquals("a" to "INBOX", kanbanKeyAccountFolder(kanbanColumnKey(KanbanColumnSpec("a", "INBOX"))))
+    }
+
+    @Test
+    fun savingASearchPlacesItsColumnAfterTheOneItCameFrom() {
+        val inbox = KanbanColumnSpec("a", "INBOX")
+        val sent = KanbanColumnSpec("a", "Sent")
+        val state = boardState(listOf(inbox, sent))
+
+        state.saveKanbanSearchColumn(inbox, " invoice ")
+        state.saveKanbanSearchColumn(inbox, "invoice")
+        state.saveKanbanSearchColumn(inbox, "   ")
+
+        assertEquals(listOf(inbox, inbox.copy(query = "invoice"), sent), state.kanbanBoards.single().columns)
+    }
+
+    @Test
+    fun editingASavedSearchKeepsItsSlotAndRefusesADuplicate() {
+        val inbox = KanbanColumnSpec("a", "INBOX")
+        val saved = inbox.copy(query = "invoice")
+        val other = inbox.copy(query = "receipt")
+        val state = boardState(listOf(inbox, saved, other))
+
+        state.editKanbanSearchColumn(saved, "receipt")
+        state.editKanbanSearchColumn(inbox, "invoice")
+        assertEquals(listOf(inbox, saved, other), state.kanbanBoards.single().columns)
+
+        state.editKanbanSearchColumn(saved, " overdue ")
+        assertEquals(listOf(inbox, inbox.copy(query = "overdue"), other), state.kanbanBoards.single().columns)
+    }
+
+    private fun boardState(columns: List<KanbanColumnSpec>): MeronMobileState {
+        val prefs = FakePreferences()
+        saveKanbanBoards(prefs, listOf(KanbanBoardSpec(id = "kb-1", name = "Board", columns = columns)))
+        return testState(prefs).apply { activeKanbanBoardId = "kb-1" }
+    }
+
     private fun testState(kanbanPrefs: AppPreferences): MeronMobileState {
         val core = FakeCore()
         return MeronMobileState(

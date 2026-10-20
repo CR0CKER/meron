@@ -111,6 +111,46 @@ class MarkAllReadFolderBadgeTest {
         }
 
     @Test
+    fun aSavedUnifiedSearchMarksOnlyItsMatchesAndNeverWidensAnAccountWrite() =
+        runBlocking {
+            val core = GatedCore().apply { gate.complete(Unit) }
+            val state = state(core, this)
+            val direct = KanbanColumnSpec(accountId = "a", folderId = "INBOX")
+            val saved = KanbanColumnSpec(accountId = UNIFIED_ACCOUNT_ID, folderId = INBOX_FOLDER, query = "invoice")
+            state.kanbanBoards = listOf(KanbanBoardSpec(id = "board", name = "Board", columns = listOf(direct, saved)))
+            state.activeKanbanBoardId = "board"
+            val match = ThreadSummary(id = "a:INBOX:match", accountId = "a", folder = "INBOX", subject = "Invoice", sender = "Ann", unread = true)
+            state.kanbanColumns = state.kanbanColumns + (kanbanColumnKey(saved) to KanbanColumnState(threads = listOf(match)))
+            state.markKanbanBoardAllRead()
+            waitUntil { !state.kanbanMarkingRead }
+            assertEquals(1, core.markAllReadPayloads.size)
+            assertEquals(true, core.markAllReadPayloads.single().contains("\"account_id\":\"a\""))
+            // The card is the whole thread, so no message ids narrow the write.
+            assertEquals(false, core.markReadPayloads.single().contains("message_ids"))
+        }
+
+    @Test
+    fun markingASavedSearchReadClearsTheSameCardsInOtherColumns() =
+        runBlocking {
+            val core = GatedCore().apply { gate.complete(Unit) }
+            val state = state(core, this)
+            val direct = KanbanColumnSpec(accountId = "a", folderId = "INBOX")
+            val saved = direct.copy(query = "invoice")
+            state.kanbanBoards = listOf(KanbanBoardSpec(id = "board", name = "Board", columns = listOf(direct, saved)))
+            state.activeKanbanBoardId = "board"
+            val match = ThreadSummary(id = "a:INBOX:match", accountId = "a", folder = "INBOX", subject = "Invoice", sender = "Ann", unread = true)
+            val other = match.copy(id = "a:INBOX:other", subject = "Other")
+            state.kanbanColumns = state.kanbanColumns +
+                (kanbanColumnKey(saved) to KanbanColumnState(threads = listOf(match))) +
+                (kanbanColumnKey(direct) to KanbanColumnState(threads = listOf(match, other), unreadCount = 5))
+            state.markKanbanColumnAllRead(saved)
+            waitUntil { !state.kanbanMarkingRead }
+            val inbox = state.kanbanColumns.getValue(kanbanColumnKey(direct))
+            assertEquals(listOf(false, true), inbox.threads.map { it.unread })
+            assertEquals(4, inbox.unreadCount)
+        }
+
+    @Test
     fun failedUnifiedPlanPreservesEarlierSuccessfulSharedFolderCount() =
         runBlocking {
             val core =
@@ -281,6 +321,7 @@ class MarkAllReadFolderBadgeTest {
         var markAllReadFails = false
         var markAllReadResponse: String? = null
         val markAllReadPayloads = mutableListOf<String>()
+        val markReadPayloads = mutableListOf<String>()
         var holdThreads = false
         val threadsStarted = CompletableDeferred<Unit>()
         val threadsGate = CompletableDeferred<Unit>()
@@ -295,6 +336,11 @@ class MarkAllReadFolderBadgeTest {
                     gate.await()
                     if (markAllReadFails) error("Server rejected the write")
                     markAllReadResponse ?: """{"ok":true,"folder_counts":[{"account_id":"a","folder_id":"INBOX","unread":$confirmedUnread}]}"""
+                }
+
+                MobileCommand.MarkRead -> {
+                    markReadPayloads += payloadJson
+                    "{}"
                 }
 
                 MobileCommand.RssMarkRead -> {

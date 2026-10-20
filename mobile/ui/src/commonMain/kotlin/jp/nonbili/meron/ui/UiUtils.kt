@@ -152,7 +152,22 @@ internal fun folderIcon(name: String): ImageVector =
         else -> Icons.Outlined.FolderOpen
     }
 
-internal fun kanbanColumnKey(column: KanbanColumnSpec): String = "${column.accountId}\n${column.folderId}"
+// A saved search is its own column beside the folder's plain one, so its query is
+// part of the key. Splitting a key on "\n" still yields account and folder first.
+internal fun kanbanColumnKey(column: KanbanColumnSpec): String {
+    val base = "${column.accountId}\n${column.folderId}"
+    return if (column.query.isBlank()) base else "$base\n${column.query}"
+}
+
+/** The account and folder a column key names, whatever query follows them. */
+internal fun kanbanKeyAccountFolder(key: String): Pair<String, String> {
+    val parts = key.split("\n")
+    return parts[0] to parts.getOrElse(1) { "" }
+}
+
+/** A saved search query as a column stores it: one line, trimmed. The column key
+ *  joins its parts with newlines, so a query must not carry one. */
+internal fun normalizeKanbanColumnQuery(query: String): String = query.replace(Regex("\\s+"), " ").trim()
 
 internal fun identityKey(identity: SendIdentity): String = "${identity.accountId}|${identity.email}"
 
@@ -243,7 +258,8 @@ internal fun kanbanColumnUnreadCount(
     folderUnread: Int?,
     loadedThreads: List<ThreadSummary> = emptyList(),
 ): Int {
-    if (isUnifiedStarredColumn(column)) return loadedUnreadCount(loadedThreads)
+    // The folder's total says nothing about how many of a saved search's matches are unread.
+    if (isUnifiedStarredColumn(column) || column.query.isNotBlank()) return loadedUnreadCount(loadedThreads)
     return folderUnread ?: loadedUnreadCount(loadedThreads)
 }
 

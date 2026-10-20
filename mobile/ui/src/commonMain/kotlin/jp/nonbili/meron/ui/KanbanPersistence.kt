@@ -43,7 +43,8 @@ internal fun parseKanbanBoards(raw: String): List<KanbanBoardSpec> {
                         val colObj = runCatching { col.jsonObject }.getOrNull() ?: return@mapNotNull null
                         val accountId = colObj["accountId"]?.asStringOrEmpty().orEmpty()
                         val folderId = colObj["folderId"]?.asStringOrEmpty().orEmpty()
-                        if (accountId.isNotBlank() && folderId.isNotBlank()) KanbanColumnSpec(accountId, folderId) else null
+                        val query = normalizeKanbanColumnQuery(colObj["query"]?.asStringOrEmpty().orEmpty())
+                        if (accountId.isNotBlank() && folderId.isNotBlank()) KanbanColumnSpec(accountId, folderId, query) else null
                     }.distinctBy(::kanbanColumnKey)
             KanbanBoardSpec(id, name, columns, avatarUrl, wallpaperPresetId, wallpaperUrl)
         }
@@ -65,6 +66,7 @@ internal fun serializeKanbanBoards(boards: List<KanbanBoardSpec>): String =
                             addJsonObject {
                                 put("accountId", column.accountId)
                                 put("folderId", column.folderId)
+                                if (column.query.isNotBlank()) put("query", column.query)
                             }
                         }
                     },

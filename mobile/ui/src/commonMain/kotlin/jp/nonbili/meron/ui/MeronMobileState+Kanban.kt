@@ -41,7 +41,10 @@ internal fun MeronMobileState.persistKanbanSearchScope(next: String) {
     saveKanbanSearchScope(kanbanPrefs, kanbanSearchScope)
 }
 
+// A saved search column is always read with its own query; the board search
+// never reaches it.
 internal fun MeronMobileState.kanbanColumnSearchQuery(column: KanbanColumnSpec): String {
+    if (column.query.isNotBlank()) return column.query
     val query = kanbanSearch.trim()
     if (query.isBlank()) return ""
     val scope = kanbanSearchScope.ifBlank { "all" }
@@ -108,7 +111,11 @@ internal fun MeronMobileState.updateThreadEverywhere(
                 state
             } else {
                 state.copy(
-                    threads = state.threads.map { if (it.id == thread.id) next else it }.forStarredView(key.substringBefore("\n"), key.substringAfter("\n")),
+                    threads =
+                        state.threads.map { if (it.id == thread.id) next else it }.let { threads ->
+                            val (accountId, folderId) = kanbanKeyAccountFolder(key)
+                            threads.forStarredView(accountId, folderId)
+                        },
                     unreadCount = state.unreadCount?.let { (it + unreadDelta).coerceAtLeast(0) },
                 )
             }
@@ -498,20 +505,61 @@ internal fun MeronMobileState.removeKanbanColumn(column: KanbanColumnSpec) {
 }
 
 /**
- * Drop every column showing a folder, on all boards. Used once the folder is gone
- * from the server: a column left behind would only fail to load.
+ * Drop every column showing a folder, saved searches in it included, on all
+ * boards. Used once the folder is gone from the server: a column left behind
+ * would only fail to load.
  */
 internal fun MeronMobileState.removeKanbanColumnsForFolder(
     accountId: String,
     folderId: String,
 ) {
-    val key = kanbanColumnKey(KanbanColumnSpec(accountId, folderId))
+    val showsFolder = { column: KanbanColumnSpec -> column.accountId == accountId && column.folderId == folderId }
+    val keys = kanbanBoards.flatMap { board -> board.columns.filter(showsFolder).map(::kanbanColumnKey) }.toSet()
     persistKanbanBoards(
         kanbanBoards.map { board ->
-            board.copy(columns = board.columns.filterNot { kanbanColumnKey(it) == key })
+            board.copy(columns = board.columns.filterNot(showsFolder))
         },
     )
-    kanbanColumns = kanbanColumns - key
+    kanbanColumns = kanbanColumns - keys
+}
+
+/**
+ * Turn the board search on [column] into a column of its own, placed right after
+ * it. A search scoped to just that column has done its job then, so it clears;
+ * a board-wide one stays. Does nothing when there is nothing to save or the
+ * board already has it.
+ */
+internal fun MeronMobileState.saveKanbanSearchColumn(
+    column: KanbanColumnSpec,
+    query: String,
+) {
+    val saved = normalizeKanbanColumnQuery(query)
+    if (saved.isBlank() || column.query.isNotBlank()) return
+    val board = kanbanBoards.firstOrNull { it.id == activeKanbanBoardId } ?: return
+    val target = column.copy(query = saved)
+    val sourceKey = kanbanColumnKey(column)
+    if (board.columns.any { kanbanColumnKey(it) == kanbanColumnKey(target) }) return
+    val at = board.columns.indexOfFirst { kanbanColumnKey(it) == sourceKey }
+    val columns = board.columns.toMutableList().apply { add(if (at < 0) size else at + 1, target) }
+    persistKanbanBoards(kanbanBoards.map { if (it.id == board.id) it.copy(columns = columns) else it })
+    loadKanbanColumn(target, refresh = true)
+    if (kanbanSearchScope == sourceKey) {
+        persistKanbanSearch("")
+        loadKanbanColumn(column, refresh = false)
+    }
+}
+
+/**
+ * Give a saved search column a new query, keeping its slot on the board. Does
+ * nothing when the query is empty, unchanged, or already has a column here.
+ */
+internal fun MeronMobileState.editKanbanSearchColumn(
+    column: KanbanColumnSpec,
+    query: String,
+) {
+    val next = normalizeKanbanColumnQuery(query)
+    if (column.query.isBlank() || next.isBlank() || next == column.query) return
+    replaceKanbanColumn(column, column.copy(query = next))
 }
 
 /**
@@ -524,12 +572,21 @@ internal fun MeronMobileState.switchKanbanColumnFolder(
     folderId: String,
 ) {
     if (folderId.isBlank() || kanbanFolderIdsEqual(folderId, column.folderId)) return
+    replaceKanbanColumn(column, column.copy(folderId = folderId))
+}
+
+// Swap [column] for [target] in place and load it. Does nothing when the board
+// has no such column or already shows the target (a saved search only collides
+// with the same search on the same folder).
+private fun MeronMobileState.replaceKanbanColumn(
+    column: KanbanColumnSpec,
+    target: KanbanColumnSpec,
+) {
     val board = kanbanBoards.firstOrNull { it.id == activeKanbanBoardId } ?: return
     val fromKey = kanbanColumnKey(column)
-    val target = KanbanColumnSpec(column.accountId, folderId)
     val toKey = kanbanColumnKey(target)
     if (board.columns.none { kanbanColumnKey(it) == fromKey }) return
-    if (board.columns.any { it.accountId == target.accountId && kanbanFolderIdsEqual(it.folderId, target.folderId) }) return
+    if (board.columns.any { it.accountId == target.accountId && kanbanFolderIdsEqual(it.folderId, target.folderId) && it.query == target.query }) return
     persistKanbanBoards(
         kanbanBoards.map { existing ->
             if (existing.id != board.id) {
@@ -540,7 +597,7 @@ internal fun MeronMobileState.switchKanbanColumnFolder(
         },
     )
     if (kanbanSearchScope == fromKey) persistKanbanSearchScope(toKey)
-    // Keep the old folder's cached page only while another board still shows it.
+    // Keep the old column's cached page only while another board still shows it.
     if (kanbanBoards.none { it.columns.any { existing -> kanbanColumnKey(existing) == fromKey } }) {
         kanbanColumns = kanbanColumns - fromKey
     }

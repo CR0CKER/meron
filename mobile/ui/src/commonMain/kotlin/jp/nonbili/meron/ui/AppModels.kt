@@ -223,6 +223,8 @@ internal data class DeferredMailboxReload(
 internal data class KanbanColumnSpec(
     val accountId: String,
     val folderId: String,
+    /** Set on a saved search column: it always lists this folder's matches. */
+    val query: String = "",
 )
 
 /** A Trash or Junk folder awaiting "empty folder" confirmation. [column] is set

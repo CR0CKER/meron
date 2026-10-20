@@ -60,7 +60,8 @@ internal fun MeronMobileState.runCoreThreadAction(
     coreThreads = update(coreThreads).forStarredView(selectedCoreAccountId, selectedCoreFolder)
     kanbanColumns =
         kanbanColumns.mapValues { (key, state) ->
-            val nextThreads = update(state.threads).forStarredView(key.substringBefore("\n"), key.substringAfter("\n"))
+            val (accountId, folderId) = kanbanKeyAccountFolder(key)
+            val nextThreads = update(state.threads).forStarredView(accountId, folderId)
             val unreadDelta = loadedUnreadCount(nextThreads) - loadedUnreadCount(state.threads)
             state.copy(
                 threads = nextThreads,
@@ -733,6 +734,24 @@ internal fun MeronMobileState.markVisibleMailboxAllRead() {
     }
 }
 
+private fun MeronMobileState.markKanbanCardsReadElsewhere(
+    key: String,
+    readIds: Set<String>,
+) {
+    kanbanColumns =
+        kanbanColumns.mapValues { (otherKey, state) ->
+            val cleared = state.threads.filter { it.unread && it.id in readIds }
+            if (otherKey == key || cleared.isEmpty()) {
+                state
+            } else {
+                state.copy(
+                    threads = state.threads.map { if (it.id in readIds) it.copy(unread = false) else it },
+                    unreadCount = state.unreadCount?.let { count -> (count - cleared.sumOf { it.unreadCount.coerceAtLeast(1) }).coerceAtLeast(0) },
+                )
+            }
+        }
+}
+
 internal fun MeronMobileState.markKanbanColumnAllRead(column: KanbanColumnSpec) {
     markKanbanColumnsAllRead(listOf(column))
 }
@@ -758,9 +777,11 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
             val key = kanbanColumnKey(column)
             val state = kanbanColumns[key]
             val unread = state?.threads.orEmpty().filter { it.unread }
-            val starred = isUnifiedStarredColumn(column)
+            // A saved search marks only its matches read, never the whole folder,
+            // so it goes thread by thread like the starred aggregate.
+            val perItem = isUnifiedStarredColumn(column) || column.query.isNotBlank()
             val mailAccounts =
-                if (starred) {
+                if (perItem) {
                     emptyList()
                 } else if (column.accountId == UNIFIED_ACCOUNT_ID) {
                     accounts.filter { it.includedInUnified && !accountSummaryIsRss(it) }
@@ -769,7 +790,7 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
                 }
             val writes =
                 mailAccounts.isNotEmpty() ||
-                    (starred && unread.any { !threadIdIsRss(it.id) }) ||
+                    (perItem && unread.any { !threadIdIsRss(it.id) }) ||
                     unread.any { threadIdIsRss(it.backendThreadId()) }
             val mailFolders =
                 mailAccounts.mapNotNull { account ->
@@ -787,7 +808,7 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
                 column,
                 key,
                 unread,
-                starred,
+                perItem,
                 mailAccounts,
                 writes,
                 state?.unreadCount,
@@ -824,12 +845,13 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
                 val column = plan.column
                 val key = plan.key
                 val unread = plan.unread
-                val starred = plan.starred
+                val perItem = plan.perItem
                 val mailAccounts = plan.mailAccounts
                 val unifiedTarget =
                     if (column.accountId != UNIFIED_ACCOUNT_ID && mailAccounts.any { it.includedInUnified }) {
+                        // A saved unified search marks only its matches, so it never stands in.
                         columns.firstOrNull {
-                            it.accountId == UNIFIED_ACCOUNT_ID && !isUnifiedStarredColumn(it) &&
+                            it.accountId == UNIFIED_ACCOUNT_ID && !isUnifiedStarredColumn(it) && it.query.isBlank() &&
                                 unifiedColumnMatchesFolder(it.folderId, foldersByAccount[column.accountId].orEmpty(), column.folderId)
                         }
                     } else {
@@ -860,12 +882,18 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
                                         requireCoreAllOk(response)
                                     }
                             }
-                            if (starred) {
+                            if (perItem) {
                                 unread.filterNot { threadIdIsRss(it.id) }.groupBy { it.backendThreadId() }.forEach { (threadId, rows) ->
-                                    val messageIds = rows.map { it.id }.distinct().sorted()
+                                    // A starred card is one message; a saved search's card is the
+                                    // whole thread (its id is the thread's), which the core marks
+                                    // only when no message ids narrow it, as in toggleRead.
+                                    val messageIds =
+                                        if (rows.any { it.id == threadId }) emptyList() else rows.map { it.id }.distinct().sorted()
                                     responses +=
                                         requests.run("thread:$threadId:$messageIds") {
-                                            requireCoreOk(client.markRead(MarkReadParams(threadId = threadId, messageIds = messageIds)))
+                                            withManagedGoogleAuth(client, rows.first().accountId) {
+                                                requireCoreOk(client.markRead(MarkReadParams(threadId = threadId, messageIds = messageIds)))
+                                            }
                                         }
                                 }
                             }
@@ -891,6 +919,10 @@ private fun MeronMobileState.markKanbanColumnsAllRead(columns: List<KanbanColumn
                             )
                         }
                         coreThreads = coreThreads.map { if (it.id in readIds) it.copy(unread = false) else it }
+                        // A thread-by-thread write raises no folder change for the
+                        // board to reload on, so other columns holding the same
+                        // cards (the folder's own, another saved search) follow here.
+                        if (plan.perItem) markKanbanCardsReadElsewhere(key, readIds)
                         responses.forEach { applyCoreFolderUnreadChangesAt(it, writeVersion) }
                         val changes = responses.flatMap(::parseFolderUnreadChanges)
                         for ((target, count) in plan.folderUnread) {
