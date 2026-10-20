@@ -20,6 +20,7 @@ pub mod proxy;
 pub mod quote;
 pub mod reply;
 pub mod rss;
+pub mod search_query;
 pub mod secrets;
 #[cfg(target_os = "linux")]
 mod secrets_portal;

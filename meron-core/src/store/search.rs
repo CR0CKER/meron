@@ -1,10 +1,12 @@
 //! Local message search and saved search snapshot pages.
 
 use anyhow::Result;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::imap::MessageHeader;
+use crate::search_query::SearchQuery;
 
 use super::*;
 
@@ -31,7 +33,17 @@ pub(super) fn recipients_index_text(
     (!text.is_empty()).then_some(text)
 }
 
-/// Substring search over one folder's cached messages, newest first.
+/// Search one folder's cached messages, newest first. `query` may carry the
+/// operators [`SearchQuery`] understands; its free text is a substring match
+/// over subject, sender, recipients and body.
+///
+/// Each text condition of 3+ codepoints is answered by the trigram FTS indexes;
+/// shorter ones (common for CJK, where words are often 2 characters) are matched
+/// in Rust while rows stream newest first, stopping at `limit` hits. The Rust
+/// match is used rather than SQL `lower(..) LIKE ..` because SQLite's `lower()`
+/// folds ASCII only, so a two-letter Cyrillic or Greek query would miss
+/// capitalised text that the (Unicode-folding) trigram path finds once the query
+/// grows a third letter.
 ///
 /// `before_cursor` is the `(date, uid, folder)` of the last row of the previous
 /// page. The folder tie-breaker is required because UIDs are mailbox-scoped.
@@ -43,107 +55,110 @@ pub fn search_messages(
     limit: u32,
     before_cursor: Option<&crate::thread_list::SearchCursor>,
 ) -> Result<Vec<MessageHeader>> {
-    let q = query.trim();
-    if q.is_empty() {
+    let query = SearchQuery::parse(query);
+    if query.is_empty() {
         return Ok(Vec::new());
     }
-    // The trigram index needs >= 3 codepoints; serve shorter queries (common for
-    // CJK, where words are often 2 characters) with the scoped LIKE scan instead.
-    if q.chars().count() < 3 {
-        return search_messages_like(conn, account, folder, q, limit, before_cursor);
+    let mut filters = String::new();
+    let mut args: Vec<Value> = vec![
+        account.to_string().into(),
+        folder.to_string().into(),
+        before_cursor.map(|cursor| cursor.date).into(),
+        before_cursor.map_or(0, |cursor| cursor.uid as i64).into(),
+        before_cursor.map(|cursor| cursor.folder.clone()).into(),
+    ];
+    // Short text conditions, each a needle and the result columns it may hit.
+    let mut scans: Vec<(String, &[usize])> = Vec::new();
+    // `index` is the FTS subquery answering one text condition, its `?` the
+    // phrase; `columns` the same columns for a short needle.
+    let mut text_condition = |needle: &str, index: &str, scope: &str, columns: &'static [usize]| {
+        if needle.chars().count() < 3 {
+            scans.push((needle.to_lowercase(), columns));
+        } else {
+            filters.push_str(&format!(" AND m.id IN ({index})"));
+            // Quoted as one phrase, doubling any `"` so user input can't
+            // change the FTS query: a substring match, like the scan.
+            let phrase = format!("{scope}\"{}\"", needle.replace('"', "\"\""));
+            let count = index.matches('?').count();
+            args.extend(std::iter::repeat_n(Value::from(phrase), count));
+        }
+    };
+    const MESSAGES_FTS: &str = "SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?";
+    const RECIPIENTS_FTS: &str =
+        "SELECT rowid FROM messages_recipients_fts WHERE messages_recipients_fts MATCH ?";
+    if !query.text.is_empty() {
+        // Body last: it is by far the largest column to fold.
+        text_condition(
+            &query.text,
+            &format!("{MESSAGES_FTS} UNION {RECIPIENTS_FTS}"),
+            "",
+            &[1, 2, 3, 10, 11],
+        );
     }
-    // Whole query as one quoted FTS phrase -> trigram substring match (doubling
-    // any `"` so user input can't change the query). Same substring semantics as
-    // the LIKE path, just index-backed. Both indexes answer the same phrase: the
-    // body/subject/sender one and the recipients one.
-    let match_query = format!("\"{}\"", q.replace('"', "\"\""));
-    let cursor_date = before_cursor.map(|cursor| cursor.date);
-    let cursor_uid = before_cursor.map(|cursor| cursor.uid as i64).unwrap_or(0);
-    let cursor_folder = before_cursor.map(|cursor| cursor.folder.as_str());
-    let mut stmt = conn.prepare(
+    for from in &query.from {
+        text_condition(from, MESSAGES_FTS, "{from_name from_addr} : ", &[2, 3]);
+    }
+    for subject in &query.subject {
+        text_condition(subject, MESSAGES_FTS, "subject : ", &[1]);
+    }
+    for to in &query.to {
+        text_condition(to, RECIPIENTS_FTS, "", &[10]);
+    }
+    match query.seen {
+        Some(true) => filters.push_str(" AND m.seen <> 0"),
+        Some(false) => filters.push_str(" AND m.seen = 0"),
+        None => {}
+    }
+    if query.starred {
+        filters.push_str(" AND m.starred <> 0");
+    }
+    if let Some(after) = query.after {
+        filters.push_str(" AND m.date >= ?");
+        args.push(local_midnight(after).into());
+    }
+    if let Some(before) = query.before {
+        filters.push_str(" AND m.date < ?");
+        args.push(local_midnight(before).into());
+    }
+    // The scanned columns are only read when a short needle needs them; a
+    // NULL keeps the body out of the sort otherwise.
+    let scanned = if scans.is_empty() {
+        "NULL, NULL"
+    } else {
+        "m.recipients, m.body"
+    };
+    let mut stmt = conn.prepare(&format!(
         "SELECT m.uid, m.subject, m.from_name, m.from_addr, m.date, m.seen, m.starred,
                 m.thread_key, json_extract(m.json, '$.to'),
-                COALESCE(json_extract(m.json, '$.message_id'), '')
+                COALESCE(json_extract(m.json, '$.message_id'), ''),
+                {scanned}
          FROM messages m
-         WHERE m.id IN (
-                 SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1
-                 UNION
-                 SELECT rowid FROM messages_recipients_fts WHERE messages_recipients_fts MATCH ?1
-               )
-           AND m.account = ?2 AND m.folder = ?3 AND m.uid <> 0
-           AND (?5 IS NULL
-                OR m.date < ?5
-                OR (m.date = ?5 AND m.uid < ?6)
-                OR (m.date = ?5 AND m.uid = ?6 AND m.folder < ?7))
-         ORDER BY m.date DESC, m.uid DESC LIMIT ?4",
-    )?;
-    let rows = stmt.query_map(
-        params![
-            match_query,
-            account,
-            folder,
-            limit,
-            cursor_date,
-            cursor_uid,
-            cursor_folder
-        ],
-        search_header_from_row,
-    )?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-}
-
-/// Substring search via a scoped table scan. Used for queries too short for the
-/// trigram FTS index (< 3 codepoints).
-///
-/// The match runs in Rust rather than as SQL `lower(..) LIKE ..`: SQLite's
-/// `lower()` folds ASCII only, so a two-letter Cyrillic or Greek query would miss
-/// capitalised text that the (Unicode-folding) trigram path finds once the query
-/// grows a third letter. Rows stream newest first and the scan stops at `limit`
-/// hits, the same work the SQL scan did.
-pub(super) fn search_messages_like(
-    conn: &Connection,
-    account: &str,
-    folder: &str,
-    q: &str,
-    limit: u32,
-    before_cursor: Option<&crate::thread_list::SearchCursor>,
-) -> Result<Vec<MessageHeader>> {
-    let needle = q.to_lowercase();
-    let cursor_date = before_cursor.map(|cursor| cursor.date);
-    let cursor_uid = before_cursor.map(|cursor| cursor.uid as i64).unwrap_or(0);
-    let cursor_folder = before_cursor.map(|cursor| cursor.folder.as_str());
-    let mut stmt = conn.prepare(
-        "SELECT uid, subject, from_name, from_addr, date, seen, starred, thread_key,
-                json_extract(json, '$.to'),
-                COALESCE(json_extract(json, '$.message_id'), ''),
-                recipients, body
-         FROM messages
-         WHERE account = ?1 AND folder = ?2 AND uid <> 0
+         WHERE m.account = ?1 AND m.folder = ?2 AND m.uid <> 0
            AND (?3 IS NULL
-                OR date < ?3
-                OR (date = ?3 AND uid < ?4)
-                OR (date = ?3 AND uid = ?4 AND folder < ?5))
-         ORDER BY date DESC, uid DESC",
-    )?;
-    let mut rows = stmt.query(params![
-        account,
-        folder,
-        cursor_date,
-        cursor_uid,
-        cursor_folder
-    ])?;
+                OR m.date < ?3
+                OR (m.date = ?3 AND m.uid < ?4)
+                OR (m.date = ?3 AND m.uid = ?4 AND m.folder < ?5)){filters}
+         ORDER BY m.date DESC, m.uid DESC"
+    ))?;
+    let mut rows = stmt.query(params_from_iter(args))?;
     let mut messages = Vec::new();
     while messages.len() < limit as usize {
         let Some(row) = rows.next()? else {
             break;
         };
-        let mut hit = false;
-        // Body last: it is by far the largest column to fold.
-        for column in [1, 2, 3, 10, 11] {
-            if let Some(text) = row.get_ref(column)?.as_str_or_null()?
-                && text.to_lowercase().contains(&needle)
-            {
-                hit = true;
+        let mut hit = true;
+        for (needle, columns) in &scans {
+            let mut found = false;
+            for &column in *columns {
+                if let Some(text) = row.get_ref(column)?.as_str_or_null()?
+                    && text.to_lowercase().contains(needle)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                hit = false;
                 break;
             }
         }
@@ -152,6 +167,17 @@ pub(super) fn search_messages_like(
         }
     }
     Ok(messages)
+}
+
+/// Epoch seconds of local midnight starting `date`, which is what a user means
+/// by `after:2026/01/02`. Falls back to UTC midnight for a day that has no
+/// local midnight (a DST gap at 00:00).
+fn local_midnight(date: chrono::NaiveDate) -> i64 {
+    let midnight = date.and_time(chrono::NaiveTime::MIN);
+    midnight
+        .and_local_timezone(chrono::Local)
+        .earliest()
+        .map_or_else(|| midnight.and_utc().timestamp(), |dt| dt.timestamp())
 }
 
 /// Search several folders (typically the open mailbox plus Sent) as one

@@ -18,6 +18,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 
 use crate::parse;
+use crate::search_query::SearchQuery;
 
 /// Connection stream: implicit TLS (port 993 etc.) or plaintext (e.g. a local
 /// test server on 3143). One enum so the async-imap `Session` type is uniform.
@@ -1110,19 +1111,56 @@ pub async fn search_uids(session: &mut Session, folder: &str, query: &str) -> Re
 ///
 /// On Gmail, defer to its own search engine via X-GM-RAW: it understands the
 /// full Gmail query syntax (operators like `from:`, `has:attachment`,
-/// `older_than:`, relevance) instead of our crude substring OR. Elsewhere fall
-/// back to plain SUBJECT/FROM/TEXT matching. `literal` sends the query as a
-/// non-synchronizing literal instead of a quoted string.
+/// `older_than:`, relevance) instead of our crude substring OR. Elsewhere the
+/// operators [`SearchQuery`] knows become their SEARCH keys, ANDed by
+/// juxtaposition, and the free text falls back to plain SUBJECT/FROM/TEXT
+/// matching. `literal` sends each string as a non-synchronizing literal instead
+/// of a quoted string.
 fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> String {
-    let q = if literal {
-        imap_literal_plus(query)
-    } else {
-        imap_quote(query)
+    let string = |value: &str| {
+        if literal {
+            imap_literal_plus(value)
+        } else {
+            imap_quote(value)
+        }
     };
     let keys = if gmail {
-        format!("X-GM-RAW {q}")
+        format!("X-GM-RAW {}", string(query))
     } else {
-        format!("OR OR SUBJECT {q} FROM {q} TEXT {q}")
+        let query = SearchQuery::parse(query);
+        let mut keys = Vec::new();
+        if !query.text.is_empty() {
+            let q = string(&query.text);
+            keys.push(format!("OR OR SUBJECT {q} FROM {q} TEXT {q}"));
+        }
+        keys.extend(query.from.iter().map(|v| format!("FROM {}", string(v))));
+        keys.extend(query.to.iter().map(|v| {
+            let v = string(v);
+            format!("OR TO {v} CC {v}")
+        }));
+        keys.extend(
+            query
+                .subject
+                .iter()
+                .map(|v| format!("SUBJECT {}", string(v))),
+        );
+        match query.seen {
+            Some(true) => keys.push("SEEN".to_string()),
+            Some(false) => keys.push("UNSEEN".to_string()),
+            None => {}
+        }
+        if query.starred {
+            keys.push("FLAGGED".to_string());
+        }
+        // The SENT* keys compare the Date header, which is what the cache
+        // dates messages by, rather than the internal (arrival) date.
+        if let Some(after) = query.after {
+            keys.push(format!("SENTSINCE {}", after.format("%d-%b-%Y")));
+        }
+        if let Some(before) = query.before {
+            keys.push(format!("SENTBEFORE {}", before.format("%d-%b-%Y")));
+        }
+        keys.join(" ")
     };
     if charset {
         format!("CHARSET UTF-8 {keys}")
@@ -3030,6 +3068,33 @@ mod tests {
         assert_eq!(
             search_criteria(false, "会議", true, false),
             "CHARSET UTF-8 OR OR SUBJECT \"会議\" FROM \"会議\" TEXT \"会議\""
+        );
+    }
+
+    #[test]
+    fn search_criteria_compiles_operators_off_gmail() {
+        assert_eq!(
+            search_criteria(false, "from:a@b.c to:d@e.f plan", false, false),
+            "OR OR SUBJECT \"plan\" FROM \"plan\" TEXT \"plan\" FROM \"a@b.c\" \
+             OR TO \"d@e.f\" CC \"d@e.f\""
+        );
+        assert_eq!(
+            search_criteria(
+                false,
+                r#"subject:"Q3 plan" is:unread is:starred after:2026/01/02 before:2026-02-03"#,
+                false,
+                false
+            ),
+            "SUBJECT \"Q3 plan\" UNSEEN FLAGGED SENTSINCE 02-Jan-2026 SENTBEFORE 03-Feb-2026"
+        );
+        // Gmail gets the query untouched, operators and all.
+        assert_eq!(
+            search_criteria(true, "from:a@b.c has:attachment", false, false),
+            "X-GM-RAW \"from:a@b.c has:attachment\""
+        );
+        assert_eq!(
+            search_criteria(false, "from:安娜", true, true),
+            "CHARSET UTF-8 FROM {6+}\r\n安娜"
         );
     }
 

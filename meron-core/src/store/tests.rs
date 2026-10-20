@@ -640,6 +640,67 @@ fn search_messages_matches_to_and_cc_recipients() {
 }
 
 #[test]
+fn search_messages_applies_gmail_style_operators() {
+    let conn = test_conn();
+    let message = |uid: u32, from: &str, to: &str, subject: &str, date: i64| MessageHeader {
+        uid,
+        subject: subject.to_string(),
+        from_name: String::new(),
+        from_addr: from.to_string(),
+        date,
+        seen: uid == 1,
+        starred: uid == 2,
+        to: vec![crate::imap::Recipient {
+            name: String::new(),
+            addr: to.to_string(),
+        }],
+        ..Default::default()
+    };
+    let day = |y, m, d| {
+        chrono::NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Local)
+            .unwrap()
+            .timestamp()
+    };
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[
+            message(1, "a@b.c", "d@e.f", "Budget plan", day(2026, 1, 1)),
+            message(2, "a@b.c", "x@y.z", "Budget", day(2026, 2, 1)),
+            message(3, "zoe@b.c", "d@e.f", "Lunch plan", day(2026, 3, 1)),
+        ],
+    )
+    .unwrap();
+
+    let uids = |query: &str| {
+        search_messages(&conn, "acct", "INBOX", query, 10, None)
+            .unwrap()
+            .iter()
+            .map(|m| m.uid)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(uids("from:a@b.c"), [2, 1]);
+    assert_eq!(uids("from:a@b.c to:d@e.f"), [1]);
+    // Free text still searches every column, ANDed with the operators.
+    assert_eq!(uids("to:d@e.f plan"), [3, 1]);
+    assert_eq!(uids("subject:budget is:unread"), [2]);
+    assert_eq!(uids("is:starred"), [2]);
+    assert_eq!(uids("after:2026/01/15 before:2026/03/01"), [2]);
+    assert_eq!(uids("after:2026/03/01"), [3]);
+    // Short values take the scan path and still respect their column.
+    assert_eq!(uids("from:zo"), [3]);
+    assert_eq!(uids("subject:lu"), [3]);
+    assert_eq!(uids("from:lu"), Vec::<u32>::new());
+    // A bare operator is plain text, not an empty filter.
+    assert_eq!(uids("from:"), Vec::<u32>::new());
+}
+
+#[test]
 fn search_messages_keeps_indexed_recipients_through_a_flag_only_resync() {
     // A flag-only resync carries no envelope; it must not blank the recipients
     // the envelope fetch already indexed.
