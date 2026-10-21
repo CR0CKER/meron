@@ -11,16 +11,22 @@ type RecipientInputProps = {
   autoFocus?: boolean
   inputRef?: React.Ref<HTMLInputElement>
   onTab?: () => void
-  /** One address, not a comma-separated list: a pick replaces the whole value with the bare address. */
-  single?: boolean
+  /** Bare addresses, as search's `from:`/`to:` take them: a pick adds the address, not `Name <address>`. */
+  bare?: boolean
   className?: string
 }
 
 // A comma-separated recipient field carries multiple addresses; autocomplete
-// only ever completes the token after the final comma. Returns the leading
-// portion (including that comma) plus the active token being typed.
+// only ever completes the token after the final comma — outside quotes, as a
+// quoted name like `"Lee, Ann"` holds one. Returns the leading portion
+// (including that comma) plus the active token being typed.
 function splitTail(value: string): { head: string; tail: string } {
-  const idx = value.lastIndexOf(',')
+  let idx = -1
+  let quoted = false
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '"') quoted = !quoted
+    else if (value[i] === ',' && !quoted) idx = i
+  }
   if (idx === -1) return { head: '', tail: value }
   return { head: value.slice(0, idx + 1), tail: value.slice(idx + 1) }
 }
@@ -35,7 +41,7 @@ export function RecipientInput({
   autoFocus,
   inputRef,
   onTab,
-  single = false,
+  bare = false,
   className = inputClass,
 }: RecipientInputProps) {
   const [suggestions, setSuggestions] = useState<Contact[]>([])
@@ -45,7 +51,7 @@ export function RecipientInput({
   const suggestionsEnabledRef = useRef(false)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const tail = (single ? value : splitTail(value).tail).trim()
+  const tail = splitTail(value).tail.trim()
   // The account and token the held suggestions were looked up for.
   const lookupKey = `${accountId}\n${tail}`
   const suggestionsKeyRef = useRef('')
@@ -83,13 +89,9 @@ export function RecipientInput({
 
   function accept(contact: Contact) {
     suggestionsEnabledRef.current = false
-    if (single) {
-      onChange(contact.addr)
-    } else {
-      const { head } = splitTail(value)
-      const prefix = head ? `${head} ` : ''
-      onChange(`${prefix}${formatContact(contact)}, `)
-    }
+    const { head } = splitTail(value)
+    const prefix = head ? `${head} ` : ''
+    onChange(`${prefix}${bare ? contact.addr : formatContact(contact)}, `)
     setOpen(false)
     setSuggestions([])
     suggestionsKeyRef.current = ''

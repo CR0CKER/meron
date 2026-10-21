@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Daha dar sütunlar",
   "kanban.actions.openThread": "Açık",
   "kanban.actions.saveSearchAsColumn": "Aramayı sütun olarak kaydet",
+  "kanban.actions.saveSearchNeedsColumn": "Bu aramayı sütun olarak kaydetmek için “Şurada ara” altından bir sütun seçin",
+  "kanban.actions.saveSearchNeedsFields": "Bu aramayı kaydetmek için yukarıdaki alanlardan birini doldurun",
   "kanban.actions.search": "Ara",
   "kanban.actions.searchColumn": "Arama sütunu",
   "kanban.actions.showFilterInAllColumns": "Tüm sütunlarda {filter} göster",

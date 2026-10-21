@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "أعمدة أضيق",
   "kanban.actions.openThread": "يفتح",
   "kanban.actions.saveSearchAsColumn": "حفظ البحث كعمود",
+  "kanban.actions.saveSearchNeedsColumn": "اختر عمودًا في «البحث في» لحفظ هذا البحث كعمود",
+  "kanban.actions.saveSearchNeedsFields": "املأ أحد الحقول أعلاه لحفظ هذا البحث",
   "kanban.actions.search": "بحث",
   "kanban.actions.searchColumn": "عمود البحث",
   "kanban.actions.showFilterInAllColumns": "إظهار {filter} في كل الأعمدة",

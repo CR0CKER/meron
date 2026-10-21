@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "欄位更窄",
   "kanban.actions.openThread": "打開",
   "kanban.actions.saveSearchAsColumn": "將搜尋儲存為欄位",
+  "kanban.actions.saveSearchNeedsColumn": "在「搜尋範圍」中選擇一欄，即可將此搜尋儲存為欄",
+  "kanban.actions.saveSearchNeedsFields": "填寫上方任一欄位，即可儲存此搜尋",
   "kanban.actions.search": "搜尋",
   "kanban.actions.searchColumn": "搜尋欄",
   "kanban.actions.showFilterInAllColumns": "在所有欄位中顯示 {filter}",

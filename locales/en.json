@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Narrower columns",
   "kanban.actions.openThread": "Open",
   "kanban.actions.saveSearchAsColumn": "Save search as column",
+  "kanban.actions.saveSearchNeedsColumn": "Pick a column under “Search in” to save this search as a column",
+  "kanban.actions.saveSearchNeedsFields": "Fill in a field above to save this search",
   "kanban.actions.search": "Search",
   "kanban.actions.searchColumn": "Search column",
   "kanban.actions.showFilterInAllColumns": "Show {filter} in all columns",

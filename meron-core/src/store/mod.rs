@@ -99,12 +99,5 @@ fn parse_recipients_json(json: Option<String>) -> Vec<crate::imap::Recipient> {
         .unwrap_or_default()
 }
 
-fn escape_like(value: String) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
-
 #[cfg(test)]
 mod tests;

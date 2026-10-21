@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Colonnes plus étroites",
   "kanban.actions.openThread": "Ouvrir",
   "kanban.actions.saveSearchAsColumn": "Enregistrer la recherche en colonne",
+  "kanban.actions.saveSearchNeedsColumn": "Choisissez une colonne dans « Rechercher dans » pour enregistrer cette recherche comme colonne",
+  "kanban.actions.saveSearchNeedsFields": "Remplissez un champ ci-dessus pour enregistrer cette recherche",
   "kanban.actions.search": "Rechercher",
   "kanban.actions.searchColumn": "Colonne de recherche",
   "kanban.actions.showFilterInAllColumns": "Afficher {filter} dans toutes les colonnes",

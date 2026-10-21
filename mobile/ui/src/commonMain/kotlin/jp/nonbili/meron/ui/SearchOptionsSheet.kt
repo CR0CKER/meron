@@ -230,9 +230,25 @@ private fun SearchOptionsTextField(
     )
 }
 
+/** The comma ending the list's last complete entry, or -1; one inside quotes (`"Lee, Ann"`) is part of a name. */
+private fun lastListComma(value: String): Int {
+    var last = -1
+    var quoted = false
+    value.forEachIndexed { i, c ->
+        if (c == '"') {
+            quoted = !quoted
+        } else if (c == ',' && !quoted) {
+            last = i
+        }
+    }
+    return last
+}
+
 /**
- * A text field suggesting addresses from cached mail as it's typed. A pick
- * fills in the bare address: `from:`/`to:` take one value, not a list.
+ * A text field suggesting addresses from cached mail as it's typed. It holds a
+ * comma-separated list, any of which matches, as in Gmail; suggestions
+ * complete the entry after the last comma, and a pick puts in its bare
+ * address.
  */
 @Composable
 private fun SearchOptionsAddressField(
@@ -249,7 +265,7 @@ private fun SearchOptionsAddressField(
     var typed by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf(emptyList<ContactSuggestion>()) }
     LaunchedEffect(value, typed, accountId) {
-        val query = value.trim()
+        val query = value.substring(lastListComma(value) + 1).trim()
         if (!typed || query.isEmpty()) {
             suggestions = emptyList()
             return@LaunchedEffect
@@ -285,7 +301,8 @@ private fun SearchOptionsAddressField(
                     modifier =
                         Modifier.clickable {
                             typed = false
-                            onValueChange(contact.addr)
+                            val head = value.substring(0, lastListComma(value).coerceAtLeast(0))
+                            onValueChange(if (head.isEmpty()) "${contact.addr}, " else "$head, ${contact.addr}, ")
                         },
                 )
             }

@@ -5,22 +5,30 @@
 //! free text, matched as one substring the way a plain query always was.
 //! Values may be double-quoted to hold spaces (`from:"Ann Lee"`). Unknown keys
 //! and empty values stay free text, so `re:foo` or a URL still searches as
-//! typed. Negation, `OR` and grouping are deliberately not supported.
+//! typed.
+//!
+//! `from:`, `to:` and `subject:` take alternatives the Gmail way — any of them
+//! matches: `from:{a b}`, `from:(a OR b)`, `from:a,b`, or `from:a OR from:b`.
+//! `OR` between other terms, negation and general grouping are not supported.
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+
+/// One `from:`/`to:`/`subject:` term's values: a message matches the term if
+/// it matches any of them. Never empty.
+pub type AnyOf = Vec<String>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SearchQuery {
     /// Free text left after operators are taken out, as one substring. Empty
     /// when the query is operators only.
     pub text: String,
-    /// `from:` values, matched against the sender's name or address.
-    pub from: Vec<String>,
-    /// `to:` values, matched against To or Cc.
-    pub to: Vec<String>,
-    /// `subject:` values.
-    pub subject: Vec<String>,
+    /// `from:` terms, matched against the sender's name or address.
+    pub from: Vec<AnyOf>,
+    /// `to:` terms, matched against To or Cc.
+    pub to: Vec<AnyOf>,
+    /// `subject:` terms.
+    pub subject: Vec<AnyOf>,
     /// `is:unread` (`Some(false)`) / `is:read` (`Some(true)`).
     pub seen: Option<bool>,
     /// `is:starred`.
@@ -36,17 +44,22 @@ impl SearchQuery {
         let query = query.trim();
         let mut parsed = SearchQuery::default();
         let mut text = Vec::new();
-        for term in terms(query) {
-            if !parsed.take_operator(term) {
-                text.push(term);
+        let mut taken = false;
+        for clause in clauses(query) {
+            match clause.operator {
+                Some(operator) => {
+                    parsed.take(operator);
+                    taken = true;
+                }
+                None => text.push(clause.raw),
             }
         }
         // A query with no operators keeps its exact spacing, so plain search
         // behaves as it always did.
-        parsed.text = if text.len() == terms(query).count() {
-            query.to_string()
-        } else {
+        parsed.text = if taken {
             text.join(" ")
+        } else {
+            query.to_string()
         };
         parsed
     }
@@ -65,11 +78,7 @@ impl SearchQuery {
             || self.before.is_some()
     }
 
-    /// Record `term` if it is a known operator with a usable value.
-    fn take_operator(&mut self, term: &str) -> bool {
-        let Some(operator) = Operator::parse(term) else {
-            return false;
-        };
+    fn take(&mut self, operator: Operator) {
         match operator {
             Operator::From(value) => self.from.push(value),
             Operator::To(value) => self.to.push(value),
@@ -79,15 +88,14 @@ impl SearchQuery {
             Operator::After(date) => self.after = Some(date),
             Operator::Before(date) => self.before = Some(date),
         }
-        true
     }
 }
 
 /// One recognised `key:value` term.
 enum Operator {
-    From(String),
-    To(String),
-    Subject(String),
+    From(AnyOf),
+    To(AnyOf),
+    Subject(AnyOf),
     Seen(bool),
     Starred,
     After(NaiveDate),
@@ -96,15 +104,16 @@ enum Operator {
 
 impl Operator {
     fn parse(term: &str) -> Option<Self> {
-        let (key, value) = term.split_once(':')?;
-        let value = unquote(value);
+        let (key, raw) = term.split_once(':')?;
+        let value = unquote(raw);
         if value.is_empty() {
             return None;
         }
+        let any = || Some(alternatives(raw)).filter(|any| !any.is_empty());
         Some(match key.to_ascii_lowercase().as_str() {
-            "from" => Operator::From(value.to_string()),
-            "to" => Operator::To(value.to_string()),
-            "subject" => Operator::Subject(value.to_string()),
+            "from" => Operator::From(any()?),
+            "to" => Operator::To(any()?),
+            "subject" => Operator::Subject(any()?),
             "is" => match value.to_ascii_lowercase().as_str() {
                 "unread" => Operator::Seen(false),
                 "read" => Operator::Seen(true),
@@ -116,13 +125,184 @@ impl Operator {
             _ => return None,
         })
     }
+
+    /// `self OR other`, for two terms of the same key that take alternatives.
+    fn or(self, other: Operator) -> Result<Operator, (Operator, Operator)> {
+        match (self, other) {
+            (Operator::From(mut a), Operator::From(b)) => Ok(Operator::From({
+                a.extend(b);
+                a
+            })),
+            (Operator::To(mut a), Operator::To(b)) => Ok(Operator::To({
+                a.extend(b);
+                a
+            })),
+            (Operator::Subject(mut a), Operator::Subject(b)) => Ok(Operator::Subject({
+                a.extend(b);
+                a
+            })),
+            pair => Err(pair),
+        }
+    }
+}
+
+/// A term of the query as written, and the operator it is, if any. Terms
+/// joined by `OR` that [`Operator::or`] can merge are one clause.
+struct Clause<'a> {
+    raw: &'a str,
+    operator: Option<Operator>,
+}
+
+fn clauses(query: &str) -> Vec<Clause<'_>> {
+    let terms: Vec<&str> = terms(query).collect();
+    let mut clauses: Vec<Clause<'_>> = Vec::new();
+    let mut i = 0;
+    while i < terms.len() {
+        let term = terms[i];
+        i += 1;
+        // Gmail's `OR` is uppercase; anything else is a word.
+        if term == "OR"
+            && let Some(next) = terms.get(i).and_then(|next| Operator::parse(next))
+            && let Some(last) = clauses.last_mut()
+            && let Some(operator) = last.operator.take()
+        {
+            match operator.or(next) {
+                Ok(merged) => {
+                    last.operator = Some(merged);
+                    last.raw = span(query, last.raw, terms[i]);
+                    i += 1;
+                    continue;
+                }
+                Err((operator, _)) => last.operator = Some(operator),
+            }
+        }
+        clauses.push(Clause {
+            raw: term,
+            operator: Operator::parse(term),
+        });
+    }
+    clauses
+}
+
+/// The slice of `query` from the start of `first` to the end of `last`, both
+/// slices of it.
+fn span<'a>(query: &'a str, first: &str, last: &str) -> &'a str {
+    let start = first.as_ptr() as usize - query.as_ptr() as usize;
+    let end = last.as_ptr() as usize - query.as_ptr() as usize + last.len();
+    &query[start..end]
+}
+
+/// The alternatives in an operator's value: `{a b}` (Gmail's any-of), `(a OR
+/// b)` and `a,b` (`OR`, `|` or `,` between them, so a parenthesized `(Ann
+/// Lee)` is one name), or one quoted or bare value.
+fn alternatives(value: &str) -> AnyOf {
+    let (inner, braces) = if let Some(inner) = value.strip_prefix('{') {
+        (inner.strip_suffix('}').unwrap_or(inner), true)
+    } else if let Some(inner) = value.strip_prefix('(') {
+        (inner.strip_suffix(')').unwrap_or(inner), false)
+    } else if value.starts_with('"')
+        && value[1..]
+            .find('"')
+            .is_none_or(|end| end + 2 == value.len())
+    {
+        // One quoted value; `"Ann Lee",bob` is a list.
+        return vec![unquote(value).to_string()];
+    } else {
+        (value, false)
+    };
+    split_alternatives(inner, braces)
+}
+
+/// The alternatives in a group's inside: in braces each word is one, in
+/// parentheses (and a form field) the words between separators are.
+fn split_alternatives(inner: &str, braces: bool) -> AnyOf {
+    let mut any = Vec::new();
+    let mut words: Vec<&str> = Vec::new();
+    let mut flush = |words: &mut Vec<&str>| {
+        if !words.is_empty() {
+            any.push(words.join(" "));
+            words.clear();
+        }
+    };
+    let pieces = pieces(inner);
+    for (i, piece) in pieces.iter().enumerate() {
+        // `OR` separates only between two values; anywhere else it is one.
+        let piece = match piece {
+            Piece::Or
+                if !matches!(pieces.get(i.wrapping_sub(1)), Some(Piece::Word(_)))
+                    || !matches!(pieces.get(i + 1), Some(Piece::Word(_))) =>
+            {
+                &Piece::Word("OR")
+            }
+            piece => piece,
+        };
+        match *piece {
+            Piece::Separator | Piece::Or => flush(&mut words),
+            Piece::Word(word) => {
+                words.push(word);
+                if braces {
+                    flush(&mut words);
+                }
+            }
+        }
+    }
+    flush(&mut words);
+    any
+}
+
+enum Piece<'a> {
+    Word(&'a str),
+    Separator,
+    /// A bare `OR`: a separator if it stands between two words.
+    Or,
+}
+
+/// Split a group's inside into words (a quoted span is one, its quotes
+/// dropped) and the `OR`, `|` and `,` separators between them.
+fn pieces(inner: &str) -> Vec<Piece<'_>> {
+    fn word<'a>(pieces: &mut Vec<Piece<'a>>, text: &'a str, quoted: bool) {
+        match text.trim() {
+            "" => {}
+            "OR" if !quoted => pieces.push(Piece::Or),
+            text => pieces.push(Piece::Word(text)),
+        }
+    }
+    let mut pieces = Vec::new();
+    let mut start = 0;
+    let mut chars = inner.char_indices();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '"' => {
+                word(&mut pieces, &inner[start..i], false);
+                let end = chars
+                    .by_ref()
+                    .find(|&(_, c)| c == '"')
+                    .map_or(inner.len(), |(end, _)| end);
+                word(&mut pieces, &inner[i + 1..end], true);
+                start = end + 1;
+            }
+            ',' | '|' => {
+                word(&mut pieces, &inner[start..i], false);
+                pieces.push(Piece::Separator);
+                start = i + 1;
+            }
+            c if c.is_whitespace() => {
+                word(&mut pieces, &inner[start..i], false);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    word(&mut pieces, &inner[start.min(inner.len())..], false);
+    pieces
 }
 
 /// The search options form: one field per operator, read from and written
 /// back to query text so the text stays the single source of truth. A term the
 /// form has no field for (a second `from:`, `is:read`) is kept verbatim in
 /// `words`, so opening the form and searching again never drops part of a
-/// query.
+/// query. From, To and Subject list a term's alternatives comma-separated, as
+/// Gmail's form does.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SearchFields {
@@ -148,17 +328,18 @@ impl SearchFields {
         // The last read-state term decides, as in `SearchQuery`. Only that one
         // survives: `is:unread` in its checkbox, `is:read` in the words, so the
         // rebuilt query can't put them back in an order that flips it.
-        let seen = terms(query)
-            .filter_map(|term| match Operator::parse(term) {
+        let seen = clauses(query)
+            .into_iter()
+            .rev()
+            .find_map(|clause| match clause.operator {
                 Some(Operator::Seen(seen)) => Some(seen),
                 _ => None,
-            })
-            .last();
-        for term in terms(query) {
-            let slot = match Operator::parse(term) {
-                Some(Operator::From(value)) => fill(&mut fields.from, value),
-                Some(Operator::To(value)) => fill(&mut fields.to, value),
-                Some(Operator::Subject(value)) => fill(&mut fields.subject, value),
+            });
+        for clause in clauses(query) {
+            let slot = match clause.operator {
+                Some(Operator::From(any)) => fill(&mut fields.from, field_text(&any)),
+                Some(Operator::To(any)) => fill(&mut fields.to, field_text(&any)),
+                Some(Operator::Subject(any)) => fill(&mut fields.subject, field_text(&any)),
                 Some(Operator::After(date)) => fill(&mut fields.after, iso(date)),
                 Some(Operator::Before(date)) => fill(&mut fields.before, iso(date)),
                 Some(Operator::Seen(false)) => {
@@ -175,7 +356,7 @@ impl SearchFields {
             if slot {
                 taken = true;
             } else {
-                words.push(term);
+                words.push(clause.raw);
             }
         }
         // As in `SearchQuery::parse`, a plain query keeps its exact spacing.
@@ -197,15 +378,21 @@ impl SearchFields {
             ("to", &self.to),
             ("subject", &self.subject),
         ] {
-            let value = value.replace('"', "");
-            let value = value.trim();
-            if value.is_empty() {
-                continue;
-            }
-            if value.contains(char::is_whitespace) {
-                terms.push(format!("{key}:\"{value}\""));
-            } else {
-                terms.push(format!("{key}:{value}"));
+            let any: Vec<String> = split_alternatives(value, false)
+                .iter()
+                .map(|value| {
+                    let value = value.replace('"', "");
+                    let plain = !value
+                        .contains(|c: char| c.is_whitespace() || ",|{}()".contains(c))
+                        && value != "OR";
+                    if plain { value } else { format!("\"{value}\"") }
+                })
+                .filter(|value| !value.is_empty())
+                .collect();
+            match any.as_slice() {
+                [] => {}
+                [value] => terms.push(format!("{key}:{value}")),
+                any => terms.push(format!("{key}:{{{}}}", any.join(" "))),
             }
         }
         if self.starred {
@@ -249,6 +436,27 @@ pub fn handle_request(method: &str, params: &serde_json::Value) -> Option<serde_
     }
 }
 
+/// A term's alternatives as a form field lists them, comma-separated. One the
+/// field would split is quoted, so submitting the form unchanged searches for
+/// it whole.
+fn field_text(any: &AnyOf) -> String {
+    any.iter()
+        .map(|value| {
+            let words: Vec<&str> = value.split_whitespace().collect();
+            // The field would split it, or re-space it: its words are rejoined
+            // with single spaces.
+            let splits =
+                value.contains([',', '|']) || words.contains(&"OR") || words.join(" ") != *value;
+            if splits {
+                format!("\"{}\"", value.replace('"', ""))
+            } else {
+                value.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Put `value` in an empty form field; a full one leaves it to `words`.
 fn fill(field: &mut String, value: String) -> bool {
     if !field.is_empty() {
@@ -273,8 +481,9 @@ pub fn local_midnight(date: NaiveDate) -> i64 {
         .map_or_else(|| midnight.and_utc().timestamp(), |dt| dt.timestamp())
 }
 
-/// Split on whitespace, except inside a double-quoted span, so
-/// `from:"Ann Lee"` stays one term. An unclosed quote runs to the end.
+/// Split on whitespace, except inside a double-quoted span or a group opened
+/// right after a key's colon, so `from:"Ann Lee"` and `from:{a b}` each stay
+/// one term. An unclosed quote or group runs to the end.
 fn terms(query: &str) -> impl Iterator<Item = &str> {
     let mut rest = query;
     std::iter::from_fn(move || {
@@ -283,13 +492,28 @@ fn terms(query: &str) -> impl Iterator<Item = &str> {
             return None;
         }
         let mut quoted = false;
+        let mut close = None;
+        let mut prev = ' ';
         let end = rest
             .char_indices()
             .find(|&(_, c)| {
+                let after = std::mem::replace(&mut prev, c);
                 if c == '"' {
                     quoted = !quoted;
+                } else if !quoted {
+                    match close {
+                        Some(end) if c == end => close = None,
+                        None if after == ':' => {
+                            close = match c {
+                                '{' => Some('}'),
+                                '(' => Some(')'),
+                                _ => None,
+                            }
+                        }
+                        _ => {}
+                    }
                 }
-                c.is_whitespace() && !quoted
+                c.is_whitespace() && !quoted && close.is_none()
             })
             .map_or(rest.len(), |(i, _)| i);
         let (term, tail) = rest.split_at(end);
@@ -324,8 +548,8 @@ mod tests {
     #[test]
     fn operators_are_taken_out_of_the_text() {
         let q = SearchQuery::parse("from:a@b.c to:d@e.f budget is:unread");
-        assert_eq!(q.from, ["a@b.c"]);
-        assert_eq!(q.to, ["d@e.f"]);
+        assert_eq!(q.from, [["a@b.c"]]);
+        assert_eq!(q.to, [["d@e.f"]]);
         assert_eq!(q.text, "budget");
         assert_eq!(q.seen, Some(false));
     }
@@ -333,8 +557,8 @@ mod tests {
     #[test]
     fn quoted_values_keep_spaces() {
         let q = SearchQuery::parse(r#"From:"Ann Lee" subject:"Q3 plan" notes"#);
-        assert_eq!(q.from, ["Ann Lee"]);
-        assert_eq!(q.subject, ["Q3 plan"]);
+        assert_eq!(q.from, [["Ann Lee"]]);
+        assert_eq!(q.subject, [["Q3 plan"]]);
         assert_eq!(q.text, "notes");
     }
 
@@ -343,6 +567,83 @@ mod tests {
         let q = SearchQuery::parse("re:foo https://x.y from: is:muted after:soon");
         assert!(!q.has_operators());
         assert_eq!(q.text, "re:foo https://x.y from: is:muted after:soon");
+    }
+
+    #[test]
+    fn alternatives_in_gmail_syntax() {
+        let any = |query: &str| SearchQuery::parse(query).from;
+        assert_eq!(any("from:{a@b.c x@y.z}"), [["a@b.c", "x@y.z"]]);
+        assert_eq!(any(r#"from:{"Ann Lee", bob}"#), [["Ann Lee", "bob"]]);
+        assert_eq!(any("from:(a OR b | c)"), [["a", "b", "c"]]);
+        // Parentheses without separators hold one value.
+        assert_eq!(any("from:(Ann Lee)"), [["Ann Lee"]]);
+        assert_eq!(any("from:a,b"), [["a", "b"]]);
+        assert_eq!(any("from:a OR from:b OR from:c"), [["a", "b", "c"]]);
+        assert_eq!(any(r#"from:"Ann Lee",bob"#), [["Ann Lee", "bob"]]);
+        assert_eq!(any(r#"from:"Ann Lee"#), [["Ann Lee"]]);
+        // A quoted comma is part of the name.
+        assert_eq!(any(r#"from:"Lee, Ann""#), [["Lee, Ann"]]);
+        // Each term is still ANDed with the others.
+        assert_eq!(any("from:{a b} from:c"), [vec!["a", "b"], vec!["c"]]);
+
+        // `OR` that can't merge stays a word: lowercase, across keys, or
+        // between words.
+        let q = SearchQuery::parse("from:a or from:b");
+        assert_eq!((q.from.len(), q.text.as_str()), (2, "or"));
+        let q = SearchQuery::parse("from:a OR to:b");
+        assert_eq!((q.from.len(), q.to.len(), q.text.as_str()), (1, 1, "OR"));
+        assert_eq!(SearchQuery::parse("cats OR dogs").text, "cats OR dogs");
+        // A group opens only right after a key's colon; an empty one is text.
+        assert_eq!(SearchQuery::parse("(a b) from:{}").text, "(a b) from:{}");
+        assert_eq!(any("subject:x from:{a b"), [["a", "b"]]);
+    }
+
+    #[test]
+    fn fields_list_alternatives_comma_separated() {
+        let fields = SearchFields::parse("from:a OR from:b to:{c \"D E\"} plan");
+        assert_eq!(fields.from, "a, b");
+        assert_eq!(fields.to, "c, D E");
+        assert_eq!(fields.words, "plan");
+        assert_eq!(fields.to_query(), r#"from:{a b} to:{c "D E"} plan"#);
+        assert_eq!(SearchFields::parse(&fields.to_query()), fields);
+        // Submitting the form unchanged keeps a value it would otherwise split.
+        for query in [
+            r#"subject:"Q3  plan""#,
+            r#"from:"Lee, Ann""#,
+            r#"subject:"A|B""#,
+            r#"subject:"OR""#,
+            r#"subject:"this OR that""#,
+        ] {
+            let fields = SearchFields::parse(query);
+            assert_eq!(
+                SearchQuery::parse(&fields.to_query()),
+                SearchQuery::parse(query),
+                "{query}"
+            );
+        }
+        assert_eq!(
+            SearchFields::parse(r#"from:"Lee, Ann" OR from:bob"#).from,
+            r#""Lee, Ann", bob"#
+        );
+        // A lone `OR` is a value, not a separator.
+        for (field, query) in [
+            ("OR", "subject:\"OR\""),
+            ("a OR", "subject:\"a OR\""),
+            ("OR, b", "subject:{\"OR\" b}"),
+        ] {
+            let fields = SearchFields {
+                subject: field.into(),
+                ..Default::default()
+            };
+            assert_eq!(fields.to_query(), query, "{field}");
+        }
+        assert_eq!(SearchQuery::parse("from:{OR b}").from, [["OR", "b"]]);
+        // A picked suggestion leaves a trailing comma.
+        let fields = SearchFields {
+            from: "a@b.c, ".into(),
+            ..Default::default()
+        };
+        assert_eq!(fields.to_query(), "from:a@b.c");
     }
 
     #[test]

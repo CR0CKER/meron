@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "열 좁게",
   "kanban.actions.openThread": "열려 있는",
   "kanban.actions.saveSearchAsColumn": "검색을 열로 저장",
+  "kanban.actions.saveSearchNeedsColumn": "“검색 위치”에서 열을 선택하면 이 검색을 열로 저장할 수 있습니다",
+  "kanban.actions.saveSearchNeedsFields": "위의 항목을 하나 이상 입력하면 이 검색을 저장할 수 있습니다",
   "kanban.actions.search": "검색",
   "kanban.actions.searchColumn": "검색란",
   "kanban.actions.showFilterInAllColumns": "모든 열에 {filter} 표시",

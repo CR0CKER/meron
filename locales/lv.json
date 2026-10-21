@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Šaurākas kolonnas",
   "kanban.actions.openThread": "Atvērt",
   "kanban.actions.saveSearchAsColumn": "Saglabāt meklēšanu kā kolonnu",
+  "kanban.actions.saveSearchNeedsColumn": "Izvēlieties kolonnu laukā “Meklēt”, lai saglabātu šo meklēšanu kā kolonnu",
+  "kanban.actions.saveSearchNeedsFields": "Aizpildiet kādu no laukiem augstāk, lai saglabātu šo meklēšanu",
   "kanban.actions.search": "Meklēt",
   "kanban.actions.searchColumn": "Meklēšanas kolonna",
   "kanban.actions.showFilterInAllColumns": "Rādīt {filter} visās kolonnās",

@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Kitsamad veerud",
   "kanban.actions.openThread": "Avatud",
   "kanban.actions.saveSearchAsColumn": "Salvesta otsing veeruna",
+  "kanban.actions.saveSearchNeedsColumn": "Vali „Otsi kohast“ all veerg, et see otsing veeruna salvestada",
+  "kanban.actions.saveSearchNeedsFields": "Täida ülal mõni väli, et see otsing salvestada",
   "kanban.actions.search": "Otsi",
   "kanban.actions.searchColumn": "Otsingu veerg",
   "kanban.actions.showFilterInAllColumns": "Näita {filter} kõigis veergudes",

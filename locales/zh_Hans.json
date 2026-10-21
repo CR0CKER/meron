@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "列更窄",
   "kanban.actions.openThread": "打开",
   "kanban.actions.saveSearchAsColumn": "将搜索保存为列",
+  "kanban.actions.saveSearchNeedsColumn": "在“搜索范围”中选择一列，即可将此搜索保存为列",
+  "kanban.actions.saveSearchNeedsFields": "填写上方任一字段，即可保存此搜索",
   "kanban.actions.search": "搜索",
   "kanban.actions.searchColumn": "搜索栏",
   "kanban.actions.showFilterInAllColumns": "在所有列中显示 {filter}",

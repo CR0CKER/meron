@@ -57,7 +57,9 @@ pub fn upsert_messages(
         if !message_id.is_empty() {
             upserted_ids.insert(message_id);
         }
-        tx.execute(
+        // Cached: the statement carries every trigger it may fire (FTS,
+        // contacts), so compiling it per message dominated a large sync.
+        tx.prepare_cached(
             "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, starred, thread_key, json, recipients, files)
              VALUES(?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(account, folder, msg_id) DO UPDATE SET
@@ -75,7 +77,8 @@ pub fn upsert_messages(
                -- A fetched body is authoritative, especially for inline images.
                files = CASE WHEN messages.body IS NOT NULL OR ?14 = 0
                             THEN messages.files ELSE excluded.files END",
-            params![
+        )?
+        .execute(params![
                 account,
                 folder,
                 m.uid,
@@ -90,8 +93,7 @@ pub fn upsert_messages(
                 recipients_index_text(&m.to, &m.cc),
                 m.files.as_ref().filter(|files| !files.is_empty()).map(|files| json!(files).to_string()),
                 m.files.is_some() as i64
-            ],
-        )?;
+        ])?;
     }
     reconcile_thread_keys_from(&tx, account, upserted_ids)?;
     tx.commit()?;

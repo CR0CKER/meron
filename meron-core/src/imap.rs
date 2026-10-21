@@ -1133,16 +1133,24 @@ fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> St
             let q = string(&query.text);
             keys.push(format!("OR OR SUBJECT {q} FROM {q} TEXT {q}"));
         }
-        keys.extend(query.from.iter().map(|v| format!("FROM {}", string(v))));
-        keys.extend(query.to.iter().map(|v| {
-            let v = string(v);
-            format!("OR TO {v} CC {v}")
-        }));
+        // A term's alternatives, ORed: IMAP's OR takes two keys, so nest it.
+        let any = |values: &[String], key: &dyn Fn(String) -> String| {
+            let mut keys = values.iter().rev().map(|v| key(string(v)));
+            let last = keys.next().unwrap_or_default();
+            keys.fold(last, |rest, key| format!("OR {key} {rest}"))
+        };
+        keys.extend(query.from.iter().map(|v| any(v, &|v| format!("FROM {v}"))));
+        keys.extend(
+            query
+                .to
+                .iter()
+                .map(|v| any(v, &|v| format!("OR TO {v} CC {v}"))),
+        );
         keys.extend(
             query
                 .subject
                 .iter()
-                .map(|v| format!("SUBJECT {}", string(v))),
+                .map(|v| any(v, &|v| format!("SUBJECT {v}"))),
         );
         match query.seen {
             Some(true) => keys.push("SEEN".to_string()),
@@ -3048,6 +3056,18 @@ mod tests {
         assert_eq!(imap_quote("plain"), "\"plain\"");
         assert_eq!(imap_quote(r#"a"b\c"#), r#""a\"b\\c""#);
         assert_eq!(imap_quote("a\r\nb"), "\"a  b\"");
+    }
+
+    #[test]
+    fn search_criteria_ors_a_terms_alternatives() {
+        assert_eq!(
+            search_criteria(false, "from:{a b c} to:d", false, false),
+            "OR FROM \"a\" OR FROM \"b\" FROM \"c\" OR TO \"d\" CC \"d\""
+        );
+        assert_eq!(
+            search_criteria(false, "to:a OR to:b", false, false),
+            "OR OR TO \"a\" CC \"a\" OR TO \"b\" CC \"b\""
+        );
     }
 
     #[test]

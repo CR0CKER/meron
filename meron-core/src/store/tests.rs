@@ -698,6 +698,11 @@ fn search_messages_applies_gmail_style_operators() {
     assert_eq!(uids("from:lu"), Vec::<u32>::new());
     // A bare operator is plain text, not an empty filter.
     assert_eq!(uids("from:"), Vec::<u32>::new());
+    // Alternatives: any of them matches, indexed or scanned.
+    assert_eq!(uids("from:{zoe@b.c x@y.z}"), [3]);
+    assert_eq!(uids("to:(x@y.z OR d@e.f) subject:plan"), [3, 1]);
+    assert_eq!(uids("subject:lunch OR subject:budget"), [3, 2, 1]);
+    assert_eq!(uids("from:zo,nobody@x.y"), [3]);
 }
 
 #[test]
@@ -2745,7 +2750,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 16);
+    assert_eq!(version, 17);
 
     for table in [
         "accounts",
@@ -2783,7 +2788,7 @@ fn run_migrations_creates_schema_and_bumps_version() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 16);
+    assert_eq!(version, 17);
 }
 
 #[test]
@@ -2811,7 +2816,7 @@ fn concurrent_first_open_runs_migrations_once() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 16);
+    assert_eq!(version, 17);
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -4539,7 +4544,7 @@ fn tasks_tables_arrive_on_an_existing_install() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 16);
+    assert_eq!(version, 17);
 
     // Cached mail is untouched, and the new tables are writable.
     let messages: i64 = conn
@@ -5017,4 +5022,226 @@ fn folded_attachment_metadata_prefers_cached_bodies_including_empty_lists() {
             );
         }
     }
+}
+
+#[test]
+fn contacts_follow_every_message_write() {
+    use crate::imap::{MessageHeader, Recipient};
+    let conn = test_conn();
+    let to = |addr: &str| Recipient {
+        name: String::new(),
+        addr: addr.to_string(),
+    };
+    let message = |uid: u32, recipients: Vec<Recipient>| MessageHeader {
+        uid,
+        subject: "Hi".into(),
+        from_name: "Aki".into(),
+        from_addr: "Aki@example.com".into(),
+        to: recipients,
+        ..Default::default()
+    };
+    let contacts = |conn: &Connection| {
+        let mut stmt = conn
+            .prepare("SELECT addr_key, name, count FROM contacts ORDER BY addr_key")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(format!(
+                "{} {} {}",
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+    };
+
+    // An address listed twice on one message counts it once.
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[
+            message(1, vec![to("bea@example.com"), to("BEA@example.com")]),
+            message(2, vec![to("cleo@example.com")]),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        contacts(&conn),
+        [
+            "aki@example.com Aki 2",
+            "bea@example.com  1",
+            "cleo@example.com  1"
+        ]
+    );
+
+    // A resync of the same envelope leaves the counts alone; a changed
+    // recipient list moves them.
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[message(2, vec![to("cleo@example.com")])],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE messages SET seen = 1, json = json_set(json, '$.x', 1)",
+        [],
+    )
+    .unwrap();
+    assert_eq!(contacts(&conn).len(), 3);
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[message(2, vec![to("dan@example.com")])],
+    )
+    .unwrap();
+    assert_eq!(
+        contacts(&conn),
+        [
+            "aki@example.com Aki 2",
+            "bea@example.com  1",
+            "dan@example.com  1"
+        ]
+    );
+
+    // Deleting the last message an address is on drops it.
+    conn.execute("DELETE FROM messages WHERE uid = 1", [])
+        .unwrap();
+    assert_eq!(
+        contacts(&conn),
+        ["aki@example.com Aki 1", "dan@example.com  1"]
+    );
+
+    // Each name is kept apart, so one leaves with its last message.
+    let named = |uid: u32, name: &str| MessageHeader {
+        uid,
+        from_name: name.into(),
+        from_addr: "person@example.com".into(),
+        ..Default::default()
+    };
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[named(3, "Alice"), named(4, "Ally"), named(5, "Ally")],
+    )
+    .unwrap();
+    let person = |query: &str| {
+        suggest_contacts(&conn, "acct", query, 10)
+            .unwrap()
+            .into_iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
+    };
+    // Matched by name, it shows the name that matched.
+    assert_eq!(person("alice"), ["Alice"]);
+    assert_eq!(person("person"), ["Ally"]);
+    conn.execute("DELETE FROM messages WHERE uid IN (4, 5)", [])
+        .unwrap();
+    assert_eq!(person("ally"), Vec::<String>::new());
+    assert_eq!(person("alice"), ["Alice"]);
+    conn.execute("DELETE FROM messages WHERE uid = 3", [])
+        .unwrap();
+
+    // A shared sender matched only by one of its names ranks, and shows, by
+    // that name; a word-start match outranks one inside a word.
+    let notification = |uid: u32, name: &str| MessageHeader {
+        uid,
+        from_name: name.into(),
+        from_addr: "notifications@github.com".into(),
+        ..Default::default()
+    };
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[
+            notification(10, "Flathub Bot"),
+            notification(11, "Flathub Bot"),
+            notification(12, "Flathub Bot"),
+            notification(13, "ISAN98"),
+            message(14, vec![to("isan98@proton.me")]),
+            message(15, vec![to("isan98@proton.me")]),
+            message(16, vec![to("louisa@example.com")]),
+            message(17, vec![to("louisa@example.com")]),
+            message(18, vec![to("louisa@example.com")]),
+        ],
+    )
+    .unwrap();
+    let isa = suggest_contacts(&conn, "acct", "isa", 10).unwrap();
+    assert_eq!(
+        isa.iter()
+            .map(|c| format!("{} {}", c.name, c.addr))
+            .collect::<Vec<_>>(),
+        [
+            " isan98@proton.me",
+            "ISAN98 notifications@github.com",
+            " louisa@example.com"
+        ]
+    );
+    conn.execute("DELETE FROM messages WHERE uid >= 10", [])
+        .unwrap();
+
+    // Non-ASCII capitals still make one address.
+    upsert_messages(
+        &conn,
+        "acct",
+        "INBOX",
+        &[
+            message(20, vec![to("Éva@example.com")]),
+            message(21, vec![to("éva@example.com")]),
+        ],
+    )
+    .unwrap();
+    assert_eq!(suggest_contacts(&conn, "acct", "éva", 10).unwrap().len(), 1);
+    conn.execute("DELETE FROM messages WHERE uid >= 20", [])
+        .unwrap();
+
+    // Feed items aren't correspondents.
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, from_addr)
+         VALUES('acct', 'feed', 'item', 0, 'feed@example.com')",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        contacts(&conn),
+        ["aki@example.com Aki 1", "dan@example.com  1"]
+    );
+}
+
+#[test]
+fn migration_backfills_contacts_from_cached_mail() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::migrate_to_v8(&conn).unwrap();
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, from_name, from_addr, json)
+         VALUES('acct', 'INBOX', '1', 1, 'Aki', 'aki@example.com',
+                '{\"to\":[{\"name\":\"Bea\",\"addr\":\"bea@example.com\"}],
+                  \"cc\":[{\"name\":\"\",\"addr\":\"Aki@example.com\"}]}'),
+               ('acct', 'Sent', '2', 2, 'Me', 'me@example.com',
+                '{\"to\":[{\"name\":\"\",\"addr\":\"bea@example.com\"}]}'),
+               ('acct', 'feed', 'item', 0, 'Feed', 'feed@example.com', '{}')",
+        [],
+    )
+    .unwrap();
+    db::run_migrations(&conn).unwrap();
+
+    let top = suggest_contacts(&conn, "acct", "", 10).unwrap();
+    assert_eq!(
+        top.iter()
+            .map(|c| format!("{} {}", c.addr, c.name))
+            .collect::<Vec<_>>(),
+        // Aki sent message 1 and is Cc'd on it nameless: two names, counted
+        // once each.
+        [
+            "aki@example.com Aki",
+            "bea@example.com Bea",
+            "me@example.com Me"
+        ]
+    );
 }

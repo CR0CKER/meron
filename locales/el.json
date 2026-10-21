@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Στενότερες στήλες",
   "kanban.actions.openThread": "Ανοιχτό",
   "kanban.actions.saveSearchAsColumn": "Αποθήκευση αναζήτησης ως στήλη",
+  "kanban.actions.saveSearchNeedsColumn": "Επιλέξτε μια στήλη στο «Αναζήτηση σε» για να αποθηκεύσετε αυτήν την αναζήτηση ως στήλη",
+  "kanban.actions.saveSearchNeedsFields": "Συμπληρώστε ένα πεδίο παραπάνω για να αποθηκεύσετε αυτήν την αναζήτηση",
   "kanban.actions.search": "Αναζήτηση",
   "kanban.actions.searchColumn": "Στήλη αναζήτησης",
   "kanban.actions.showFilterInAllColumns": "Εμφάνιση {filter} σε όλες τις στήλες",

@@ -67,29 +67,40 @@ pub fn search_messages(
         before_cursor.map_or(0, |cursor| cursor.uid as i64).into(),
         before_cursor.map(|cursor| cursor.folder.clone()).into(),
     ];
-    // Short text conditions, each a needle and the result columns it may hit.
-    let mut scans: Vec<(String, &[usize])> = Vec::new();
+    // Short text conditions, each its needles (any may match) and the result
+    // columns they may hit.
+    let mut scans: Vec<(Vec<String>, &[usize])> = Vec::new();
     // `index` is the FTS subquery answering one text condition, its `?` the
-    // phrase; `columns` the same columns for a short needle.
-    let mut text_condition = |needle: &str, index: &str, scope: &str, columns: &'static [usize]| {
-        if needle.chars().count() < 3 {
-            scans.push((needle.to_lowercase(), columns));
-        } else {
-            filters.push_str(&format!(" AND m.id IN ({index})"));
-            // Quoted as one phrase, doubling any `"` so user input can't
-            // change the FTS query: a substring match, like the scan.
-            let phrase = format!("{scope}\"{}\"", needle.replace('"', "\"\""));
-            let count = index.matches('?').count();
-            args.extend(std::iter::repeat_n(Value::from(phrase), count));
-        }
-    };
+    // phrases; `columns` the same columns for a short needle. A condition
+    // with any short needle is scanned whole, as the index can't find it.
+    let mut text_condition =
+        |needles: &[String], index: &str, scope: &str, columns: &'static [usize]| {
+            if needles.iter().any(|needle| needle.chars().count() < 3) {
+                scans.push((
+                    needles.iter().map(|needle| needle.to_lowercase()).collect(),
+                    columns,
+                ));
+            } else {
+                filters.push_str(&format!(" AND m.id IN ({index})"));
+                // Each quoted as one phrase, doubling any `"` so user input can't
+                // change the FTS query: a substring match, like the scan.
+                let phrases = needles
+                    .iter()
+                    .map(|needle| format!("\"{}\"", needle.replace('"', "\"\"")))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let expression = format!("{scope}({phrases})");
+                let count = index.matches('?').count();
+                args.extend(std::iter::repeat_n(Value::from(expression), count));
+            }
+        };
     const MESSAGES_FTS: &str = "SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?";
     const RECIPIENTS_FTS: &str =
         "SELECT rowid FROM messages_recipients_fts WHERE messages_recipients_fts MATCH ?";
     if !query.text.is_empty() {
         // Body last: it is by far the largest column to fold.
         text_condition(
-            &query.text,
+            std::slice::from_ref(&query.text),
             &format!("{MESSAGES_FTS} UNION {RECIPIENTS_FTS}"),
             "",
             &[1, 2, 3, 10, 11],
@@ -147,11 +158,12 @@ pub fn search_messages(
             break;
         };
         let mut hit = true;
-        for (needle, columns) in &scans {
+        for (needles, columns) in &scans {
             let mut found = false;
             for &column in *columns {
                 if let Some(text) = row.get_ref(column)?.as_str_or_null()?
-                    && text.to_lowercase().contains(needle)
+                    && let text = text.to_lowercase()
+                    && needles.iter().any(|needle| text.contains(needle.as_str()))
                 {
                     found = true;
                     break;

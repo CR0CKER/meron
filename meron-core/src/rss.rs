@@ -541,22 +541,22 @@ pub fn recent(
          WHERE s.account = ?1 AND s.enabled = 1",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(account.to_string())];
-    // Each text condition: any of `columns` holds `value`.
-    let mut like = |columns: &[&str], value: &str| {
-        let pattern = format!("%{}%", value.to_lowercase());
-        let clauses = columns
-            .iter()
-            .map(|column| {
+    // Each text condition: any of `columns` holds any of `values`.
+    let mut like = |columns: &[&str], values: &[String]| {
+        let mut clauses = Vec::new();
+        for value in values {
+            let pattern = format!("%{}%", value.to_lowercase());
+            for column in columns {
                 args.push(Box::new(pattern.clone()));
-                format!("lower({column}) LIKE ?")
-            })
-            .collect::<Vec<_>>();
+                clauses.push(format!("lower({column}) LIKE ?"));
+            }
+        }
         sql.push_str(&format!(" AND ({})", clauses.join(" OR ")));
     };
     if !query.text.is_empty() {
         like(
             &["s.title", "m.subject", "json_extract(m.json,'$.summary')"],
-            &query.text,
+            std::slice::from_ref(&query.text),
         );
     }
     for from in &query.from {

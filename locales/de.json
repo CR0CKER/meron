@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Schmalere Spalten",
   "kanban.actions.openThread": "Offen",
   "kanban.actions.saveSearchAsColumn": "Suche als Spalte speichern",
+  "kanban.actions.saveSearchNeedsColumn": "Wähle unter „Suchen in“ eine Spalte, um diese Suche als Spalte zu speichern",
+  "kanban.actions.saveSearchNeedsFields": "Fülle oben ein Feld aus, um diese Suche zu speichern",
   "kanban.actions.search": "Suchen",
   "kanban.actions.searchColumn": "Suchspalte",
   "kanban.actions.showFilterInAllColumns": "{filter} in allen Spalten anzeigen",

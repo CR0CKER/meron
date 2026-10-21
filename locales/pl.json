@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Węższe kolumny",
   "kanban.actions.openThread": "Otwarte",
   "kanban.actions.saveSearchAsColumn": "Zapisz wyszukiwanie jako kolumnę",
+  "kanban.actions.saveSearchNeedsColumn": "Wybierz kolumnę w „Szukaj w”, aby zapisać to wyszukiwanie jako kolumnę",
+  "kanban.actions.saveSearchNeedsFields": "Wypełnij pole powyżej, aby zapisać to wyszukiwanie",
   "kanban.actions.search": "Szukaj",
   "kanban.actions.searchColumn": "Kolumna wyszukiwania",
   "kanban.actions.showFilterInAllColumns": "Pokaż {filter} we wszystkich kolumnach",

@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Cột hẹp hơn",
   "kanban.actions.openThread": "Mở",
   "kanban.actions.saveSearchAsColumn": "Lưu tìm kiếm thành cột",
+  "kanban.actions.saveSearchNeedsColumn": "Chọn một cột ở “Tìm trong” để lưu tìm kiếm này thành cột",
+  "kanban.actions.saveSearchNeedsFields": "Điền một trường ở trên để lưu tìm kiếm này",
   "kanban.actions.search": "Tìm kiếm",
   "kanban.actions.searchColumn": "Cột tìm kiếm",
   "kanban.actions.showFilterInAllColumns": "Hiển thị {filter} trong tất cả các cột",

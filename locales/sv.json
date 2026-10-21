@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Smalare kolumner",
   "kanban.actions.openThread": "Öppna",
   "kanban.actions.saveSearchAsColumn": "Spara sökning som kolumn",
+  "kanban.actions.saveSearchNeedsColumn": "Välj en kolumn under ”Sök i” för att spara sökningen som en kolumn",
+  "kanban.actions.saveSearchNeedsFields": "Fyll i ett fält ovan för att spara sökningen",
   "kanban.actions.search": "Sök",
   "kanban.actions.searchColumn": "Sök kolumn",
   "kanban.actions.showFilterInAllColumns": "Visa {filter} i alla kolumner",

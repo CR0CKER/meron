@@ -415,6 +415,8 @@
   "kanban.actions.narrowColumns": "Colunas mais estreitas",
   "kanban.actions.openThread": "Abrir",
   "kanban.actions.saveSearchAsColumn": "Guardar pesquisa como coluna",
+  "kanban.actions.saveSearchNeedsColumn": "Escolha uma coluna em «Pesquisar em» para guardar esta pesquisa como coluna",
+  "kanban.actions.saveSearchNeedsFields": "Preencha um campo acima para guardar esta pesquisa",
   "kanban.actions.search": "Pesquisar",
   "kanban.actions.searchColumn": "Coluna de pesquisa",
   "kanban.actions.showFilterInAllColumns": "Mostrar {filter} em todas as colunas",

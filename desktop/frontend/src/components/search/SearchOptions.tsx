@@ -84,8 +84,11 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
   useEffect(() => {
     if (!open) return
     const handleClickOutside = (event: MouseEvent) => {
-      // The form is portaled into the anchor, so this covers it too.
-      if (!anchorRef.current?.contains(event.target as Node)) close()
+      // The form is portaled into the anchor, so this covers it too. The path,
+      // not `contains`: a pressed autocomplete suggestion is already removed
+      // from the DOM by the time the press reaches the document.
+      const anchor = anchorRef.current
+      if (!anchor || !event.composedPath().includes(anchor)) close()
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -142,7 +145,7 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
   const address = (key: 'from' | 'to', label: string, autoFocus = false) => (
     <Row label={label}>
       <RecipientInput
-        single
+        bare
         autoFocus={autoFocus}
         value={fields?.[key] ?? ''}
         onChange={(value) => set(key, value)}
@@ -200,10 +203,10 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
               event.preventDefault()
               void submit()
             }}
-            className="absolute top-full left-0 z-50 mt-1.5 flex w-full min-w-96 flex-col gap-2 rounded-2xl border border-border bg-chats p-4 shadow-xl shadow-black/10 animate-slide-up dark:shadow-black/35"
+            className="absolute top-full left-0 z-50 mt-1.5 flex w-full min-w-96 flex-col gap-2 rounded-2xl border border-border bg-chats p-4 shadow-xl shadow-black/10 dark:shadow-black/35"
           >
             {board && (
-              <Row label={t('search.searchIn')}>
+              <Row label={t('search.searchIn')} menu>
                 <ScopeSelect value={scope} onChange={setScope} columns={board.columns} />
               </Row>
             )}
@@ -226,15 +229,27 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
             <div className="flex items-center justify-between gap-2 pt-1">
               {board ? (
                 // A saved search lives in one folder, so it needs a column picked above.
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  leftIcon={BookmarkPlus}
-                  disabled={empty || !scopedColumn}
-                  onClick={() => void save()}
+                // The reason it's disabled goes on a wrapper: a disabled button gets
+                // no hover, so its own title may never show.
+                <span
+                  title={
+                    !scopedColumn
+                      ? t('kanban.actions.saveSearchNeedsColumn')
+                      : empty
+                        ? t('kanban.actions.saveSearchNeedsFields')
+                        : undefined
+                  }
                 >
-                  {t('kanban.actions.saveSearchAsColumn')}
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    leftIcon={BookmarkPlus}
+                    disabled={empty || !scopedColumn}
+                    onClick={() => void save()}
+                  >
+                    {t('kanban.actions.saveSearchAsColumn')}
+                  </Button>
+                </span>
               ) : (
                 <span />
               )}
@@ -252,12 +267,18 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
 const inputClass =
   'min-w-0 flex-1 rounded-lg bg-app px-2 py-1.5 text-xs text-primary outline-none ring-1 ring-border focus:ring-accent'
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * A labelled field. `menu` is for a control holding its own buttons: a
+ * `<label>` would forward a click on one of them to the first, reopening a
+ * menu the click just closed.
+ */
+function Row({ label, menu = false, children }: { label: string; menu?: boolean; children: ReactNode }) {
+  const Wrapper = menu ? 'div' : 'label'
   return (
-    <label className="flex items-center gap-3">
+    <Wrapper className="flex items-center gap-3">
       <span className="w-24 shrink-0 text-xs text-secondary">{label}</span>
       {children}
-    </label>
+    </Wrapper>
   )
 }
 
