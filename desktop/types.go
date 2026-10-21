@@ -93,6 +93,8 @@ type Message struct {
 	HasDraft       bool   `json:"has_draft,omitempty"`
 	HasAttachments bool   `json:"has_attachments"`
 	Attachments    any    `json:"attachments,omitempty"`
+	// Invite is the calendar event the message carries (meron-core/src/calendar.rs).
+	Invite any `json:"invite,omitempty"`
 	// Reply carries the core's reply and reply-all recipients for this message
 	// (see meron-core/src/reply.rs), so every client addresses a reply the same
 	// way. Absent on thread cards, which have no recipient headers to work from.

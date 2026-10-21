@@ -1090,6 +1090,7 @@ private fun MeronMobileScreenContent(
                         status = trs("common.copied")
                     },
                     onRetryLoadMessages = { retryOpenThreadLoad() },
+                    onRespondToInvite = { message, response -> scope.launch { respondToInvite(message, response) } },
                     onMessagesRead = ::markMessagesReadOnScroll,
                     onViewedToBottom = ::markThreadReadOnScroll,
                     snackbarHost = snackbarHost,

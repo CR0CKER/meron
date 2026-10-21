@@ -494,6 +494,7 @@ fun parseThreadReadPage(responseJson: String): ThreadReadPage {
                             acceptsReplies = reply.findJsonBooleanProperty("accepts_replies") ?: true,
                         )
                     },
+                invite = entries.firstOrNull { it.first == "invite" }?.second?.let(::parseMessageInvite),
                 attachments =
                     item
                         .findJsonArrayProperty("attachments")
@@ -515,6 +516,58 @@ fun parseThreadReadPage(responseJson: String): ThreadReadPage {
         // Message ids key the conversation LazyColumn items; duplicates crash.
         messages = messages.distinctBy { it.id },
         nextCursor = responseJson.findJsonStringProperty("next_cursor").orEmpty(),
+    )
+}
+
+/**
+ * A thread message's `invite` object. Read by its own top-level keys: the
+ * summary, location and attendee names are the sender's text, so a scan could
+ * be steered by them.
+ */
+private fun parseMessageInvite(json: String): MessageInvite? {
+    if (!json.startsWith("{")) return null
+    val entries = json.jsonObjectEntries().toMap()
+
+    fun string(value: String?): String =
+        value
+            ?.takeIf { it.startsWith('"') }
+            ?.readJsonString(0)
+            ?.value
+            .orEmpty()
+
+    fun person(value: String?): Map<String, String> =
+        value
+            ?.takeIf { it.startsWith("{") }
+            ?.jsonObjectEntries()
+            ?.toMap()
+            .orEmpty()
+    val organizer = person(entries["organizer"])
+    return MessageInvite(
+        method = string(entries["method"]),
+        uid = string(entries["uid"]),
+        summary = string(entries["summary"]),
+        location = string(entries["location"]),
+        start = entries["start"]?.toLongOrNull() ?: 0,
+        end = entries["end"]?.toLongOrNull() ?: 0,
+        allDay = entries["all_day"] == "true",
+        recurring = entries["recurring"] == "true",
+        cancelled = entries["cancelled"] == "true",
+        organizerName = string(organizer["name"]),
+        organizerAddr = string(organizer["addr"]),
+        attendees =
+            entries["attendees"]
+                ?.takeIf { it.startsWith("[") }
+                ?.jsonArrayElements()
+                ?.map { element ->
+                    val attendee = person(element)
+                    InviteAttendee(
+                        name = string(attendee["name"]),
+                        addr = string(attendee["addr"]),
+                        partstat = string(attendee["partstat"]),
+                    )
+                }.orEmpty(),
+        canRespond = entries["can_respond"] == "true",
+        response = string(entries["response"]),
     )
 }
 

@@ -177,6 +177,7 @@ func messageJSON(accountID, threadID, folder string, raw any) any {
 		HasAttachments: len(attachmentList) > 0,
 		Attachments:    attachmentList,
 		Reply:          object["reply"],
+		Invite:         object["invite"],
 	}}}
 }
 

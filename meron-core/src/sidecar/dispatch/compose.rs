@@ -26,6 +26,41 @@ fn opt_uids(params: &Value) -> Vec<u32> {
         .unwrap_or_default()
 }
 
+/// Finalize the Sent view after a send. For Gmail/Outlook defaults this only
+/// refreshes the provider-created copy; other accounts get Meron's best-effort
+/// APPEND plus refresh. The mail already left via SMTP, so none of this may
+/// hold up the reply: an APPEND re-uploads the whole message, and a host that
+/// times out waiting on it would report a delivered message as failed — and
+/// offer to send it again.
+fn finish_sent(engine: &Arc<Engine>, out: &Writer, account: String, raw: Vec<u8>) {
+    let engine = engine.clone();
+    let out = out.clone();
+    tokio::spawn(async move {
+        match append_to_sent(&engine, &account, &raw).await {
+            // The Sent copy is cached, so tell the UI to re-read the
+            // store — see `sent_copy_cached_detail`. When the provider
+            // has not exposed its own copy yet, wait for it rather than
+            // firing at an unchanged cache: no later sync of the Sent
+            // folder is guaranteed to follow.
+            Ok(copy) => {
+                if copy.observed
+                    || (copy.worth_awaiting() && await_sent_copy(&engine, &account, &copy).await)
+                {
+                    emit(
+                        &out,
+                        "mail.sentCopyCached",
+                        sent_copy_cached_detail(&account),
+                    )
+                    .await;
+                }
+            }
+            Err(err) => {
+                eprintln!("meron-core: APPEND to Sent failed for {account}: {err:#}");
+            }
+        }
+    });
+}
+
 /// Handle outgoing mail: send, drafts, and saving raw messages.
 pub(crate) async fn dispatch(
     engine: &Arc<Engine>,
@@ -70,40 +105,24 @@ pub(crate) async fn dispatch(
                 &message_id,
             )
             .await?;
-            // Finalize the Sent view. For Gmail/Outlook defaults this only
-            // refreshes the provider-created copy; other accounts get Meron's
-            // best-effort APPEND plus refresh. The mail already left via SMTP,
-            // so none of this may hold up the reply: an APPEND re-uploads the
-            // whole message, and a host that times out waiting on it would
-            // report a delivered message as failed — and offer to send it again.
-            let engine = engine.clone();
-            let out = out.clone();
-            tokio::spawn(async move {
-                match append_to_sent(&engine, &account, &raw).await {
-                    // The Sent copy is cached, so tell the UI to re-read the
-                    // store — see `sent_copy_cached_detail`. When the provider
-                    // has not exposed its own copy yet, wait for it rather than
-                    // firing at an unchanged cache: no later sync of the Sent
-                    // folder is guaranteed to follow.
-                    Ok(copy) => {
-                        if copy.observed
-                            || (copy.worth_awaiting()
-                                && await_sent_copy(&engine, &account, &copy).await)
-                        {
-                            emit(
-                                &out,
-                                "mail.sentCopyCached",
-                                sent_copy_cached_detail(&account),
-                            )
-                            .await;
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("meron-core: APPEND to Sent failed for {account}: {err:#}");
-                    }
-                }
-            });
+            finish_sent(engine, out, account, raw);
             Ok(json!({ "ok": true }))
+        }
+
+        "invite.respond" => {
+            let message = req_str(p, "message")?;
+            let response = req_str(p, "response")?;
+            let response = meron_core::calendar::Response::parse(&response)
+                .ok_or_else(|| anyhow::anyhow!("unknown invitation response: {response}"))?;
+            let (account, raw) = meron_core::calendar::respond(
+                engine,
+                &message,
+                response,
+                &meron_core::parse::media_root(),
+            )
+            .await?;
+            finish_sent(engine, out, account, raw);
+            Ok(json!({ "ok": true, "response": response.as_str() }))
         }
 
         "save_draft" => {

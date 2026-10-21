@@ -171,11 +171,32 @@ pub(crate) async fn dispatch(
                 canon_folder(&req_str(p, "folder").unwrap_or_else(|_| "INBOX".to_string()));
             let uid = req_u32(p, "uid")?;
 
-            let message = read_cached_or_fetch(engine, &account, &folder, uid).await?;
+            let mut message = read_cached_or_fetch(engine, &account, &folder, uid).await?;
             let (mine, ours) = {
                 let db = engine.db.lock().unwrap();
                 (store::self_addrs(&db, &account), store::all_self_addrs(&db))
             };
+            // Shaped like the thread read's, without the calendar text.
+            let invite = message
+                .invite
+                .take()
+                .or_else(|| {
+                    meron_core::calendar::invite_from_attachments(
+                        &parse::media_root(),
+                        &message.attachments,
+                    )
+                })
+                .map(|invite| {
+                    let recorded = store::invite_response(
+                        &engine.db.lock().unwrap(),
+                        &account,
+                        &invite.uid,
+                        invite.recurrence_id,
+                    )
+                    .ok()
+                    .flatten();
+                    meron_core::calendar::invite_json(&invite, &mine, recorded.as_ref())
+                });
             let outgoing =
                 store::is_outgoing(&mine, &folder, &message.from_addr, message.delivered);
             // The same reply rule the thread read ships with every message, so a
@@ -193,6 +214,7 @@ pub(crate) async fn dispatch(
             Ok(json!({
                 "outgoing": outgoing,
                 "reply": reply,
+                "invite": invite,
                 "message": serde_json::to_value(message)?
             }))
         }

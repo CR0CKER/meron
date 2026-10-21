@@ -101,6 +101,30 @@ export type Contact = {
   addr: string
 }
 
+export type InviteResponse = 'accepted' | 'tentative' | 'declined'
+
+export type Invite = {
+  /** Lowercase iTIP method: `request`, `cancel`, `reply`, `publish`, … */
+  method: string
+  uid: string
+  summary: string
+  location: string
+  description: string
+  /** Unix seconds. For an all-day event these are UTC midnights with `end`
+   * exclusive, so format them in UTC. */
+  start: number
+  end: number
+  all_day: boolean
+  recurring: boolean
+  cancelled: boolean
+  organizer: { name: string; addr: string }
+  attendees: { name: string; addr: string; partstat: string }[]
+  /** Whether Accept / Maybe / Decline apply: an open request from someone else. */
+  can_respond: boolean
+  /** The user's answer as far as this device knows; empty when none. */
+  response: InviteResponse | ''
+}
+
 export type Attachment = {
   filename: string
   mime: string
@@ -192,6 +216,9 @@ export type Message = {
   has_draft?: boolean
   has_attachments: boolean
   attachments?: Attachment[]
+  /** The calendar event this message carries, when it is an invitation (or an
+   * update, cancellation or reply to one). Read by meron-core/src/calendar.rs. */
+  invite?: Invite
   /** The recipients a reply to this message gets, decided by the core (see
    * meron-core/src/reply.rs) so desktop, mobile and the MCP tools all address a
    * reply the same way. Absent on thread cards, which carry no recipient

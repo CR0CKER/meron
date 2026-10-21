@@ -212,6 +212,7 @@ internal fun ThreadScreen(
     onComposeTo: (String) -> Unit,
     onCopyMessageText: (String, String) -> Unit,
     onRetryLoadMessages: () -> Unit,
+    onRespondToInvite: (MessageBody, String) -> Unit,
     onMessagesRead: (List<String>) -> Unit,
     onViewedToBottom: () -> Unit,
     snackbarHost: SnackbarHostState,
@@ -1025,6 +1026,7 @@ internal fun ThreadScreen(
                                         onComposeTo = onComposeTo,
                                         onOpenUrl = services::openUrl,
                                         onRetryLoad = onRetryLoadMessages,
+                                        onRespondToInvite = onRespondToInvite,
                                     )
                                 } else {
                                     MessageBubble(
@@ -1057,6 +1059,7 @@ internal fun ThreadScreen(
                                         onOpenMessage = { readerMessage = it },
                                         onOpenUrl = services::openUrl,
                                         onRetryLoad = onRetryLoadMessages,
+                                        onRespondToInvite = onRespondToInvite,
                                     )
                                 }
                             }

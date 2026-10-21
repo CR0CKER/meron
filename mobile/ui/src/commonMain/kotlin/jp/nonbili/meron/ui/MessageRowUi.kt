@@ -81,6 +81,7 @@ internal fun MessageRow(
     onComposeTo: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
+    onRespondToInvite: (MessageBody, String) -> Unit = { _, _ -> },
 ) {
     val shape = RoundedCornerShape(12.dp)
     val textColor = MaterialTheme.colorScheme.onSurface
@@ -164,6 +165,7 @@ internal fun MessageRow(
                     onOpenHtmlImage = onOpenHtmlImage,
                     onOpenUrl = onOpenUrl,
                     onRetryLoad = onRetryLoad,
+                    onRespondToInvite = { response -> onRespondToInvite(message, response) },
                 )
             }
         }

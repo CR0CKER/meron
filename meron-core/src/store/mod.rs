@@ -42,6 +42,7 @@ use crate::imap::MessageHeader;
 pub const DEFAULT_RSS_SYNC_INTERVAL_MINUTES: u64 = 60;
 
 mod accounts;
+mod calendar;
 mod contacts;
 mod folders;
 mod messages;
@@ -53,6 +54,7 @@ mod threads;
 mod updates;
 
 pub use accounts::*;
+pub use calendar::*;
 pub use contacts::*;
 pub use folders::*;
 pub use messages::*;

@@ -57,3 +57,35 @@ export function taskIsOverdue(dueAt: number, nowMillis = Date.now()): boolean {
   today.setHours(0, 0, 0, 0)
   return dueAt > 0 && dueAt * 1000 < today.getTime()
 }
+
+/** When a calendar event happens: its day (or days), and its times unless it
+ * lasts all day. All-day bounds are UTC midnights with an exclusive end. */
+export function formatEventRange(start: number, end: number, allDay: boolean): string {
+  if (!start) return ''
+  const from = new Date(start * 1000)
+  if (allDay) {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }
+    const last = new Date(Math.max(start, end - 86_400) * 1000)
+    return formatRange(new Intl.DateTimeFormat([], options), from, last)
+  }
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }
+  return formatRange(new Intl.DateTimeFormat([], options), from, new Date(Math.max(start, end) * 1000))
+}
+
+function formatRange(format: Intl.DateTimeFormat, from: Date, to: Date): string {
+  if (from.getTime() === to.getTime()) return format.format(from)
+  return format.formatRange ? format.formatRange(from, to) : `${format.format(from)} – ${format.format(to)}`
+}

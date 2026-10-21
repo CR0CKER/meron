@@ -35,6 +35,7 @@ class DateFormatTest {
                         DateStyle.Weekday -> "Tue"
                         DateStyle.MonthDay -> "Jun 9"
                         DateStyle.MonthDayYear -> "Dec 31, 2025"
+                        DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
                         DateStyle.FullTimestamp -> "Wed, Jun 10, 2026, 09:05"
                         DateStyle.IsoDate -> "2026-06-10"
                     }
@@ -60,6 +61,7 @@ class DateFormatTest {
                     DateStyle.Weekday -> "Tue"
                     DateStyle.MonthDay -> "Jun 9"
                     DateStyle.MonthDayYear -> "Dec 31, 2025"
+                    DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
                     DateStyle.FullTimestamp -> "Wed, Jun 10, 2026, 09:05"
                     DateStyle.IsoDate -> "2026-06-10"
                 }
@@ -72,6 +74,7 @@ class DateFormatTest {
             when (style) {
                 DateStyle.MonthDay -> "Jun 9"
                 DateStyle.MonthDayYear -> "Jun 9, 2025"
+                DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
                 else -> ""
             }
         }
@@ -121,5 +124,41 @@ class DateFormatTest {
         assertEquals(due, pickerMillisToTaskDue(1_780_963_200_000L))
         assertEquals("2024-02-29", formatTaskDueInput(pickerMillisToTaskDue(taskDueToPickerMillis(parseTaskDueInput("2024-02-29"))!!)))
         assertEquals(null, taskDueToPickerMillis(0))
+    }
+
+    @Test
+    fun eventRangeShowsOneDayOrTheSpanOfDays() {
+        val formatter = { millis: Long, style: DateStyle -> "${style.name}@${millis / 1000}" }
+        // Local dates are taken from the UTC day, whatever the device's zone.
+        val localDate = { year: Int, month: Int, day: Int -> (year * 10_000L + month * 100L + day) }
+        val christmasEve = 1_798_070_400L // 2026-12-24T00:00Z
+        assertEquals(
+            "WeekdayDate@20261224",
+            formatEventRange(christmasEve, christmasEve + 86_400, true, localDate = localDate, dateFormatter = formatter),
+        )
+        assertEquals(
+            "WeekdayDate@20261224 – WeekdayDate@20261225",
+            formatEventRange(christmasEve, christmasEve + 2 * 86_400, true, localDate = localDate, dateFormatter = formatter),
+        )
+        // 2024-02-29: a leap day survives the conversion.
+        assertEquals(
+            "WeekdayDate@20240229",
+            formatEventRange(1_709_164_800L, 1_709_251_200L, true, localDate = localDate, dateFormatter = formatter),
+        )
+    }
+
+    @Test
+    fun eventRangeKeepsOneDateForASameDayMeeting() {
+        val formatter = { millis: Long, style: DateStyle -> "${style.name}@${millis / 1000}" }
+        assertEquals(
+            "FullTimestamp@1000 – Time@4600",
+            formatEventRange(1_000, 4_600, false, sameLocalDate = { _, _ -> true }, dateFormatter = formatter),
+        )
+        assertEquals(
+            "FullTimestamp@1000 – FullTimestamp@90000",
+            formatEventRange(1_000, 90_000, false, sameLocalDate = { _, _ -> false }, dateFormatter = formatter),
+        )
+        assertEquals("FullTimestamp@1000", formatEventRange(1_000, 1_000, false, dateFormatter = formatter))
+        assertEquals("", formatEventRange(0, 0, false, dateFormatter = formatter))
     }
 }

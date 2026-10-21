@@ -59,6 +59,9 @@ object MobileCommand {
     const val StorageClearCache = "storage.clearCache"
     const val Sync = "mail.sync"
     const val Send = "mail.send"
+
+    // Answer a calendar invitation; the desktop sidecar serves the same name.
+    const val InviteRespond = "invite.respond"
     const val SaveDraft = "mail.saveDraft"
     const val DiscardDraft = "mail.discardDraft"
     const val Archive = "mail.archive"
@@ -1261,6 +1264,8 @@ class MobileMailCommandClient(
 
     suspend fun send(params: SendMailParams): String = core.invoke(MobileCommand.Send, params.toJson())
 
+    suspend fun respondToInvite(params: InviteRespondParams): String = core.invoke(MobileCommand.InviteRespond, params.toJson())
+
     suspend fun saveDraft(params: SaveDraftParams): String = core.invoke(MobileCommand.SaveDraft, params.toJson())
 
     suspend fun discardDraft(params: DiscardDraftParams): String = core.invoke(MobileCommand.DiscardDraft, params.toJson())
@@ -1661,6 +1666,19 @@ data class TaskUpdateParams(
             "notes" to notes?.jsonString(),
             "due_at" to dueAt?.toString(),
             "list_id" to listId?.jsonString(),
+        )
+}
+
+/** [message] is the thread message's `id`; [response] is `accepted`,
+ * `tentative` or `declined`. */
+data class InviteRespondParams(
+    val message: String,
+    val response: String,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "message" to message.jsonString(),
+            "response" to response.jsonString(),
         )
 }
 

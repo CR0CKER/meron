@@ -16,6 +16,7 @@ internal actual fun formatDate(
             DateStyle.Weekday -> "EEE"
             DateStyle.MonthDay -> "MMM d"
             DateStyle.MonthDayYear -> "MMM d, yyyy"
+            DateStyle.WeekdayDate -> "EEE, MMM d, yyyy"
             DateStyle.FullTimestamp -> "EEE, MMM d, yyyy, HH:mm"
             DateStyle.IsoDate -> "yyyy-MM-dd"
         }

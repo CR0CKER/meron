@@ -546,6 +546,9 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
     if version < 17 {
         migrate_v17(&tx)?;
     }
+    if version < 18 {
+        migrate_v18(&tx)?;
+    }
 
     tx.commit()?;
     Ok(())
@@ -948,6 +951,26 @@ fn migrate_v17(conn: &Connection) -> Result<()> {
         list("$.to"),
         list("$.cc"),
     ))?;
+    Ok(())
+}
+
+/// Calendar invitations the user answered from the card (migration v18), keyed
+/// by the event rather than the message so every copy of the invite — the
+/// original, an update, the one in another folder — shows the same answer.
+/// `sequence` is the revision answered: a later one asks again.
+fn migrate_v18(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS invite_responses (
+           account       TEXT NOT NULL,
+           uid           TEXT NOT NULL,     -- iCalendar UID
+           recurrence_id INTEGER NOT NULL DEFAULT 0,   -- 0 = the whole series
+           response      TEXT NOT NULL,     -- accepted | tentative | declined
+           sequence      INTEGER NOT NULL DEFAULT 0,
+           responded_at  INTEGER NOT NULL DEFAULT 0,
+           PRIMARY KEY (account, uid, recurrence_id)
+         );
+         PRAGMA user_version = 18;",
+    )?;
     Ok(())
 }
 

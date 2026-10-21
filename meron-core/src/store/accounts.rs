@@ -795,6 +795,10 @@ pub fn delete_account(conn: &Connection, id: &str) -> Result<()> {
         "DELETE FROM account_secrets WHERE account_id = ?1",
         params![id],
     )?;
+    tx.execute(
+        "DELETE FROM invite_responses WHERE account = ?1",
+        params![id],
+    )?;
     tx.commit()?;
     Ok(())
 }

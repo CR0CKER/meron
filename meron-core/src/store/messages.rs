@@ -1054,6 +1054,10 @@ pub fn get_cached_message(
         body,
         body_html,
         body_is_rendered: extra["body_is_rendered"].as_bool().unwrap_or(false),
+        invite: extra
+            .get("invite")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
         preview: String::new(),
         attachments,
     }))
@@ -1136,6 +1140,7 @@ pub fn save_cached_message(
         "body_html": message.body_html,
         "body_is_rendered": message.body_is_rendered,
         "attachments": attachments_json,
+        "invite": message.invite,
     })
     .to_string();
 

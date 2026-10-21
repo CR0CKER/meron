@@ -218,6 +218,7 @@ internal fun MessageBubble(
     onOpenMessage: (MessageBody) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
+    onRespondToInvite: (MessageBody, String) -> Unit = { _, _ -> },
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var addressesOpen by remember(message.id) { mutableStateOf(false) }
@@ -468,6 +469,7 @@ internal fun MessageBubble(
                 onOpenHtmlImage = onOpenHtmlImage,
                 onOpenUrl = onOpenUrl,
                 onRetryLoad = onRetryLoad,
+                onRespondToInvite = { response -> onRespondToInvite(message, response) },
                 imageColumns = if (htmlBody) 3 else visibleImageCount.coerceIn(1, 3),
                 onHtmlNaturalWidth =
                     if (hugsText) {
@@ -641,10 +643,11 @@ internal fun MessageActionsMenu(
 }
 
 /**
- * Everything below a message's header: the optional subject, the body (HTML or
- * plain), standalone attachments, and the send-status line. MessageBubble (chat)
- * and MessageRow (traditional) each wrap it in their own chrome, so the two
- * layouts differ only in the frame around this.
+ * Everything below a message's header: the optional subject, a calendar
+ * invitation's card, the body (HTML or plain), standalone attachments, and the
+ * send-status line. MessageBubble (chat) and MessageRow (traditional) each wrap
+ * it in their own chrome, so the two layouts differ only in the frame around
+ * this.
  */
 @Composable
 internal fun ColumnScope.MessageBodyContent(
@@ -671,6 +674,8 @@ internal fun ColumnScope.MessageBodyContent(
     onOpenHtmlImage: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
+    // Accept / Maybe / Decline on an invitation's card, with the response.
+    onRespondToInvite: (String) -> Unit = {},
     // HTML body only: the width a plain-text-like document needs (zero when it
     // should fill the bubble). Null where the caller doesn't size to the body.
     onHtmlNaturalWidth: ((Dp) -> Unit)? = null,
@@ -686,6 +691,15 @@ internal fun ColumnScope.MessageBodyContent(
             fontSize = 16.sp,
             lineHeight = 21.sp,
             fontWeight = FontWeight.SemiBold,
+        )
+    }
+    message.invite?.let { invite ->
+        InviteCard(
+            invite = invite,
+            outgoing = message.outgoing,
+            textColor = textColor,
+            onRespond = onRespondToInvite,
+            modifier = Modifier.padding(horizontal = chromeInset).padding(bottom = 6.dp),
         )
     }
     val htmlBody = usesHtmlBody(message, preferHtml, searchQuery)

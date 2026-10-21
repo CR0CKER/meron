@@ -441,6 +441,23 @@ pub async fn read_thread_page(
         if slot.media_missing > 0 {
             message["media_missing"] = json!(slot.media_missing);
         }
+        if let Some(cached) = cached.as_mut() {
+            if cached.invite.is_none() {
+                cached.invite =
+                    crate::calendar::invite_from_attachments(&media_root, &cached.attachments);
+            }
+            if let Some(invite) = &cached.invite {
+                let recorded = store::invite_response(
+                    &engine.db.lock().unwrap(),
+                    account,
+                    &invite.uid,
+                    invite.recurrence_id,
+                )
+                .ok()
+                .flatten();
+                message["invite"] = crate::calendar::invite_json(invite, &mine, recorded.as_ref());
+            }
+        }
         // Tells a body still downloading in the background from one that
         // could not be downloaded: only the second is worth a retry button.
         if cached.is_none() && filling.contains(&message_key(account, &slot.folder, header.uid)) {

@@ -241,7 +241,18 @@ pub(crate) fn send_mobile_message(data_dir: &str, params: &Value) -> Result<Valu
         &message_id,
     ))?;
     let sent_bytes = raw.len();
-    match crate::ffi::engine_block_on(crate::engine::append_to_sent(&engine, &account_id, &raw)) {
+    finish_mobile_sent(&engine, &account_id, &raw);
+    Ok(json!({ "ok": true, "sent_bytes": sent_bytes }))
+}
+
+/// File the Sent copy of a message that just went out, shared by every
+/// mobile send path.
+fn finish_mobile_sent(
+    engine: &std::sync::Arc<crate::engine::Engine>,
+    account_id: &str,
+    raw: &[u8],
+) {
+    match crate::ffi::engine_block_on(crate::engine::append_to_sent(engine, account_id, raw)) {
         // Announced either way. The reload the send itself runs covers the
         // mailbox and the open thread, but not the Kanban board's columns, so a
         // copy already cached still leaves counts there a message short. One
@@ -249,11 +260,11 @@ pub(crate) fn send_mobile_message(data_dir: &str, params: &Value) -> Result<Valu
         // it is waited for first.
         Ok(copy) => {
             if copy.worth_awaiting() {
-                watch_for_sent_copy(&engine, &account_id, copy);
+                watch_for_sent_copy(engine, account_id, copy);
             } else {
                 crate::ffi::emit_event(
                     "mail.sentCopyCached",
-                    crate::engine::sent_copy_cached_detail(&account_id),
+                    crate::engine::sent_copy_cached_detail(account_id),
                 );
             }
         }
@@ -265,7 +276,23 @@ pub(crate) fn send_mobile_message(data_dir: &str, params: &Value) -> Result<Valu
             );
         }
     }
-    Ok(json!({ "ok": true, "sent_bytes": sent_bytes }))
+}
+
+/// Answer a calendar invitation from its card: see [`crate::calendar::respond`].
+pub(crate) fn respond_mobile_invite(data_dir: &str, params: &Value) -> Result<Value, String> {
+    let message = req_str(params, "message")?;
+    let response = req_str(params, "response")?;
+    let response = crate::calendar::Response::parse(&response)
+        .ok_or_else(|| format!("unknown invitation response: {response}"))?;
+    let engine = crate::ffi::engine_for(data_dir)?;
+    let (account_id, raw) = crate::ffi::engine_block_on(crate::calendar::respond(
+        &engine,
+        &message,
+        response,
+        &std::path::PathBuf::from(data_dir).join("attachments"),
+    ))?;
+    finish_mobile_sent(&engine, &account_id, &raw);
+    Ok(json!({ "ok": true, "response": response.as_str() }))
 }
 
 pub(crate) fn save_mobile_draft(data_dir: &str, params: &Value) -> Result<Value, String> {

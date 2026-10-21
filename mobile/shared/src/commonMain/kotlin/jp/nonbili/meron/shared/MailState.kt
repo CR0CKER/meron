@@ -238,6 +238,9 @@ data class MessageBody(
     val reply: MessageReply? = null,
     // Files the core is restoring in the background; a decrease retries failed images.
     val mediaMissing: Int = 0,
+    // The calendar event when the message is an invitation (or an update,
+    // cancellation or reply to one).
+    val invite: MessageInvite? = null,
 )
 
 data class DraftAttachment(
@@ -287,6 +290,36 @@ data class MessageReply(
     val allCc: String = "",
     val allAddsRecipients: Boolean = false,
     val acceptsReplies: Boolean = true,
+)
+
+/** One attendee of a calendar invitation; [partstat] is the lowercase
+ * PARTSTAT (`needs-action`, `accepted`, `tentative`, `declined`, …). */
+data class InviteAttendee(
+    val name: String = "",
+    val addr: String = "",
+    val partstat: String = "",
+)
+
+/** The calendar event a message carries, as meron-core/src/calendar.rs
+ * describes it. [start]/[end] are epoch seconds; for an all-day event they are
+ * UTC midnights with [end] exclusive, so they are formatted in UTC. */
+data class MessageInvite(
+    val method: String = "",
+    val uid: String = "",
+    val summary: String = "",
+    val location: String = "",
+    val start: Long = 0,
+    val end: Long = 0,
+    val allDay: Boolean = false,
+    val recurring: Boolean = false,
+    val cancelled: Boolean = false,
+    val organizerName: String = "",
+    val organizerAddr: String = "",
+    val attendees: List<InviteAttendee> = emptyList(),
+    /** Whether Accept / Maybe / Decline apply: an open request from someone else. */
+    val canRespond: Boolean = false,
+    /** The user's answer (`accepted`, `tentative`, `declined`), empty when none. */
+    val response: String = "",
 )
 
 fun newDraftMessageId(accountId: String = ""): String {

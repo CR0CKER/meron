@@ -114,6 +114,7 @@ pub(crate) async fn dispatch(
         | "messages.threadHeaders" => messages::dispatch(engine, req, out).await,
 
         "send"
+        | "invite.respond"
         | "save_draft"
         | "discard_draft"
         | "messages.saveRaw"

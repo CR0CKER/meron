@@ -109,6 +109,7 @@ pub fn dispatch_protocol_request(req: &Request) -> Result<Value, String> {
         "mail.starredItems" => Ok(json!({ "items": [] })),
         "mail.allocateIdentity" => Ok(json!({ "message_id": "" })),
         "mail.send" => Ok(json!({ "ok": true })),
+        "invite.respond" => Ok(json!({ "ok": true })),
         "mail.saveDraft" => Ok(json!({ "ok": true })),
         "mail.discardDraft" => Ok(json!({ "ok": true, "deleted": 0, "permanent": true })),
         "mail.archive" => Ok(json!({ "ok": true, "moved": 0 })),
@@ -223,6 +224,7 @@ pub fn dispatch_mobile_protocol_request(req: &Request, data_dir: &str) -> Result
         }
         "mail.sync" | "messages.sync" => sync_mobile_mail(data_dir, &req.params),
         "mail.send" => send_mobile_message(data_dir, &req.params),
+        "invite.respond" => respond_mobile_invite(data_dir, &req.params),
         "mail.saveDraft" => save_mobile_draft(data_dir, &req.params),
         "mail.discardDraft" => discard_mobile_draft(data_dir, &req.params),
         "mail.archive" => archive_mobile_thread(data_dir, &req.params),

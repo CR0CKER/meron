@@ -3,6 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { downloadAttachment, openAttachment } from '../../states/mail'
 import { thread$ } from '../../states/thread'
 import type { Message } from '../../types'
+import { InviteCard } from './InviteCard'
 import { fileIconFor, formatFileSize, mediaSrc } from './messageHelpers'
 import { MessageBubbleBody } from './MessageBubbleBody'
 import { RetryWhenRestored } from './RetryWhenRestored'
@@ -10,9 +11,10 @@ import { VideoAttachment } from './VideoAttachment'
 import type { MessageView } from './useMessageView'
 import type { FrameSurface } from './frameTheme'
 
-// Everything below a message's header: image attachments, videos, the body and
-// the file attachment list. Blocked remote content is revealed from the
-// message's actions menu rather than a banner over every newsletter.
+// Everything below a message's header: image attachments, videos, a calendar
+// invitation's card, the body and the file attachment list. Blocked remote
+// content is revealed from the message's actions menu rather than a banner over
+// every newsletter.
 // Shared by both conversation layouts (see useMessageView).
 export function MessageContent({
   message,
@@ -114,6 +116,9 @@ export function MessageContent({
           ))}
         </div>
       )}
+
+      {/* A calendar invitation's event, with its RSVP buttons */}
+      {message.invite && <InviteCard message={message} invite={message.invite} />}
 
       <MessageBubbleBody
         message={message}

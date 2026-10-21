@@ -189,6 +189,10 @@ pub struct Message {
     pub body_is_rendered: bool,
     pub preview: String,
     pub attachments: Vec<Attachment>,
+    /// The calendar event a `text/calendar` part carries, when the message is
+    /// an invitation (or an update, cancellation or reply to one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invite: Option<crate::calendar::Invite>,
 }
 
 impl Message {
@@ -504,6 +508,7 @@ pub(crate) fn parse_message_unpruned(raw: &[u8], media: Option<&MediaCtx>) -> Me
         .iter()
         .any(|name| headers.get_first_value(name).is_some());
     let sources = body_sources(&mail);
+    let invite = calendar_invite(&mail);
 
     let mut attachments = Vec::new();
     let mut cid_keys: Vec<(String, String)> = Vec::new();
@@ -546,7 +551,39 @@ pub(crate) fn parse_message_unpruned(raw: &[u8], media: Option<&MediaCtx>) -> Me
         body_is_rendered,
         preview,
         attachments,
+        invite,
     }
+}
+
+/// The event of the message's calendar part. iMIP puts it in a `text/calendar`
+/// alternative (Outlook: that alone; Google: that plus an `application/ics`
+/// copy as a file), so look at every calendar leaf, and take one that names
+/// its iTIP method on the Content-Type first — that is the one the sender
+/// means to be acted on.
+fn calendar_invite(mail: &ParsedMail) -> Option<crate::calendar::Invite> {
+    let mut parts = Vec::new();
+    collect_calendar_parts(mail, &mut parts);
+    parts.sort_by_key(|part| !part.ctype.params.contains_key("method"));
+    parts
+        .into_iter()
+        .filter_map(|part| text_body(part))
+        .find_map(|ics| crate::calendar::parse_invite(&ics))
+}
+
+fn collect_calendar_parts<'a>(part: &'a ParsedMail<'a>, out: &mut Vec<&'a ParsedMail<'a>>) {
+    if !part.subparts.is_empty() {
+        for sub in &part.subparts {
+            collect_calendar_parts(sub, out);
+        }
+        return;
+    }
+    if is_calendar_mime(&part.ctype.mimetype) {
+        out.push(part);
+    }
+}
+
+pub(crate) fn is_calendar_mime(mime: &str) -> bool {
+    mime.eq_ignore_ascii_case("text/calendar") || mime.eq_ignore_ascii_case("application/ics")
 }
 
 /// Strip angle brackets / whitespace from a single Message-ID header value,

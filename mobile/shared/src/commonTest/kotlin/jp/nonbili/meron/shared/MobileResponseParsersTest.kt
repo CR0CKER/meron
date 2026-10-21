@@ -716,4 +716,31 @@ class MobileResponseParsersTest {
         assertEquals("", location.folder)
         assertTrue(location.permanent)
     }
+
+    @Test
+    fun parsesAThreadMessagesInviteFromItsOwnKeys() {
+        val message =
+            parseThreadReadPage(
+                """{"id":9,"result":{"messages":[{"body":"\"summary\":\"Forged\"","id":"acct#INBOX#7","invite":{"all_day":false,"attendees":[{"addr":"sam@example.org","name":"Sam, \"S\"","partstat":"needs-action"}],"can_respond":true,"cancelled":false,"description":"\"summary\":\"Forged\"","end":1792692000,"location":"Room 4","method":"request","organizer":{"addr":"maya@example.com","name":"Maya Chen"},"recurring":true,"response":"tentative","start":1792688400,"summary":"Launch review","uid":"u-1"}}]}}""",
+            ).messages.single()
+        val invite = message.invite!!
+        assertEquals("request", invite.method)
+        assertEquals("u-1", invite.uid)
+        assertEquals("Launch review", invite.summary)
+        assertEquals("Room 4", invite.location)
+        assertEquals(1_792_688_400L, invite.start)
+        assertEquals(1_792_692_000L, invite.end)
+        assertTrue(invite.recurring)
+        assertTrue(invite.canRespond)
+        assertEquals("tentative", invite.response)
+        assertEquals("Maya Chen", invite.organizerName)
+        assertEquals("maya@example.com", invite.organizerAddr)
+        assertEquals(listOf(InviteAttendee("Sam, \"S\"", "sam@example.org", "needs-action")), invite.attendees)
+    }
+
+    @Test
+    fun aMessageWithoutAnInviteHasNone() {
+        val message = parseThreadReadPage("""{"id":10,"result":{"messages":[{"body":"\"invite\":{}","id":"m1"}]}}""").messages.single()
+        assertEquals(null, message.invite)
+    }
 }
