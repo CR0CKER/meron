@@ -146,6 +146,18 @@ internal fun KanbanRouteContent(
                         .orEmpty(),
             )
         }
+        // A saved search column's query, edited in the same form.
+        var editingSearchColumn by remember { mutableStateOf<KanbanColumnSpec?>(null) }
+        editingSearchColumn?.let { column ->
+            SearchOptionsSheet(
+                state = state,
+                query = column.query,
+                onDismiss = { editingSearchColumn = null },
+                onSearch = { query -> editKanbanSearchColumn(column, query) },
+                contactsAccountId = column.accountId.takeUnless { it == UNIFIED_ACCOUNT_ID }.orEmpty(),
+                submitLabel = tr("buttons.save"),
+            )
+        }
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -513,7 +525,7 @@ internal fun KanbanRouteContent(
                         if (kanbanSearch.isNotBlank()) loadKanbanBoard(refresh = true)
                     },
                     onSaveSearchColumn = ::saveKanbanSearchColumn,
-                    onEditSearchColumn = ::editKanbanSearchColumn,
+                    onEditSearchColumn = { column -> editingSearchColumn = column },
                     onRequestColumnFolders = { column -> ensureAccountFolders(column.accountId) },
                     onSwitchColumnFolder = ::switchKanbanColumnFolder,
                     onAddColumn = { showKanbanColumnDialog = true },

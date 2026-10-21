@@ -83,6 +83,8 @@ internal fun SearchOptionsSheet(
     columnLabel: @Composable (KanbanColumnSpec) -> Pair<String, String> = { "" to "" },
     onSave: (String, KanbanColumnSpec) -> Unit = { _, _ -> },
     contactsAccountId: String = "",
+    /** The submit button's text; "Search" by default. */
+    submitLabel: String? = null,
 ) {
     var fields by remember { mutableStateOf<SearchFields?>(null) }
     var pickingColumn by remember { mutableStateOf(false) }
@@ -167,7 +169,7 @@ internal fun SearchOptionsSheet(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                Button(onClick = submit) { Text(tr("kanban.actions.search")) }
+                Button(onClick = submit) { Text(submitLabel ?: tr("kanban.actions.search")) }
             }
             if (pickingColumn) {
                 HorizontalDivider()

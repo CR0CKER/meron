@@ -61,6 +61,8 @@ export type SearchOptionsProps = {
   onDismiss?: () => void
   /** In the title bar: its colors, until the search box around it is focused. */
   compact?: boolean
+  /** The submit button's text; "Search" by default. */
+  submitLabel?: string
 }
 
 /**
@@ -70,7 +72,15 @@ export type SearchOptionsProps = {
  * writes the form back as query text — so typed operators and the form never
  * disagree.
  */
-export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, compact = false }: SearchOptionsProps) {
+export function SearchOptions({
+  query,
+  onSearch,
+  anchorRef,
+  board,
+  onDismiss,
+  compact = false,
+  submitLabel,
+}: SearchOptionsProps) {
   const { t } = useTranslation()
   const [fields, setFields] = useState<SearchFields | null>(null)
   const [scope, setScope] = useState('all')
@@ -196,14 +206,16 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
         anchor &&
         createPortal(
           // data-no-drag: in the title bar, a press inside the form must not move the window.
+          // Focusable, so a press between its fields keeps focus inside the box.
           <form
             data-search-options
             data-no-drag
+            tabIndex={-1}
             onSubmit={(event) => {
               event.preventDefault()
               void submit()
             }}
-            className="absolute top-full left-0 z-50 mt-1.5 flex w-full min-w-96 flex-col gap-2 rounded-2xl border border-border bg-chats p-4 shadow-xl shadow-black/10 dark:shadow-black/35"
+            className="absolute top-full left-0 z-50 mt-1.5 flex w-full min-w-96 flex-col gap-2 rounded-2xl border border-border bg-chats p-4 outline-none shadow-xl shadow-black/10 dark:shadow-black/35"
           >
             {board && (
               <Row label={t('search.searchIn')} menu>
@@ -254,7 +266,7 @@ export function SearchOptions({ query, onSearch, anchorRef, board, onDismiss, co
                 <span />
               )}
               <Button type="submit" size="sm">
-                {t('kanban.actions.search')}
+                {submitLabel ?? t('kanban.actions.search')}
               </Button>
             </div>
           </form>,

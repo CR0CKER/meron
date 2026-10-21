@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import { Loader2, Pause, Rss } from 'lucide-react'
+import { Loader2, Pause, Rss, Search } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { clsx } from '../../lib/utils'
@@ -122,6 +122,15 @@ export function KanbanColumnMinimized({
             title={t('settings.account.paused', { defaultValue: 'Paused' })}
           >
             <Pause size={7} className="fill-current" />
+          </span>
+        )}
+        {/* A saved search marks its avatar too, so it stands apart from the folder's plain column. */}
+        {!isPaused && column.query && (
+          <span
+            className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-white ring-2 ring-chats"
+            title={column.query}
+          >
+            <Search size={8} strokeWidth={3} />
           </span>
         )}
       </div>

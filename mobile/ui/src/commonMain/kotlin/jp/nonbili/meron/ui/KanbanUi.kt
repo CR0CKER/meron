@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -474,7 +475,8 @@ internal fun KanbanScreen(
     onMoveColumn: (KanbanColumnSpec, Int) -> Unit,
     onSearchColumn: (KanbanColumnSpec) -> Unit,
     onSaveSearchColumn: (KanbanColumnSpec, String) -> Unit,
-    onEditSearchColumn: (KanbanColumnSpec, String) -> Unit,
+    /** Opens a saved search column's query for editing. */
+    onEditSearchColumn: (KanbanColumnSpec) -> Unit,
     onRequestColumnFolders: (KanbanColumnSpec) -> Unit,
     onSwitchColumnFolder: (KanbanColumnSpec, String) -> Unit,
     onAddColumn: () -> Unit,
@@ -563,7 +565,7 @@ internal fun KanbanScreen(
                                 onMinimize = { minimizedColumns = minimizedColumns + key },
                                 onSearch = { onSearchColumn(column) },
                                 onSaveSearch = { query -> onSaveSearchColumn(column, query) },
-                                onEditSearch = { query -> onEditSearchColumn(column, query) },
+                                onEditSearch = { onEditSearchColumn(column) },
                                 // A saved search only collides with the same search on another folder.
                                 otherColumnFolderIds =
                                     boardColumns
@@ -670,7 +672,7 @@ internal fun KanbanColumn(
     onMinimize: () -> Unit,
     onSearch: () -> Unit,
     onSaveSearch: (String) -> Unit,
-    onEditSearch: (String) -> Unit,
+    onEditSearch: () -> Unit,
     otherColumnFolderIds: Set<String>,
     onRequestFolders: () -> Unit,
     onSwitchFolder: (String) -> Unit,
@@ -854,12 +856,11 @@ internal fun KanbanColumnHeader(
     onSearch: () -> Unit,
     shownSearch: String,
     onSaveSearch: (String) -> Unit,
-    onEditSearch: (String) -> Unit,
+    onEditSearch: () -> Unit,
     onRequestFolders: () -> Unit,
     onSwitchFolder: (String) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    var editingSearch by remember { mutableStateOf(false) }
     val savedSearch = column.query.isNotBlank()
     val account = accounts.firstOrNull { it.id == column.accountId }
     // A unified column is repointed by role — each account answers from its own
@@ -894,7 +895,7 @@ internal fun KanbanColumnHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Avatar(columnAvatarLabel(column, accounts), 26.dp, columnAvatarFallbackIcon(column, accounts))
+        KanbanColumnAvatar(column, accounts)
         Row(
             Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
@@ -912,9 +913,6 @@ internal fun KanbanColumnHeader(
                 enabled = canSwitchFolder,
                 takenFolderIds = otherColumnFolderIds,
             )
-            if (savedSearch) {
-                SavedSearchChip(column.query, onClick = { editingSearch = true }, modifier = Modifier.weight(1f, fill = false))
-            }
             if (unread > 0) {
                 KanbanUnreadBadge(unread)
             }
@@ -955,7 +953,7 @@ internal fun KanbanColumnHeader(
                         Icon(Icons.Filled.Edit, contentDescription = null)
                     }, onClick = {
                         menuOpen = false
-                        editingSearch = true
+                        onEditSearch()
                     })
                 } else {
                     DropdownMenuItem(text = { Text(tr("kanban.actions.searchColumn")) }, leadingIcon = {
@@ -1016,20 +1014,44 @@ internal fun KanbanColumnHeader(
             }
         }
     }
+    if (savedSearch) {
+        // Its own row under the header: the query is what tells saved searches of
+        // one folder apart, so it gets the column's width instead of squeezing
+        // the folder name.
+        SavedSearchChip(column.query, onClick = onEditSearch, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp))
+    }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    if (editingSearch) {
-        EditSavedSearchDialog(
-            query = column.query,
-            onSave = { query ->
-                editingSearch = false
-                onEditSearch(query)
-            },
-            onDismiss = { editingSearch = false },
-        )
+}
+
+// A column's account avatar. A saved search marks it too, so it stands apart
+// from the folder's plain column.
+@Composable
+private fun KanbanColumnAvatar(
+    column: KanbanColumnSpec,
+    accounts: List<AccountSummary>,
+) {
+    Box {
+        Avatar(columnAvatarLabel(column, accounts), 26.dp, columnAvatarFallbackIcon(column, accounts))
+        if (column.query.isNotBlank()) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 4.dp, y = 4.dp)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(9.dp))
+            }
+        }
     }
 }
 
-// A saved search column's query beside its folder name; tapping it edits it.
+// A saved search column's query under its folder name; tapping it edits it.
 @Composable
 private fun SavedSearchChip(
     query: String,
@@ -1055,36 +1077,6 @@ private fun SavedSearchChip(
 }
 
 @Composable
-private fun EditSavedSearchDialog(
-    query: String,
-    onSave: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var draft by remember { mutableStateOf(query) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(tr("kanban.actions.editSearch")) },
-        text = {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) onSave(draft) }),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(draft) }, enabled = draft.isNotBlank()) { Text(tr("buttons.save")) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(tr("buttons.cancel")) }
-        },
-    )
-}
-
-@Composable
 internal fun KanbanMinimizedColumn(
     column: KanbanColumnSpec,
     accounts: List<AccountSummary>,
@@ -1107,7 +1099,7 @@ internal fun KanbanMinimizedColumn(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Avatar(columnAvatarLabel(column, accounts), 26.dp, columnAvatarFallbackIcon(column, accounts))
+            KanbanColumnAvatar(column, accounts)
             val title = columnTitle(column, accounts, foldersByAccount)
             CollapsedColumnTitle(if (column.query.isBlank()) title else "$title · ${column.query}")
             if (unread > 0) {

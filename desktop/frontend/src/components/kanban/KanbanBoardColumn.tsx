@@ -65,6 +65,7 @@ import { FolderSwitcher } from '../menu/FolderSwitcher'
 import { KanbanThreadCard } from './KanbanThreadCard'
 import { KanbanColumnMinimized } from './KanbanColumnMinimized'
 import { BulkActionBar } from '../threads/BulkActionBar'
+import { SearchOptions } from '../search/SearchOptions'
 import { boardWallpaper } from '../../lib/wallpapers'
 
 // A board column is both a dnd-kit sortable item and a drop target; this bundles
@@ -424,6 +425,15 @@ function KanbanColumnContent({
                 <Pause size={7} className="fill-current" />
               </span>
             )}
+            {/* A saved search marks its avatar too, so it stands apart from the folder's plain column. */}
+            {!isPaused && column.query && (
+              <span
+                className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-white ring-2 ring-chats"
+                title={column.query}
+              >
+                <Search size={8} strokeWidth={3} />
+              </span>
+            )}
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <h3 className={clsx('flex min-w-0 text-xs font-bold', isPaused ? 'text-secondary' : 'text-primary')}>
@@ -456,15 +466,6 @@ function KanbanColumnContent({
                 />
               )}
             </h3>
-            {savedSearch && (
-              <SavedSearchQuery
-                query={column.query ?? ''}
-                editing={editingQuery}
-                onStartEdit={startEditSearch}
-                onCommit={commitEditSearch}
-                onCancel={() => setEditingQuery(false)}
-              />
-            )}
             {(((searchActive || savedSearch) && loading) || syncing) && (
               <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
             )}
@@ -527,6 +528,20 @@ function KanbanColumnContent({
               triggerClassName="h-7 w-7"
             />
           </div>
+        </div>
+      )}
+      {savedSearch && (
+        // Its own row under the header: the query is what tells saved searches of
+        // one folder apart, so it gets the column's width instead of squeezing
+        // the folder name. Positioned for the editor's options form.
+        <div className="relative flex shrink-0 px-3 pt-2 pb-1">
+          <SavedSearchQuery
+            query={column.query ?? ''}
+            editing={editingQuery}
+            onStartEdit={startEditSearch}
+            onCommit={commitEditSearch}
+            onCancel={() => setEditingQuery(false)}
+          />
         </div>
       )}
       {headerContextMenu}
@@ -649,11 +664,14 @@ function SavedSearchQuery({
 }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(query)
-  const cancelled = useRef(false)
+  // Cancelled, or committed from the options form: leaving the editor then commits nothing.
+  const settled = useRef(false)
+  const editorRef = useRef<HTMLSpanElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     if (!editing) return
     setDraft(query)
-    cancelled.current = false
+    settled.current = false
   }, [editing, query])
   const chipClass =
     'flex min-w-0 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-accent'
@@ -661,9 +679,24 @@ function SavedSearchQuery({
 
   if (editing) {
     return (
-      <span className={clsx(chipClass, 'flex-1')} onPointerDown={keepEvent} onClick={keepEvent} title="">
+      // Not positioned, so the options form lays out against its row, as wide as
+      // the column; it still sits inside the editor, so focus moving into it
+      // doesn't count as leaving.
+      <span
+        ref={editorRef}
+        className={clsx(chipClass, 'flex-1')}
+        onPointerDown={keepEvent}
+        onClick={keepEvent}
+        onKeyDown={keepEvent}
+        onBlur={(event) => {
+          if (settled.current || editorRef.current?.contains(event.relatedTarget as Node | null)) return
+          onCommit(draft)
+        }}
+        title=""
+      >
         <Search size={10} className="shrink-0" />
         <input
+          ref={inputRef}
           autoFocus
           value={draft}
           aria-label={t('kanban.actions.editSearch')}
@@ -675,14 +708,21 @@ function SavedSearchQuery({
             if (event.nativeEvent.isComposing || event.keyCode === 229) return
             if (event.key === 'Enter') event.currentTarget.blur()
             if (event.key === 'Escape') {
-              cancelled.current = true
+              settled.current = true
               onCancel()
             }
           }}
-          onBlur={() => {
-            if (!cancelled.current) onCommit(draft)
-          }}
           className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[0.625rem] font-semibold text-primary outline-none"
+        />
+        <SearchOptions
+          query={draft}
+          anchorRef={editorRef}
+          onSearch={(next) => {
+            settled.current = true
+            onCommit(next)
+          }}
+          onDismiss={() => inputRef.current?.focus()}
+          submitLabel={t('buttons.save')}
         />
       </span>
     )
