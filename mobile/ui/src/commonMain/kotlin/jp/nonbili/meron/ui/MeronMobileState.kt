@@ -341,7 +341,25 @@ internal class MeronMobileState(
      * the save lock, where the reply bar had already moved on and could not
      * carry the id across. Consumed by that send when it takes the lock. */
     var quickReplySendDraftHandover: Pair<String, String>? = null
-    var status by mutableStateOf("")
+    private var statusMessage by mutableStateOf("")
+    internal var statusIsError by mutableStateOf(false)
+        private set
+    var status: String
+        get() = statusMessage
+        set(value) {
+            statusIsError = false
+            statusMessage = value
+        }
+
+    internal fun showTransferFailure(
+        key: String,
+        error: Throwable,
+    ) {
+        Log.w("Mail", "Mail transfer failed", error)
+        status = mailTransferError(error, trs(key)) { template, fields -> trs(template, fields) }
+        statusIsError = true
+    }
+
     var syncing by mutableStateOf(false)
     var showUnreadBadges by mutableStateOf(loadAppBoolean(prefs, SHOW_UNREAD_BADGES_PREF, true))
     var showUnifiedInboxNav by mutableStateOf(loadAppBoolean(prefs, SHOW_UNIFIED_INBOX_PREF, true))

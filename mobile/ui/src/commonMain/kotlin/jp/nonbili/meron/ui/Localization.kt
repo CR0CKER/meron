@@ -158,6 +158,6 @@ private fun replacePlaceholders(
     value: String,
     args: Map<String, Any?>,
 ): String =
-    Regex("""\{([A-Za-z][A-Za-z0-9_]*)\}""").replace(value) { match ->
+    Regex("""\{([A-Za-z][A-Za-z0-9_]*)(?:\s*,\s*number)?\}""").replace(value) { match ->
         args[match.groupValues[1]]?.toString().orEmpty()
     }

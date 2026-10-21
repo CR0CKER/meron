@@ -811,9 +811,14 @@ private fun MeronMobileScreenContent(
             }
         }
 
-        LaunchedEffect(status) {
+        LaunchedEffect(status, statusIsError) {
             if (status.isNotBlank()) {
-                snackbarHost.showSnackbar(status)
+                snackbarHost.showSnackbar(
+                    message = status,
+                    withDismissAction = statusIsError,
+                    duration = if (statusIsError) SnackbarDuration.Indefinite else SnackbarDuration.Short,
+                )
+                if (statusIsError) status = ""
             }
         }
 

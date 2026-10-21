@@ -98,6 +98,10 @@ class KanbanColumnLoadOrderTest {
                         ?.id,
                 )
                 assertEquals(thread.id, state.coreThreads.single().id)
+                waitUntil { state.statusIsError }
+                assertEquals("Action rejected", state.status)
+                state.status = "Move complete"
+                assertFalse(state.statusIsError)
             } finally {
                 childScope.cancel()
             }

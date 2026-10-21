@@ -442,16 +442,19 @@ internal fun MeronMobileState.syncCoreThreads(
                 mailListScrollToTopRequest += 1
             }
             val newCount = if (!wasInitialLoad && syncFirst) parsedThreads.count { it.id !in existingIds } else 0
-            status = successStatus
-                ?: if (result.searchIncomplete) {
-                    // The server half of the search failed; the list is only what
-                    // this device has cached, so older matches may be missing.
-                    trs("threads.searchServerUnavailable")
-                } else if (newCount > 0) {
-                    "$newCount new message(s)"
-                } else {
-                    ""
-                }
+            // Recovery and background reads must leave a transfer failure visible.
+            if (!statusIsError) {
+                status = successStatus
+                    ?: if (result.searchIncomplete) {
+                        // The server half of the search failed; the list is only what
+                        // this device has cached, so older matches may be missing.
+                        trs("threads.searchServerUnavailable")
+                    } else if (newCount > 0) {
+                        "$newCount new message(s)"
+                    } else {
+                        ""
+                    }
+            }
             Log.i(
                 "MailLoad",
                 "sync success account=$accountId folder=$folder threads=${parsedThreads.size} cursor=${mailboxCursor.isNotBlank()} accountCursors=${mailboxAccountCursors.size} initialThreadsLoaded=$initialThreadsLoaded syncing=$syncing",

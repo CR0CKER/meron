@@ -140,7 +140,7 @@ internal fun MeronMobileState.moveThreadToFolder(
             kanbanColumns = kanbanBefore.mapValues { (_, state) -> state.copy(threads = removal.filter(state.threads)) }
             selectedCoreThread = selectedBefore
             messages = messagesBefore
-            status = trsError("mail.toast.moveFailed", it)
+            showTransferFailure("mail.toast.moveFailed", it)
         }
     }
 }
@@ -178,7 +178,7 @@ internal fun MeronMobileState.copyThreadToFolder(
         }.onSuccess {
             status = trs("mobile.status.copyComplete")
         }.onFailure {
-            status = trsError("mail.toast.copyFailed", it)
+            showTransferFailure("mail.toast.copyFailed", it)
         }
     }
 }
@@ -242,7 +242,7 @@ internal fun MeronMobileState.createFolderAndMoveThread(
         }.onFailure {
             removal.rollback()
             reloadFailedMoveSource(thread)
-            status = trsError("mobile.status.createFolderFailed", it)
+            showTransferFailure("mobile.status.createFolderFailed", it)
         }
     }
 }
@@ -284,7 +284,7 @@ internal fun MeronMobileState.moveThreadToColumn(
             }.onFailure {
                 removal.rollback()
                 reloadFailedMoveSource(thread)
-                status = trsError("mail.toast.moveFailed", it)
+                showTransferFailure("mail.toast.moveFailed", it)
             }
         }
         return
@@ -312,7 +312,7 @@ internal fun MeronMobileState.moveThreadToColumn(
         }.onFailure {
             removal.rollback()
             reloadFailedMoveSource(thread)
-            status = trsError("mail.toast.moveFailed", it)
+            showTransferFailure("mail.toast.moveFailed", it)
         }
     }
 }
