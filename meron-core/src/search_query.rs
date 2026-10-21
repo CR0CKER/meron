@@ -10,6 +10,11 @@
 //! `from:`, `to:` and `subject:` take alternatives the Gmail way — any of them
 //! matches: `from:{a b}`, `from:(a OR b)`, `from:a,b`, or `from:a OR from:b`.
 //! `OR` between other terms, negation and general grouping are not supported.
+//!
+//! A bare uppercase `AND`, as in Gmail, joins queries that must all match —
+//! how a saved search is narrowed by another. Each side is read on its own, so
+//! its free text stays its own substring and its dates and read state narrow
+//! the other side's rather than replacing them.
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -20,17 +25,20 @@ pub type AnyOf = Vec<String>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SearchQuery {
-    /// Free text left after operators are taken out, as one substring. Empty
-    /// when the query is operators only.
-    pub text: String,
+    /// Free text left after operators are taken out, one substring per side
+    /// of an `AND`; each must match. Empty when the query is operators only.
+    pub text: Vec<String>,
     /// `from:` terms, matched against the sender's name or address.
     pub from: Vec<AnyOf>,
     /// `to:` terms, matched against To or Cc.
     pub to: Vec<AnyOf>,
     /// `subject:` terms.
     pub subject: Vec<AnyOf>,
-    /// `is:unread` (`Some(false)`) / `is:read` (`Some(true)`).
-    pub seen: Option<bool>,
+    /// `is:read`. Within a side the last read-state term wins; across sides
+    /// both may be set, which nothing matches.
+    pub read: bool,
+    /// `is:unread`.
+    pub unread: bool,
     /// `is:starred`.
     pub starred: bool,
     /// `after:` — sent on or after this day.
@@ -43,24 +51,9 @@ impl SearchQuery {
     pub fn parse(query: &str) -> Self {
         let query = query.trim();
         let mut parsed = SearchQuery::default();
-        let mut text = Vec::new();
-        let mut taken = false;
-        for clause in clauses(query) {
-            match clause.operator {
-                Some(operator) => {
-                    parsed.take(operator);
-                    taken = true;
-                }
-                None => text.push(clause.raw),
-            }
+        for side in sides(clauses(query)) {
+            parsed.narrow(query, side);
         }
-        // A query with no operators keeps its exact spacing, so plain search
-        // behaves as it always did.
-        parsed.text = if taken {
-            text.join(" ")
-        } else {
-            query.to_string()
-        };
         parsed
     }
 
@@ -72,23 +65,72 @@ impl SearchQuery {
         !self.from.is_empty()
             || !self.to.is_empty()
             || !self.subject.is_empty()
-            || self.seen.is_some()
+            || self.read
+            || self.unread
             || self.starred
             || self.after.is_some()
             || self.before.is_some()
     }
 
-    fn take(&mut self, operator: Operator) {
-        match operator {
-            Operator::From(value) => self.from.push(value),
-            Operator::To(value) => self.to.push(value),
-            Operator::Subject(value) => self.subject.push(value),
-            Operator::Seen(seen) => self.seen = Some(seen),
-            Operator::Starred => self.starred = true,
-            Operator::After(date) => self.after = Some(date),
-            Operator::Before(date) => self.before = Some(date),
+    /// Add one side of an `AND` of `query`: everything both sides ask for
+    /// must hold.
+    fn narrow(&mut self, query: &str, side: Vec<Clause<'_>>) {
+        let (Some(first), Some(last)) = (side.first(), side.last()) else {
+            return;
+        };
+        // A side with no operators keeps its exact spacing, so plain search
+        // behaves as it always did.
+        let plain = side.iter().all(|clause| clause.operator.is_none());
+        let whole = span(query, first.raw, last.raw);
+        let mut text = Vec::new();
+        let mut seen = None;
+        for clause in side {
+            match clause.operator {
+                Some(Operator::From(value)) => self.from.push(value),
+                Some(Operator::To(value)) => self.to.push(value),
+                Some(Operator::Subject(value)) => self.subject.push(value),
+                Some(Operator::Seen(value)) => seen = Some(value),
+                Some(Operator::Starred) => self.starred = true,
+                Some(Operator::After(date)) => self.after = self.after.max(Some(date)),
+                Some(Operator::Before(date)) => {
+                    self.before = Some(self.before.map_or(date, |before| before.min(date)))
+                }
+                None => text.push(clause.raw),
+            }
+        }
+        let text = if plain {
+            whole.to_string()
+        } else {
+            text.join(" ")
+        };
+        if !text.is_empty() {
+            self.text.push(text);
+        }
+        match seen {
+            Some(true) => self.read = true,
+            Some(false) => self.unread = true,
+            None => {}
         }
     }
+}
+
+/// A bare `AND`, joining two sides of a query. Gmail's is uppercase, as `OR`.
+fn is_and(clause: &Clause<'_>) -> bool {
+    clause.operator.is_none() && clause.raw == "AND"
+}
+
+/// The clauses of each side of a bare `AND`; an empty side is dropped.
+fn sides(clauses: Vec<Clause<'_>>) -> Vec<Vec<Clause<'_>>> {
+    let mut sides = vec![Vec::new()];
+    for clause in clauses {
+        if is_and(&clause) {
+            sides.push(Vec::new());
+        } else if let Some(side) = sides.last_mut() {
+            side.push(clause);
+        }
+    }
+    sides.retain(|side| !side.is_empty());
+    sides
 }
 
 /// One recognised `key:value` term.
@@ -325,17 +367,21 @@ impl SearchFields {
         let mut fields = SearchFields::default();
         let mut words = Vec::new();
         let mut taken = false;
+        // The fields hold the first side of an `AND`; the rest stays verbatim
+        // in the words, where its read state keeps narrowing the fields'.
+        let mut head = clauses(query);
+        let tail = head.iter().position(is_and).map(|at| {
+            let rest = head.split_off(at);
+            span(query, rest[0].raw, rest[rest.len() - 1].raw)
+        });
         // The last read-state term decides, as in `SearchQuery`. Only that one
         // survives: `is:unread` in its checkbox, `is:read` in the words, so the
         // rebuilt query can't put them back in an order that flips it.
-        let seen = clauses(query)
-            .into_iter()
-            .rev()
-            .find_map(|clause| match clause.operator {
-                Some(Operator::Seen(seen)) => Some(seen),
-                _ => None,
-            });
-        for clause in clauses(query) {
+        let seen = head.iter().rev().find_map(|clause| match clause.operator {
+            Some(Operator::Seen(seen)) => Some(seen),
+            _ => None,
+        });
+        for clause in head {
             let slot = match clause.operator {
                 Some(Operator::From(any)) => fill(&mut fields.from, field_text(&any)),
                 Some(Operator::To(any)) => fill(&mut fields.to, field_text(&any)),
@@ -359,6 +405,7 @@ impl SearchFields {
                 words.push(clause.raw);
             }
         }
+        words.extend(tail);
         // As in `SearchQuery::parse`, a plain query keeps its exact spacing.
         fields.words = if taken {
             words.join(" ")
@@ -370,7 +417,8 @@ impl SearchFields {
 
     /// The query text for these fields: operators, then the words, then
     /// `is:unread` — last, so the checkbox wins over an `is:read` kept in the
-    /// words, as the last read-state term is the one that counts.
+    /// words, as the last read-state term is the one that counts. Last on the
+    /// first side, that is: words from an `AND` on follow it.
     pub fn to_query(&self) -> String {
         let mut terms = Vec::new();
         for (key, value) in [
@@ -404,11 +452,19 @@ impl SearchFields {
             }
         }
         let words = self.words.trim();
+        let (words, tail) = match clauses(words).iter().find(|clause| is_and(clause)) {
+            Some(and) => words.split_at(and.raw.as_ptr() as usize - words.as_ptr() as usize),
+            None => (words, ""),
+        };
+        let words = words.trim();
         if !words.is_empty() {
             terms.push(words.to_string());
         }
         if self.unread {
             terms.push("is:unread".to_string());
+        }
+        if !tail.is_empty() {
+            terms.push(tail.to_string());
         }
         terms.join(" ")
     }
@@ -483,7 +539,10 @@ pub fn local_midnight(date: NaiveDate) -> i64 {
 
 /// Split on whitespace, except inside a double-quoted span or a group opened
 /// right after a key's colon, so `from:"Ann Lee"` and `from:{a b}` each stay
-/// one term. An unclosed quote or group runs to the end.
+/// one term. An unclosed quote or group runs to the end, or to a bare `AND`:
+/// the query joined on there is not part of its value. A group also ends at a
+/// bare `AND`, which is never one of its alternatives, and a newline ends any
+/// term, so queries joined on separate lines can't run into each other.
 fn terms(query: &str) -> impl Iterator<Item = &str> {
     let mut rest = query;
     std::iter::from_fn(move || {
@@ -491,35 +550,84 @@ fn terms(query: &str) -> impl Iterator<Item = &str> {
         if rest.is_empty() {
             return None;
         }
-        let mut quoted = false;
-        let mut close = None;
-        let mut prev = ' ';
-        let end = rest
-            .char_indices()
-            .find(|&(_, c)| {
-                let after = std::mem::replace(&mut prev, c);
-                if c == '"' {
-                    quoted = !quoted;
-                } else if !quoted {
-                    match close {
-                        Some(end) if c == end => close = None,
-                        None if after == ':' => {
-                            close = match c {
-                                '{' => Some('}'),
-                                '(' => Some(')'),
-                                _ => None,
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                c.is_whitespace() && !quoted && close.is_none()
-            })
-            .map_or(rest.len(), |(i, _)| i);
+        let (end, quoted, close) = scan_term(rest);
+        // Still open, at the end or a newline.
+        let end = if quoted || close.is_some() {
+            before_bare_and(&rest[..end]).unwrap_or(end)
+        } else {
+            end
+        };
         let (term, tail) = rest.split_at(end);
         rest = tail;
         Some(term)
     })
+}
+
+/// Read a term from the start of `text`, as [`terms`] does: where it ends, and
+/// whether a quote and which group's closer are still open there.
+fn scan_term(text: &str) -> (usize, bool, Option<char>) {
+    let mut quoted = false;
+    let mut close = None;
+    let mut prev = ' ';
+    let end = text
+        .char_indices()
+        .find(|&(i, c)| {
+            if c == '\n'
+                || (c.is_whitespace()
+                    && close.is_some()
+                    && !quoted
+                    && before_bare_and(&text[i..]) == Some(0))
+            {
+                return true;
+            }
+            let after = std::mem::replace(&mut prev, c);
+            if c == '"' {
+                quoted = !quoted;
+            } else if !quoted {
+                match close {
+                    Some(end) if c == end => close = None,
+                    None if after == ':' => {
+                        close = match c {
+                            '{' => Some('}'),
+                            '(' => Some(')'),
+                            _ => None,
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            c.is_whitespace() && !quoted && close.is_none()
+        })
+        .map_or(text.len(), |(i, _)| i);
+    (end, quoted, close)
+}
+
+/// `query`'s terms, each with the quote and group it leaves open closed, for a
+/// server that reads the query itself: text joined on after it then can't fall
+/// inside.
+pub(crate) fn close_open_terms(query: &str) -> String {
+    terms(query)
+        .map(|term| {
+            let (_, quoted, close) = scan_term(term);
+            let mut term = term.to_string();
+            if quoted {
+                term.push('"');
+            }
+            term.extend(close);
+            term
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The end of `text` before its first bare `AND` word, if it has one.
+fn before_bare_and(text: &str) -> Option<usize> {
+    text.match_indices("AND")
+        .find(|&(i, _)| {
+            text[..i].ends_with(char::is_whitespace)
+                && text[i + 3..].chars().next().is_none_or(char::is_whitespace)
+        })
+        .map(|(i, _)| text[..i].trim_end().len())
 }
 
 fn unquote(value: &str) -> &str {
@@ -541,7 +649,7 @@ mod tests {
     #[test]
     fn plain_query_is_unchanged_free_text() {
         let q = SearchQuery::parse("  quarterly  report ");
-        assert_eq!(q.text, "quarterly  report");
+        assert_eq!(q.text, ["quarterly  report"]);
         assert!(!q.has_operators());
     }
 
@@ -550,8 +658,8 @@ mod tests {
         let q = SearchQuery::parse("from:a@b.c to:d@e.f budget is:unread");
         assert_eq!(q.from, [["a@b.c"]]);
         assert_eq!(q.to, [["d@e.f"]]);
-        assert_eq!(q.text, "budget");
-        assert_eq!(q.seen, Some(false));
+        assert_eq!(q.text, ["budget"]);
+        assert!(q.unread && !q.read);
     }
 
     #[test]
@@ -559,14 +667,14 @@ mod tests {
         let q = SearchQuery::parse(r#"From:"Ann Lee" subject:"Q3 plan" notes"#);
         assert_eq!(q.from, [["Ann Lee"]]);
         assert_eq!(q.subject, [["Q3 plan"]]);
-        assert_eq!(q.text, "notes");
+        assert_eq!(q.text, ["notes"]);
     }
 
     #[test]
     fn unknown_or_empty_operators_stay_text() {
         let q = SearchQuery::parse("re:foo https://x.y from: is:muted after:soon");
         assert!(!q.has_operators());
-        assert_eq!(q.text, "re:foo https://x.y from: is:muted after:soon");
+        assert_eq!(q.text, ["re:foo https://x.y from: is:muted after:soon"]);
     }
 
     #[test]
@@ -589,12 +697,18 @@ mod tests {
         // `OR` that can't merge stays a word: lowercase, across keys, or
         // between words.
         let q = SearchQuery::parse("from:a or from:b");
-        assert_eq!((q.from.len(), q.text.as_str()), (2, "or"));
+        assert_eq!(
+            (q.from.len(), q.text.as_slice()),
+            (2, &["or".to_string()][..])
+        );
         let q = SearchQuery::parse("from:a OR to:b");
-        assert_eq!((q.from.len(), q.to.len(), q.text.as_str()), (1, 1, "OR"));
-        assert_eq!(SearchQuery::parse("cats OR dogs").text, "cats OR dogs");
+        assert_eq!(
+            (q.from.len(), q.to.len(), q.text.as_slice()),
+            (1, 1, &["OR".to_string()][..])
+        );
+        assert_eq!(SearchQuery::parse("cats OR dogs").text, ["cats OR dogs"]);
         // A group opens only right after a key's colon; an empty one is text.
-        assert_eq!(SearchQuery::parse("(a b) from:{}").text, "(a b) from:{}");
+        assert_eq!(SearchQuery::parse("(a b) from:{}").text, ["(a b) from:{}"]);
         assert_eq!(any("subject:x from:{a b"), [["a", "b"]]);
     }
 
@@ -650,11 +764,102 @@ mod tests {
     fn flags_and_dates() {
         let q = SearchQuery::parse("is:starred is:read after:2026/01/02 before:2026-02-03");
         assert!(q.starred);
-        assert_eq!(q.seen, Some(true));
+        assert!(q.read && !q.unread);
         assert_eq!(q.after, NaiveDate::from_ymd_opt(2026, 1, 2));
         assert_eq!(q.before, NaiveDate::from_ymd_opt(2026, 2, 3));
         assert!(q.text.is_empty());
         assert!(!q.is_empty());
+    }
+
+    #[test]
+    fn and_joins_queries_that_must_all_match() {
+        let q = SearchQuery::parse("invoice  due AND paid");
+        assert_eq!(q.text, ["invoice  due", "paid"]);
+        let q = SearchQuery::parse("from:boss budget AND from:ann notes");
+        assert_eq!(q.from, [["boss"], ["ann"]]);
+        assert_eq!(q.text, ["budget", "notes"]);
+        // Each side's dates and read state narrow the other's.
+        let q = SearchQuery::parse(
+            "after:2026/10/01 before:2026/12/01 AND after:2026/01/01 before:2026/11/01",
+        );
+        assert_eq!(q.after, NaiveDate::from_ymd_opt(2026, 10, 1));
+        assert_eq!(q.before, NaiveDate::from_ymd_opt(2026, 11, 1));
+        let q = SearchQuery::parse("is:unread AND is:read");
+        assert!(q.read && q.unread);
+        // Within a side the last read state still wins.
+        let q = SearchQuery::parse("is:unread is:read AND x");
+        assert!(q.read && !q.unread);
+        // Lowercase or quoted `and` is a word; an empty side is nothing.
+        assert_eq!(
+            SearchQuery::parse("salt and pepper").text,
+            ["salt and pepper"]
+        );
+        assert_eq!(
+            SearchQuery::parse(r#"subject:"Q AND A""#).subject,
+            [["Q AND A"]]
+        );
+        assert_eq!(SearchQuery::parse("AND budget AND").text, ["budget"]);
+        // An unclosed group or quote ends at the `AND`, not swallowing the rest.
+        let q = SearchQuery::parse("from:{boss ann AND budget");
+        assert_eq!(q.from, [["boss", "ann"]]);
+        assert_eq!(q.text, ["budget"]);
+        let q = SearchQuery::parse(r#"subject:"Q3 plan AND budget"#);
+        assert_eq!(q.subject, [["Q3 plan"]]);
+        assert_eq!(q.text, ["budget"]);
+        // A closed one keeps its `AND`.
+        // A group never takes in a bare `AND`, closed or not.
+        let q = SearchQuery::parse("from:{boss ann AND from:{c d}");
+        assert_eq!(q.from, [vec!["boss", "ann"], vec!["c", "d"]]);
+        // Closing what a saved query leaves open, as narrowing it does, reads
+        // the same, so the narrowed search can be flattened onto one line.
+        assert_eq!(
+            SearchQuery::parse(r#"x subject:"Q3"#),
+            SearchQuery::parse(r#"x subject:"Q3""#)
+        );
+        assert_eq!(
+            SearchQuery::parse("x from:{a b"),
+            SearchQuery::parse("x from:{a b}")
+        );
+        assert_eq!(
+            SearchQuery::parse("subject:\"Q3\"\nAND subject:\"x y\""),
+            SearchQuery::parse(r#"subject:"Q3" AND subject:"x y""#)
+        );
+        // A quote may hold one, but doesn't run past a line, where a line left
+        // open reads as it would alone.
+        let q = SearchQuery::parse("subject:\"Q3 plan\nAND subject:\"x\"");
+        assert_eq!(q.subject, [["Q3 plan"], ["x"]]);
+        let alone = SearchQuery::parse(r#"subject:"Q3 AND budget"#);
+        let mut narrowed = SearchQuery::parse("subject:\"Q3 AND budget\nAND paid");
+        assert_eq!(narrowed.text.pop().as_deref(), Some("paid"));
+        assert_eq!(narrowed, alone);
+        let q = SearchQuery::parse("27\" monitor\nAND 24\" monitor");
+        assert_eq!(q.text, ["27\" monitor", "24\" monitor"]);
+    }
+
+    #[test]
+    fn fields_hold_the_first_side_of_an_and() {
+        let fields = SearchFields::parse("from:boss is:read AND from:ann is:unread budget");
+        assert_eq!(fields.from, "boss");
+        assert!(!fields.unread);
+        assert_eq!(fields.words, "is:read AND from:ann is:unread budget");
+        let ticked = SearchFields {
+            unread: true,
+            ..SearchFields::parse("from:boss AND is:read")
+        };
+        assert_eq!(ticked.to_query(), "from:boss is:unread AND is:read");
+        let q = SearchQuery::parse(&ticked.to_query());
+        assert!(q.read && q.unread);
+        for query in [
+            "from:boss is:read AND from:ann is:unread budget",
+            "a  b AND c",
+        ] {
+            let fields = SearchFields::parse(query);
+            assert_eq!(
+                SearchQuery::parse(&fields.to_query()),
+                SearchQuery::parse(query),
+                "{query}"
+            );
+        }
     }
 
     #[test]
@@ -697,19 +902,19 @@ mod tests {
         let unread = SearchFields::parse("is:read budget is:unread");
         assert!(unread.unread);
         assert_eq!(unread.words, "budget");
-        assert_eq!(SearchQuery::parse(&unread.to_query()).seen, Some(false));
+        assert!(SearchQuery::parse(&unread.to_query()).unread);
 
         let read = SearchFields::parse("is:unread is:read budget is:read");
         assert!(!read.unread);
         assert_eq!(read.words, "is:read budget is:read");
-        assert_eq!(SearchQuery::parse(&read.to_query()).seen, Some(true));
+        assert!(SearchQuery::parse(&read.to_query()).read);
 
         // Ticking Unread on a read search wins over the kept `is:read`.
         let ticked = SearchFields {
             unread: true,
             ..SearchFields::parse("is:read budget")
         };
-        assert_eq!(SearchQuery::parse(&ticked.to_query()).seen, Some(false));
+        assert!(!SearchQuery::parse(&ticked.to_query()).read);
     }
 
     #[test]

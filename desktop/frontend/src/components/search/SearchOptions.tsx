@@ -239,7 +239,8 @@ export function SearchOptions({
               </label>
             </div>
             <div className="flex items-center justify-between gap-2 pt-1">
-              {board ? (
+              {/* A saved search narrowed by the board search isn't saved again (see saveKanbanSearchColumn). */}
+              {board && !scopedColumn?.query ? (
                 // A saved search lives in one folder, so it needs a column picked above.
                 // The reason it's disabled goes on a wrapper: a disabled button gets
                 // no hover, so its own title may never show.

@@ -357,6 +357,18 @@ export function kanbanColumnKey(column: KanbanColumn): string {
   return column.query ? `${base}\n${column.query}` : base
 }
 
+// The board search inside a saved search column narrows it. The core reads each
+// side of an `AND` as its own query that must also match, so free text, dates
+// and read state narrow the saved query rather than merging into or replacing
+// its own. The search starts a line of its own, which no quote or group left
+// open in the saved query reaches into. A leading `OR` would be a stray word
+// there, so it is dropped.
+export function narrowKanbanQuery(saved: string | undefined, query: string): string {
+  if (!saved) return query.trim()
+  const extra = query.trim().replace(/^(?:OR(?:\s+|$))+/, '')
+  return extra ? `${saved}\nAND ${extra}` : saved
+}
+
 export function kanbanBoardColumnKey(boardId: string, column: KanbanColumn): string {
   return `${boardId}\n${kanbanColumnKey(column)}`
 }
@@ -386,7 +398,8 @@ export function addKanbanColumn(boardId: string, column: KanbanColumn) {
 
 // Turn the board search on one column into a column of its own, placed right
 // after it. Returns the new column, or null when there is nothing to save or the
-// board already has it.
+// board already has it. A saved search narrowed by the board search isn't saved
+// again: its two queries would have to share one line.
 export function saveKanbanSearchColumn(boardId: string, column: KanbanColumn, query: string): KanbanColumn | null {
   const saved = normalizeKanbanColumnQuery(query)
   if (!boardId || !saved || column.query) return null

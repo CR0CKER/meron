@@ -308,11 +308,9 @@ internal fun KanbanHeaderSearchField(
     onOpenOptions: (() -> Unit)? = null,
 ) {
     var scopeMenuOpen by remember { mutableStateOf(false) }
-    // Saved search columns keep their own query, so they can't be a scope.
-    val columns = columns.filter { it.query.isBlank() }
     val normalizedScope = searchScope.ifBlank { "all" }
     val scopedColumn = columns.firstOrNull { kanbanColumnKey(it) == normalizedScope }
-    val scopeLabel = scopedColumn?.let { columnTitle(it, accounts, foldersByAccount) } ?: tr("kanban.searchScope.allColumns")
+    val scopeLabel = scopedColumn?.let { searchScopeTitle(it, accounts, foldersByAccount) } ?: tr("kanban.searchScope.allColumns")
     Box(Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
@@ -433,7 +431,7 @@ internal fun KanbanHeaderSearchField(
                 )
                 columns.forEach { column ->
                     DropdownMenuItem(
-                        text = { Text(columnTitle(column, accounts, foldersByAccount), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        text = { Text(searchScopeTitle(column, accounts, foldersByAccount), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = { Avatar(columnAvatarLabel(column, accounts), 22.dp, columnAvatarFallbackIcon(column, accounts)) },
                         onClick = {
                             scopeMenuOpen = false
@@ -680,12 +678,8 @@ internal fun KanbanColumn(
     kanbanColumnWidth: Dp,
 ) {
     val columnKey = kanbanColumnKey(column)
-    val columnSearch =
-        when {
-            column.query.isNotBlank() -> column.query
-            searchScope.ifBlank { "all" } == "all" || searchScope == columnKey -> search
-            else -> ""
-        }
+    val boardSearch = if (searchScope.ifBlank { "all" } == "all" || searchScope == columnKey) search else ""
+    val columnSearch = narrowKanbanQuery(column.query, boardSearch)
     val visibleThreads =
         state.threads.filteredKanbanThreads(
             filter = filter,
@@ -955,21 +949,21 @@ internal fun KanbanColumnHeader(
                         menuOpen = false
                         onEditSearch()
                     })
-                } else {
-                    DropdownMenuItem(text = { Text(tr("kanban.actions.searchColumn")) }, leadingIcon = {
-                        Icon(Icons.Filled.Search, contentDescription = null)
+                }
+                DropdownMenuItem(text = { Text(tr("kanban.actions.searchColumn")) }, leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null)
+                }, onClick = {
+                    menuOpen = false
+                    onSearch()
+                })
+                // A saved search narrowed by the board search isn't saved again.
+                if (shownSearch.isNotBlank() && !savedSearch) {
+                    DropdownMenuItem(text = { Text(tr("kanban.actions.saveSearchAsColumn")) }, leadingIcon = {
+                        Icon(Icons.Filled.BookmarkAdd, contentDescription = null)
                     }, onClick = {
                         menuOpen = false
-                        onSearch()
+                        onSaveSearch(shownSearch)
                     })
-                    if (shownSearch.isNotBlank()) {
-                        DropdownMenuItem(text = { Text(tr("kanban.actions.saveSearchAsColumn")) }, leadingIcon = {
-                            Icon(Icons.Filled.BookmarkAdd, contentDescription = null)
-                        }, onClick = {
-                            menuOpen = false
-                            onSaveSearch(shownSearch)
-                        })
-                    }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 DropdownMenuItem(text = { Text(tr("kanban.actions.moveColumnLeft")) }, leadingIcon = {

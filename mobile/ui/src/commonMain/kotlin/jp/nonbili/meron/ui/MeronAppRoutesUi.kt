@@ -128,13 +128,14 @@ internal fun KanbanRouteContent(
                     loadKanbanBoard(refresh = true)
                 },
                 // A search scoped to one column saves into it; a board-wide one picks.
+                // A saved search narrowed by it isn't saved again (see saveKanbanSearchColumn).
                 saveColumns =
                     activeKanbanBoard?.columns.orEmpty().filter {
                         it.query.isBlank() && (kanbanSearchScope.ifBlank { "all" } == "all" || kanbanColumnKey(it) == kanbanSearchScope)
                     },
                 columnLabel = { column ->
                     val account = coreAccounts.firstOrNull { it.id == column.accountId }
-                    columnTitle(column, coreAccounts, foldersByAccount) to account?.let { it.displayName.ifBlank { it.email } }.orEmpty()
+                    searchScopeTitle(column, coreAccounts, foldersByAccount) to account?.let { it.displayName.ifBlank { it.email } }.orEmpty()
                 },
                 onSave = { query, column -> saveKanbanSearchColumn(column, query, clearsScopedSearch = false) },
                 contactsAccountId =

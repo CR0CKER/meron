@@ -161,8 +161,8 @@ function KanbanColumnContent({
   const hasUnread = unreadCount > 0
   const loading = allLoading[key] ?? false
   const loadingMore = allLoadingMore[key] ?? false
-  // The board search never reaches a saved search column (see searchTargets).
-  const searchActive = !column.query && columnSearchActive(key, searchQuery, searchScope)
+  // On a saved search column the board search narrows the column's own query.
+  const searchActive = columnSearchActive(key, searchQuery, searchScope)
   const savedSearch = !!column.query
   const starredColumn = isUnifiedStarredColumn(column)
   // Every column pages on the single cursor now, unified included — the core
@@ -345,7 +345,7 @@ function KanbanColumnContent({
         syncLabel={isRss ? t('feeds.actions.syncFeeds') : undefined}
         syncingLabel={isRss ? t('feeds.actions.syncingFeeds') : undefined}
         onRemove={() => removeKanbanColumn(boardId, column)}
-        onSearch={savedSearch ? undefined : () => onSearchColumn(column)}
+        onSearch={() => onSearchColumn(column)}
         searchLabel={t('kanban.actions.search', { defaultValue: 'Search' })}
         onSaveSearch={searchActive && !savedSearch ? saveSearch : undefined}
         onEditSearch={savedSearch ? startEditSearch : undefined}
@@ -520,7 +520,7 @@ function KanbanColumnContent({
               syncLabel={isRss ? t('feeds.actions.syncFeeds') : undefined}
               syncingLabel={isRss ? t('feeds.actions.syncingFeeds') : undefined}
               onRemove={() => removeKanbanColumn(boardId, column)}
-              onSearch={savedSearch ? undefined : () => onSearchColumn(column)}
+              onSearch={() => onSearchColumn(column)}
               searchLabel={t('kanban.actions.search', { defaultValue: 'Search' })}
               onSaveSearch={searchActive && !savedSearch ? saveSearch : undefined}
               onEditSearch={savedSearch ? startEditSearch : undefined}

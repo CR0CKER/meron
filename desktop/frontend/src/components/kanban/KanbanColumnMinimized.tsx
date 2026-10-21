@@ -50,8 +50,8 @@ export function KanbanColumnMinimized({
   const searchScope = useValue(kanban$.searchScope)
 
   const labelFolders = useMemo(() => mergeLabelFolders(folders, foldersByAccount), [folders, foldersByAccount])
-  // The board search never reaches a saved search column (see searchTargets).
-  const searchActive = !column.query && columnSearchActive(key, searchQuery, searchScope)
+  // On a saved search column the board search narrows the column's own query.
+  const searchActive = columnSearchActive(key, searchQuery, searchScope)
   const overWallpaper = !!boardWallpaper(
     useValue(settings$.kanbanBoards).find((board) => board.id === boardId)?.wallpaper,
   )

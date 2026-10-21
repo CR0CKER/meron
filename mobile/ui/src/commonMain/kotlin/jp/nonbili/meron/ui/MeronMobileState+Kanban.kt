@@ -41,14 +41,13 @@ internal fun MeronMobileState.persistKanbanSearchScope(next: String) {
     saveKanbanSearchScope(kanbanPrefs, kanbanSearchScope)
 }
 
-// A saved search column is always read with its own query; the board search
-// never reaches it.
+// The board search as it applies to [column]; a saved search column is read with
+// its own query narrowed by it.
 internal fun MeronMobileState.kanbanColumnSearchQuery(column: KanbanColumnSpec): String {
-    if (column.query.isNotBlank()) return column.query
     val query = kanbanSearch.trim()
-    if (query.isBlank()) return ""
     val scope = kanbanSearchScope.ifBlank { "all" }
-    return if (scope == "all" || scope == kanbanColumnKey(column)) query else ""
+    val boardSearch = if (query.isNotBlank() && (scope == "all" || scope == kanbanColumnKey(column))) query else ""
+    return narrowKanbanQuery(column.query, boardSearch)
 }
 
 internal fun MeronMobileState.currentKanbanColumnView(column: KanbanColumnSpec): KanbanColumnView =
@@ -528,7 +527,9 @@ internal fun MeronMobileState.removeKanbanColumnsForFolder(
  * it. A search scoped to just that column has done its job then, so it clears;
  * a board-wide one stays. [clearsScopedSearch] is false when [query] came from
  * the search options rather than the board search, which it then leaves alone.
- * Does nothing when there is nothing to save or the board already has it.
+ * Does nothing when there is nothing to save or the board already has it, or
+ * for a saved search narrowed by the board search: its two queries would have
+ * to share one line.
  */
 internal fun MeronMobileState.saveKanbanSearchColumn(
     column: KanbanColumnSpec,

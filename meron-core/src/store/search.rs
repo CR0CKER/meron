@@ -97,10 +97,10 @@ pub fn search_messages(
     const MESSAGES_FTS: &str = "SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?";
     const RECIPIENTS_FTS: &str =
         "SELECT rowid FROM messages_recipients_fts WHERE messages_recipients_fts MATCH ?";
-    if !query.text.is_empty() {
+    for text in &query.text {
         // Body last: it is by far the largest column to fold.
         text_condition(
-            std::slice::from_ref(&query.text),
+            std::slice::from_ref(text),
             &format!("{MESSAGES_FTS} UNION {RECIPIENTS_FTS}"),
             "",
             &[1, 2, 3, 10, 11],
@@ -115,10 +115,11 @@ pub fn search_messages(
     for to in &query.to {
         text_condition(to, RECIPIENTS_FTS, "", &[10]);
     }
-    match query.seen {
-        Some(true) => filters.push_str(" AND m.seen <> 0"),
-        Some(false) => filters.push_str(" AND m.seen = 0"),
-        None => {}
+    if query.read {
+        filters.push_str(" AND m.seen <> 0");
+    }
+    if query.unread {
+        filters.push_str(" AND m.seen = 0");
     }
     if query.starred {
         filters.push_str(" AND m.starred <> 0");

@@ -553,10 +553,10 @@ pub fn recent(
         }
         sql.push_str(&format!(" AND ({})", clauses.join(" OR ")));
     };
-    if !query.text.is_empty() {
+    for text in &query.text {
         like(
             &["s.title", "m.subject", "json_extract(m.json,'$.summary')"],
-            std::slice::from_ref(&query.text),
+            std::slice::from_ref(text),
         );
     }
     for from in &query.from {
@@ -568,10 +568,11 @@ pub fn recent(
     if !query.to.is_empty() {
         sql.push_str(" AND 0");
     }
-    match query.seen {
-        Some(true) => sql.push_str(" AND m.seen <> 0"),
-        Some(false) => sql.push_str(" AND m.seen = 0"),
-        None => {}
+    if query.read {
+        sql.push_str(" AND m.seen <> 0");
+    }
+    if query.unread {
+        sql.push_str(" AND m.seen = 0");
     }
     if query.starred {
         sql.push_str(" AND m.starred <> 0");

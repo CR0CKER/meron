@@ -18,7 +18,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 
 use crate::parse;
-use crate::search_query::SearchQuery;
+use crate::search_query::{SearchQuery, close_open_terms};
 
 /// Connection stream: implicit TLS (port 993 etc.) or plaintext (e.g. a local
 /// test server on 3143). One enum so the async-imap `Session` type is uniform.
@@ -1125,12 +1125,12 @@ fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> St
         }
     };
     let keys = if gmail {
-        format!("X-GM-RAW {}", string(query))
+        format!("X-GM-RAW {}", string(&gmail_raw(query)))
     } else {
         let query = SearchQuery::parse(query);
         let mut keys = Vec::new();
-        if !query.text.is_empty() {
-            let q = string(&query.text);
+        for text in &query.text {
+            let q = string(text);
             keys.push(format!("OR OR SUBJECT {q} FROM {q} TEXT {q}"));
         }
         // A term's alternatives, ORed: IMAP's OR takes two keys, so nest it.
@@ -1152,10 +1152,11 @@ fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> St
                 .iter()
                 .map(|v| any(v, &|v| format!("SUBJECT {v}"))),
         );
-        match query.seen {
-            Some(true) => keys.push("SEEN".to_string()),
-            Some(false) => keys.push("UNSEEN".to_string()),
-            None => {}
+        if query.read {
+            keys.push("SEEN".to_string());
+        }
+        if query.unread {
+            keys.push("UNSEEN".to_string());
         }
         if query.starred {
             keys.push("FLAGGED".to_string());
@@ -1175,6 +1176,34 @@ fn search_criteria(gmail: bool, query: &str, charset: bool, literal: bool) -> St
     } else {
         keys
     }
+}
+
+/// `query` for Gmail's own search. Queries joined on separate lines (a saved
+/// search narrowed by another, the later lines led by `AND`) are each grouped in
+/// parentheses, with any quote or group they leave open closed, so Gmail keeps
+/// one from running into the next as well.
+fn gmail_raw(query: &str) -> String {
+    let lines: Vec<&str> = query
+        .lines()
+        .map(|line| {
+            let line = line.trim();
+            match line.strip_prefix("AND") {
+                Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => {
+                    rest.trim_start()
+                }
+                _ => line,
+            }
+        })
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.len() < 2 {
+        return query.to_string();
+    }
+    lines
+        .iter()
+        .map(|line| format!("({})", close_open_terms(line)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// `value` as a non-synchronizing literal (RFC 7888), normalized like
@@ -2613,7 +2642,7 @@ mod tests {
 
     use super::{
         MIN_PROTOCOL_TIMEOUT, attachment_files, civil_from_days, fetch_items, first_message_id,
-        header_fields, imap_quote, interleave_address_families, looks_like_drafts,
+        gmail_raw, header_fields, imap_quote, interleave_address_families, looks_like_drafts,
         message_id_search_criteria, normalize_message_id, prefetch_search_criteria,
         protocol_timeout_for, search_criteria, thread_key, uid_set_chunks,
     };
@@ -3088,6 +3117,20 @@ mod tests {
         assert_eq!(
             search_criteria(false, "会議", true, false),
             "CHARSET UTF-8 OR OR SUBJECT \"会議\" FROM \"会議\" TEXT \"会議\""
+        );
+    }
+
+    #[test]
+    fn gmail_groups_queries_joined_on_separate_lines() {
+        assert_eq!(gmail_raw("from:a budget"), "from:a budget");
+        assert_eq!(
+            gmail_raw("subject:\"Q3\nAND ANDROID paid"),
+            "(subject:\"Q3\") (ANDROID paid)"
+        );
+        assert_eq!(gmail_raw("from:a\nAND "), "from:a\nAND ");
+        assert_eq!(
+            gmail_raw("from:{a \"b\nAND 27\" x"),
+            "(from:{a \"b\"}) (27\" x\")"
         );
     }
 

@@ -9,6 +9,7 @@ import {
   kanbanBoardColumnKey,
   kanbanColumnKey,
   kanban$,
+  narrowKanbanQuery,
   type KanbanColumn,
 } from '../states/kanban'
 import { beginThreadListRead, mail$, nextSelectedAfterRefresh } from '../states/mail'
@@ -128,13 +129,12 @@ export function searchScopeColumn(scope: string): KanbanColumn | null {
   return { accountId, folderId }
 }
 
-// A saved search column keeps to its own query, so the board search never
-// reaches it.
+// The columns the board search reads. A saved search column is one of them: the
+// search narrows its own query (see narrowKanbanQuery). The scope is matched on
+// the whole key, which only a saved search's query sets apart from its folder.
 export function searchTargets(columns: KanbanColumn[], scope: string): KanbanColumn[] {
-  const searchable = columns.filter((column) => !column.query)
-  const scopedColumn = searchScopeColumn(scope)
-  if (!scopedColumn) return searchable
-  return searchable.filter((column) => kanbanColumnKey(column) === kanbanColumnKey(scopedColumn))
+  if (!searchScopeColumn(scope)) return columns
+  return columns.filter((column) => kanbanColumnKey(column) === scope)
 }
 
 // The full folder list used for column/scope labels: an account's own folders
@@ -487,7 +487,6 @@ export function activeKanbanColumnAttachmentsOnly(column: KanbanColumn): boolean
 // the search's scope, '' otherwise. A reload triggered by anything other than the
 // search itself (a filter toggle, the next page) must keep the column searched.
 export function activeKanbanColumnQuery(column: KanbanColumn): string {
-  if (column.query) return column.query
   const key = kanbanColumnKey(column)
   const query = kanban$.searchQuery.peek()
   return columnSearchActive(key, query, kanban$.searchScope.peek()) ? query.trim() : ''
@@ -495,11 +494,11 @@ export function activeKanbanColumnQuery(column: KanbanColumn): string {
 
 type ColumnView = { query: string; filter: FilterMode; attachments: boolean }
 
-// A saved search column is always read with its own query, whatever the caller
-// passes for the board search.
+// `query` is the board search as it applies to the column; a saved search column
+// is read with its own query narrowed by it.
 function currentColumnView(column: KanbanColumn, query: string): ColumnView {
   return {
-    query: (column.query ?? query).trim(),
+    query: narrowKanbanQuery(column.query, query),
     filter: activeKanbanColumnFilter(column),
     attachments: activeKanbanColumnAttachmentsOnly(column),
   }
@@ -740,11 +739,12 @@ export async function loadKanbanColumn(column: KanbanColumn, refresh = false, qu
 // the chat-view sync (which always targets the selected account's inbox), this is
 // column-scoped: it syncs the exact account + folder the column shows. Unified
 // columns sync each member account's inbox; the unified starred column has no
-// remote folder to pull, so it just reloads.
+// remote folder to pull, so it just reloads. The reload keeps the board search
+// that covers the column.
 export async function syncKanbanColumn(column: KanbanColumn) {
   mail$.readThreads.set({})
   if (isUnifiedStarredColumn(column)) {
-    await loadKanbanColumn(column, false)
+    await loadKanbanColumn(column, false, activeKanbanColumnQuery(column))
     return
   }
 
@@ -765,7 +765,7 @@ export async function syncKanbanColumn(column: KanbanColumn) {
         })
       : [{ id: column.accountId, folder: column.folderId }]
   if (targets.length === 0) {
-    await loadKanbanColumn(column, false)
+    await loadKanbanColumn(column, false, activeKanbanColumnQuery(column))
     return
   }
   // The sync events name each account's own folder, so a unified column waits
@@ -783,7 +783,7 @@ export async function syncKanbanColumn(column: KanbanColumn) {
       }),
     )
     await Promise.all([Promise.all(requests), completion.promise])
-    await loadKanbanColumn(column, false)
+    await loadKanbanColumn(column, false, activeKanbanColumnQuery(column))
   } catch (error) {
     console.error('Kanban column sync failed:', error)
   } finally {
@@ -858,7 +858,11 @@ export async function refreshKanbanContextAction(
   }
   await Promise.all(
     columns.map((column) =>
-      loadKanbanColumn(column, false, kanbanColumnKey(column) === kanbanColumnKey(source) ? sourceQuery : ''),
+      loadKanbanColumn(
+        column,
+        false,
+        kanbanColumnKey(column) === kanbanColumnKey(source) ? sourceQuery : activeKanbanColumnQuery(column),
+      ),
     ),
   )
 }

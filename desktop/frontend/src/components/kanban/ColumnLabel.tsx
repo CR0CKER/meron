@@ -9,7 +9,8 @@ import { accountLabel, folderLabel, mergeLabelFolders, useFoldersByAccount } fro
 import { isRssAccount } from '../../lib/threadActions'
 import { Avatar } from '../avatar/Avatar'
 
-/** A column's folder and account names, as the search scope shows them. */
+/** A column's folder and account names, as the search scope shows them. A saved
+ * search shares its folder's name, so its query tells the two apart. */
 export function useColumnLabel() {
   const { t } = useTranslation()
   const accounts = useValue(accounts$)
@@ -19,8 +20,9 @@ export function useColumnLabel() {
   return useCallback(
     (column: KanbanColumn) => {
       const account = column.accountId !== 'unified' ? accounts.find((a) => a.id === column.accountId) : undefined
+      const folder = folderLabel(column, folders, accounts, t)
       return {
-        folder: folderLabel(column, folders, accounts, t),
+        folder: column.query ? `${folder} · ${column.query}` : folder,
         account:
           column.accountId === 'unified'
             ? t('accounts.unified')

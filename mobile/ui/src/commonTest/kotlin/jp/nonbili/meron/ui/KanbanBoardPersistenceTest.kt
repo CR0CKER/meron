@@ -133,6 +133,48 @@ class KanbanBoardPersistenceTest {
     }
 
     @Test
+    fun aSavedSearchIsNotSavedAgain() {
+        val inbox = KanbanColumnSpec("a", "INBOX")
+        val saved = inbox.copy(query = "invoice")
+        val state = boardState(listOf(inbox, saved))
+
+        state.saveKanbanSearchColumn(saved, "due")
+
+        assertEquals(listOf(inbox, saved), state.kanbanBoards.single().columns)
+    }
+
+    @Test
+    fun theBoardSearchNarrowsASavedSearchColumn() {
+        val inbox = KanbanColumnSpec("a", "INBOX")
+        val saved = inbox.copy(query = "from:boss")
+        val state = boardState(listOf(inbox, saved))
+
+        assertEquals("from:boss", state.kanbanColumnSearchQuery(saved))
+        state.kanbanSearch = " budget "
+        assertEquals("from:boss\nAND budget", state.kanbanColumnSearchQuery(saved))
+        assertEquals("budget", state.kanbanColumnSearchQuery(inbox))
+        state.kanbanSearchScope = kanbanColumnKey(inbox)
+        assertEquals("from:boss", state.kanbanColumnSearchQuery(saved))
+        state.kanbanSearchScope = kanbanColumnKey(saved)
+        assertEquals("from:boss\nAND budget", state.kanbanColumnSearchQuery(saved))
+        assertEquals("", state.kanbanColumnSearchQuery(inbox))
+    }
+
+    @Test
+    fun narrowingDropsALeadingOrLeftStrayAfterTheAnd() {
+        assertEquals("from:a\nAND from:b", narrowKanbanQuery("from:a", "OR from:b"))
+        assertEquals("from:a", narrowKanbanQuery("from:a", "OR OR"))
+        assertEquals("from:a\nAND ORACLE", narrowKanbanQuery("from:a", "ORACLE"))
+        assertEquals("OR x", narrowKanbanQuery("", " OR x "))
+    }
+
+    @Test
+    fun narrowingLeavesTheSavedQueryAsItIs() {
+        assertEquals("subject:\"Q3 AND budget\nAND paid", narrowKanbanQuery("subject:\"Q3 AND budget", "paid"))
+        assertEquals("27\" monitor\nAND 24\" monitor", narrowKanbanQuery("27\" monitor", "24\" monitor"))
+    }
+
+    @Test
     fun editingASavedSearchKeepsItsSlotAndRefusesADuplicate() {
         val inbox = KanbanColumnSpec("a", "INBOX")
         val saved = inbox.copy(query = "invoice")

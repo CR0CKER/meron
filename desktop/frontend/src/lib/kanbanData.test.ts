@@ -5,6 +5,7 @@ import {
   editKanbanSearchColumn,
   getKanbanColumns,
   kanban$,
+  narrowKanbanQuery,
   saveKanbanSearchColumn,
   setGlobalKanbanAttachmentsOnly,
   setGlobalKanbanFilter,
@@ -118,9 +119,32 @@ describe('searchTargets', () => {
     expect(searchTargets(columns, 'acc2\nINBOX')).toEqual([columns[1]])
   })
 
-  it('leaves saved search columns to their own query', () => {
+  it('reaches saved search columns, and scopes to one apart from its folder', () => {
     const saved = { accountId: 'acc1', folderId: 'INBOX', query: 'invoice' }
-    expect(searchTargets([...columns, saved], 'all')).toEqual(columns)
+    expect(searchTargets([...columns, saved], 'all')).toEqual([...columns, saved])
+    expect(searchTargets([...columns, saved], 'acc1\nINBOX\ninvoice')).toEqual([saved])
+    expect(searchTargets([...columns, saved], 'acc1\nINBOX')).toEqual([columns[0]])
+  })
+})
+
+describe('narrowKanbanQuery', () => {
+  it('joins the board search to a saved query with AND', () => {
+    expect(narrowKanbanQuery('from:boss', ' budget ')).toBe('from:boss\nAND budget')
+    expect(narrowKanbanQuery('from:boss', '  ')).toBe('from:boss')
+    expect(narrowKanbanQuery(undefined, ' budget ')).toBe('budget')
+  })
+
+  it('leaves the saved query as it is, quotes and groups left open too', () => {
+    expect(narrowKanbanQuery('subject:"Q3 AND budget', 'paid')).toBe('subject:"Q3 AND budget\nAND paid')
+    expect(narrowKanbanQuery('27" monitor', '24" monitor')).toBe('27" monitor\nAND 24" monitor')
+    expect(narrowKanbanQuery('subject:"Q3', '  ')).toBe('subject:"Q3')
+  })
+
+  it('drops a leading OR left stray after the AND', () => {
+    expect(narrowKanbanQuery('from:a', 'OR from:b')).toBe('from:a\nAND from:b')
+    expect(narrowKanbanQuery('from:a', 'OR OR')).toBe('from:a')
+    expect(narrowKanbanQuery('from:a', 'ORACLE')).toBe('from:a\nAND ORACLE')
+    expect(narrowKanbanQuery(undefined, 'OR x')).toBe('OR x')
   })
 })
 
@@ -238,11 +262,12 @@ describe('activeKanbanColumnQuery', () => {
     expect(activeKanbanColumnQuery(column)).toBe('')
   })
 
-  it('keeps a saved search column on its own query', () => {
+  it('gives a saved search column only the board search, not its own query', () => {
     const saved = { ...column, query: 'invoice' }
-    expect(activeKanbanColumnQuery(saved)).toBe('invoice')
+    kanban$.searchQuery.set('')
+    expect(activeKanbanColumnQuery(saved)).toBe('')
     kanban$.searchQuery.set('receipt')
-    expect(activeKanbanColumnQuery(saved)).toBe('invoice')
+    expect(activeKanbanColumnQuery(saved)).toBe('receipt')
   })
 })
 
@@ -311,6 +336,39 @@ describe('kanban column loading filters', () => {
     expect(handlers.size).toBe(0)
   })
 
+  it('reloads a synced saved search column still narrowed by the board search', async () => {
+    const handlers = new Map<string, (detail: unknown) => void>()
+    ;(window as any).runtime = {
+      EventsOn: (name: string, handler: (detail: unknown) => void) => {
+        handlers.set(name, handler)
+        return () => handlers.delete(name)
+      },
+    }
+    const queries: string[] = []
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string, payload: any) => {
+            if (command !== 'mail.threadList') return { online: true, queued: true }
+            queries.push(payload.query)
+            return { threads: [], next_cursor: '' }
+          },
+        },
+      },
+    }
+    kanban$.searchQuery.set('receipt')
+    kanban$.searchScope.set('all')
+    try {
+      const sync = syncKanbanColumn({ accountId: 'acc1', folderId: 'INBOX', query: 'invoice' })
+      await Promise.resolve()
+      handlers.get('mail.synced')?.({ account: 'acc1', folder: 'INBOX' })
+      await sync
+      expect(queries).toEqual(['invoice\nAND receipt'])
+    } finally {
+      kanban$.searchQuery.set('')
+    }
+  })
+
   it('waits for every account in a unified column before finishing sync', async () => {
     const handlers = new Map<string, (detail: unknown) => void>()
     ;(window as any).runtime = {
@@ -375,7 +433,7 @@ describe('kanban column loading filters', () => {
     }
   })
 
-  it('reads a saved search column with its own query, whatever the caller passes', async () => {
+  it('reads a saved search column with its own query, narrowed by the board search', async () => {
     const calls: { command: string; payload: any }[] = []
     ;(window as any).go = {
       main: {
@@ -390,7 +448,7 @@ describe('kanban column loading filters', () => {
     await loadKanbanColumn({ accountId: 'acc1', folderId: 'INBOX', query: 'invoice' }, false, 'receipt')
     expect(calls.find((call) => call.command === 'mail.threadList')?.payload).toMatchObject({
       folder_id: 'INBOX',
-      query: 'invoice',
+      query: 'invoice\nAND receipt',
     })
   })
 

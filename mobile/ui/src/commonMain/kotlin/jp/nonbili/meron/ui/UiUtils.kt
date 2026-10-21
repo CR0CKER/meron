@@ -169,6 +169,21 @@ internal fun kanbanKeyAccountFolder(key: String): Pair<String, String> {
  *  joins its parts with newlines, so a query must not carry one. */
 internal fun normalizeKanbanColumnQuery(query: String): String = query.replace(Regex("\\s+"), " ").trim()
 
+/** The board search inside a saved search column narrows it. The core reads each
+ *  side of an `AND` as its own query that must also match, so free text, dates
+ *  and read state narrow the saved query rather than merging into or replacing
+ *  its own. The search starts a line of its own, which no quote or group left
+ *  open in the saved query reaches into. A leading `OR` would be a stray word
+ *  there, so it is dropped. */
+internal fun narrowKanbanQuery(
+    saved: String,
+    query: String,
+): String {
+    if (saved.isBlank()) return query.trim()
+    val extra = query.trim().replace(Regex("^(?:OR(?:\\s+|$))+"), "")
+    return if (extra.isBlank()) saved else "$saved\nAND $extra"
+}
+
 internal fun identityKey(identity: SendIdentity): String = "${identity.accountId}|${identity.email}"
 
 @Composable
@@ -275,6 +290,18 @@ internal fun columnTitle(
     // columns whose folders share those names.
     if (column.accountId == UNIFIED_ACCOUNT_ID) return unifiedColumnLabel(column.folderId)
     return folderTitle(column.accountId, column.folderId, accounts, foldersByAccount)
+}
+
+/** A column as the search scope names it: a saved search shares its folder's
+ *  title, so its query tells the two apart. */
+@Composable
+internal fun searchScopeTitle(
+    column: KanbanColumnSpec,
+    accounts: List<AccountSummary>,
+    foldersByAccount: Map<String, List<FolderSummary>>,
+): String {
+    val title = columnTitle(column, accounts, foldersByAccount)
+    return if (column.query.isBlank()) title else "$title · ${column.query}"
 }
 
 /** The display name of a mailbox, as a kanban column or the mail list shows it. */
