@@ -206,3 +206,27 @@ it('rewires a reader at load after an earlier interactive ready callback', () =>
   expect(readied).toEqual(['interactive', 'complete'])
   expect(disposed).toEqual(['complete'])
 })
+
+it("forwards a cached picture's right-click with its media key, leaving a remote one native", () => {
+  const { container } = render(<HtmlFrame html="<p>Message</p>" title="Message" forwardContextMenu="except-images" />)
+  const frame = container.querySelector('iframe')!
+  const doc = new DOMParser().parseFromString(
+    `<p>Message</p><img id="cached" src="${window.location.origin}/media/msg/0.png"><img id="remote" src="https://example.com/a.png">`,
+    'text/html',
+  )
+  Object.defineProperty(doc, 'readyState', { value: 'complete' })
+  Object.defineProperty(frame, 'contentDocument', { get: () => doc })
+  fireEvent.load(frame)
+  const forwarded: (string | undefined)[] = []
+  frame.addEventListener('contextmenu', (event) => forwarded.push((event as { meronImageKey?: string }).meronImageKey))
+
+  const cached = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+  doc.getElementById('cached')!.dispatchEvent(cached)
+  expect(cached.defaultPrevented).toBe(true)
+  expect(forwarded).toEqual(['msg/0.png'])
+
+  const remote = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+  doc.getElementById('remote')!.dispatchEvent(remote)
+  expect(remote.defaultPrevented).toBe(false)
+  expect(forwarded).toEqual(['msg/0.png'])
+})

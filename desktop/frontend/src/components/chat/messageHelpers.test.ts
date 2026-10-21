@@ -13,6 +13,8 @@ import {
   htmlReferencesMedia,
   isImage,
   isVideo,
+  mediaFilename,
+  mediaKeyFromSrc,
   mediaSrc,
   messageSearchText,
   normalizeBodyText,
@@ -304,5 +306,27 @@ describe('fileIconFor', () => {
   it('falls back to a generic file, and ignores a name with no extension', () => {
     expect(fileIconFor('mystery.bin', 'application/octet-stream')).toBe(File)
     expect(fileIconFor('ics', 'application/octet-stream')).toBe(File)
+  })
+})
+
+describe('mediaKeyFromSrc', () => {
+  it('reads the key from a relative or same-origin media src', () => {
+    expect(mediaKeyFromSrc('/media/a%20b/0.png')).toBe('a b/0.png')
+    expect(mediaKeyFromSrc(`${window.location.origin}/media/msg/1.jpg`)).toBe('msg/1.jpg')
+  })
+
+  it('ignores remote and other sources', () => {
+    expect(mediaKeyFromSrc('https://example.com/media/x.png')).toBeNull()
+    expect(mediaKeyFromSrc(`${window.location.origin}/other/x.png`)).toBeNull()
+    expect(mediaKeyFromSrc('data:image/png;base64,AAAA')).toBeNull()
+    expect(mediaKeyFromSrc('not a url')).toBeNull()
+  })
+})
+
+describe('mediaFilename', () => {
+  it("prefers the attachment's name, else the key's file name", () => {
+    const attachments = [{ filename: 'photo.png', mime: 'image/png', size: 1, key: 'msg/0.png' }]
+    expect(mediaFilename('msg/0.png', attachments)).toBe('photo.png')
+    expect(mediaFilename('msg/1.jpg', attachments)).toBe('1.jpg')
   })
 })

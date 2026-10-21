@@ -26,6 +26,7 @@ import {
   isImage,
   isInlineMedia,
   isVideo,
+  mediaFilename,
   parseAddressList,
 } from './messageHelpers'
 
@@ -77,21 +78,24 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
     <div
       className="relative flex min-h-0 flex-1 flex-col"
       // Right-clicking the message, the email's frame included, opens its menu
-      // as it does on a card; on a link, the link's. A selection or an image
-      // keeps the native menu.
+      // as it does on a card; on a link, the link's; on a cached picture, its
+      // save and copy. A selection or a remote picture keeps the native menu.
       onContextMenu={(event) => {
         // React bubbles events up from portals too: the image viewer and the
         // menu itself are not the message.
         if (!event.currentTarget.contains(event.target as Node)) return
         if (!tab.message || window.getSelection()?.toString().trim()) return
-        // An image, the email's (see HtmlMessageView) or an attachment's, keeps
-        // the native menu for its save and copy actions.
-        if ((event.target as Element | null)?.closest?.('img')) return
+        // A cached picture: one in the email's frame (forwarded by HtmlFrame)
+        // or an attachment's in the grid.
+        const imageEl = (event.target as Element | null)?.closest?.('[data-media-key]') as HTMLElement | null
+        const imageKey = (event.nativeEvent as { meronImageKey?: string }).meronImageKey ?? imageEl?.dataset.mediaKey
+        if (!imageKey && (event.target as Element | null)?.closest?.('img')) return
         event.preventDefault()
+        const image = imageKey ? { key: imageKey, filename: mediaFilename(imageKey, tab.attachments) } : undefined
         const anchor = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
         const linkUrl: string | undefined =
           (event.nativeEvent as { meronLinkUrl?: string }).meronLinkUrl ?? anchor?.href
-        setMenu({ x: event.clientX, y: event.clientY, linkUrl, tabId: tab.id })
+        setMenu({ x: event.clientX, y: event.clientY, linkUrl, image, tabId: tab.id })
       }}
     >
       <HtmlMessageView
@@ -285,7 +289,7 @@ function ReaderCorrespondents({
   )
 }
 
-type ReaderMenuAt = { x: number; y: number; linkUrl?: string; tabId: string }
+type ReaderMenuAt = { x: number; y: number; linkUrl?: string; image?: { key: string; filename: string }; tabId: string }
 
 // The message card's menu, on the tab. It reads the message from the open
 // thread while that is loaded, so a star or read change made anywhere shows;

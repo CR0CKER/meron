@@ -3,6 +3,7 @@ import type { CSSProperties, Ref } from 'react'
 import { clearMediaSession } from '../../lib/mediaSession'
 import { chordFromEvent, shortcutForChord } from '../../lib/shortcuts'
 import { openExternal } from '../../lib/native'
+import { mediaKeyFromSrc } from './messageHelpers'
 import { trackInternalDrags } from '../../lib/useFileDrop'
 
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
@@ -25,8 +26,9 @@ interface HtmlFrameProps {
   // When set, right-clicks inside the frame are blocked from showing WebKit's
   // native menu and re-dispatched as a `contextmenu` event on the iframe
   // element, so a custom menu registered on a parent element fires instead.
-  // 'except-images' leaves an image's right-click to the native menu, for its
-  // save and copy actions, which a custom message menu doesn't offer.
+  // A cached picture's right-click carries its media key as `meronImageKey`,
+  // for the menu's save and copy actions. 'except-images' leaves any other picture's
+  // right-click to the native menu.
   forwardContextMenu?: boolean | 'except-images'
   // Call `onReady` as soon as the document is parsed instead of waiting for
   // its `load` event, which waits for every picture: one slow image would
@@ -243,7 +245,9 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
         if (hasFrameSelection(doc)) return
 
         const target = event.target as Element | null
-        if (forwardContextMenuRef.current === 'except-images' && target?.closest?.('img')) return
+        const img = target?.closest?.('img') as HTMLImageElement | null
+        const imageKey = img ? mediaKeyFromSrc(img.currentSrc || img.src) : null
+        if (forwardContextMenuRef.current === 'except-images' && img && !imageKey) return
         const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
         let linkUrl: string | undefined = undefined
         if (anchor) {
@@ -274,6 +278,9 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
         })
         if (linkUrl) {
           ;(customEvent as any).meronLinkUrl = linkUrl
+        }
+        if (imageKey) {
+          ;(customEvent as any).meronImageKey = imageKey
         }
         frame.dispatchEvent(customEvent)
       })

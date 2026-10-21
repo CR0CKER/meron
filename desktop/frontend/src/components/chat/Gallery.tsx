@@ -5,15 +5,20 @@ import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import { copyAttachmentImage, downloadAttachment } from '../../states/mail'
 import { MenuItem } from '../menu/MenuItem'
+import { mediaKeyFromSrc } from './messageHelpers'
 import { VideoAttachment } from './VideoAttachment'
 
 // The native WebKitGTK image context menu ("Save Image As", "Open Image in New
 // Window") is dead inside the Wails webview — there's no browser download or
-// navigation backing it. Derive the media key from a `/media/<key>` src so we
-// can save through the bridge instead.
-function mediaKeyFromSrc(src: string): string | null {
-  const prefix = '/media/'
-  return src.startsWith(prefix) ? decodeURIComponent(src.slice(prefix.length)) : null
+// navigation backing it. The media key behind a cached picture's src (see
+// mediaKeyFromSrc) lets us save through the bridge instead.
+
+// An inline picture's name is its alt text, which rarely carries an extension;
+// borrow the cached file's so the saved copy opens as an image.
+function saveFilename(filename: string, key: string): string {
+  if (/\.[a-z0-9]+$/i.test(filename)) return filename
+  const ext = key.match(/\.[a-z0-9]+$/i)?.[0] ?? ''
+  return `${filename}${ext}`
 }
 
 const MIN_SCALE = 1
@@ -168,7 +173,7 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
     setMenu(null)
     const key = mediaKeyFromSrc(current.src)
     if (!key) return
-    void downloadAttachment({ key, filename: current.filename })
+    void downloadAttachment({ key, filename: saveFilename(current.filename, key) })
   }
   const copyCurrent = () => {
     setMenu(null)
@@ -185,6 +190,9 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
     <div
       className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm animate-fade-in select-none"
       onClick={onClose}
+      // React bubbles a portal's events to the component that rendered it: a
+      // right-click here must not also open the message's menu behind.
+      onContextMenu={(event) => event.stopPropagation()}
     >
       {/* Top bar: counter + save + close */}
       <div className="flex shrink-0 items-center justify-between px-4 py-3 text-white/90">

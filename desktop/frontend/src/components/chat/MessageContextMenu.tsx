@@ -79,45 +79,51 @@ export function MessageContextMenu({
       overlayClassName="fixed inset-0 z-[60]"
       className="fixed z-[61] min-w-[180px] rounded-xl border border-border bg-header p-1 shadow-xl"
     >
-      {state.linkUrl ? (
+      {state.linkUrl || state.image ? (
         <>
-          <MenuItem
-            icon={<ExternalLink size={13} className="text-accent" />}
-            label={t('chat.actions.openLink')}
-            onClick={() => {
-              openExternal(state.linkUrl!)
-              onClose()
-            }}
-          />
-          <MenuItem
-            icon={<Link2 size={13} className="text-accent" />}
-            label={t('chat.actions.copyLinkAddress')}
-            onClick={() => {
-              copyText(state.linkUrl!).catch(() => undefined)
-              onClose()
-            }}
-          />
-        </>
-      ) : state.image ? (
-        <>
-          <MenuItem
-            icon={<Download size={13} className="text-accent" />}
-            label={t('chat.actions.saveImage')}
-            onClick={() => {
-              const image = state.image!
-              onClose()
-              void downloadAttachment(image)
-            }}
-          />
-          <MenuItem
-            icon={<Copy size={13} className="text-accent" />}
-            label={t('chat.actions.copyImage')}
-            onClick={() => {
-              const image = state.image!
-              onClose()
-              void copyAttachmentImage(image)
-            }}
-          />
+          {state.linkUrl && (
+            <>
+              <MenuItem
+                icon={<ExternalLink size={13} className="text-accent" />}
+                label={t('chat.actions.openLink')}
+                onClick={() => {
+                  openExternal(state.linkUrl!)
+                  onClose()
+                }}
+              />
+              <MenuItem
+                icon={<Link2 size={13} className="text-accent" />}
+                label={t('chat.actions.copyLinkAddress')}
+                onClick={() => {
+                  copyText(state.linkUrl!).catch(() => undefined)
+                  onClose()
+                }}
+              />
+            </>
+          )}
+          {/* A linked picture offers both. */}
+          {state.image && (
+            <>
+              <MenuItem
+                icon={<Download size={13} className="text-accent" />}
+                label={t('chat.actions.saveImage')}
+                onClick={() => {
+                  const image = state.image!
+                  onClose()
+                  void downloadAttachment(image)
+                }}
+              />
+              <MenuItem
+                icon={<Copy size={13} className="text-accent" />}
+                label={t('chat.actions.copyImage')}
+                onClick={() => {
+                  const image = state.image!
+                  onClose()
+                  void copyAttachmentImage(image)
+                }}
+              />
+            </>
+          )}
         </>
       ) : (
         <>

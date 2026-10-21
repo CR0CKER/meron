@@ -357,6 +357,8 @@ function AttachmentImageGrid({ images, onOpen }: { images: Attachment[]; onOpen:
           key={`${image.filename}-${index}`}
           type="button"
           onClick={() => onOpen(index)}
+          // Read by the reader's context menu to offer save/copy.
+          data-media-key={image.key ?? undefined}
           title={image.filename}
           className="overflow-hidden rounded-lg border border-border bg-black/[0.03] cursor-zoom-in"
         >

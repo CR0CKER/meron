@@ -104,6 +104,27 @@ export function mediaSrc(media: Attachment): string {
   return media.key ? `/media/${media.key}` : media.url!
 }
 
+/** The media key behind an image src served from the media cache: `/media/<key>`,
+ * or that path made absolute, as a frame document's `img.src` reports it. */
+export function mediaKeyFromSrc(src: string): string | null {
+  const prefix = '/media/'
+  if (src.startsWith(prefix)) return decodeURIComponent(src.slice(prefix.length))
+  try {
+    const url = new URL(src)
+    if (url.origin !== window.location.origin || !url.pathname.startsWith(prefix)) return null
+    return decodeURIComponent(url.pathname.slice(prefix.length))
+  } catch {
+    return null
+  }
+}
+
+/** The name to save cached media under: the attachment's own when the message
+ * lists it, else the key's file name (an inline picture's alt text is a caption,
+ * not a name). */
+export function mediaFilename(key: string, attachments: Attachment[] | undefined): string {
+  return attachments?.find((attachment) => attachment.key === key)?.filename ?? key.split('/').pop() ?? key
+}
+
 export function htmlReferencesMedia(html: string | undefined, media: Attachment): boolean {
   if (!html) return false
   if (media.key && html.includes(`/media/${media.key}`)) return true

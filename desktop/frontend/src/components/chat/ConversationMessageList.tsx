@@ -11,7 +11,7 @@ import type { Message } from '../../types'
 import { LinkHoverPreview } from './LinkHoverPreview'
 import { MessageBubble } from './MessageBubble'
 import { MessageRow } from './MessageRow'
-import { formatDateDivider } from './messageHelpers'
+import { formatDateDivider, mediaFilename } from './messageHelpers'
 import { ConversationScrollContext } from './useConversationScroll'
 
 const AUTO_LOAD_EARLIER_THRESHOLD_PX = 400
@@ -314,9 +314,13 @@ export function ConversationMessageList({
                       target && typeof target.closest === 'function'
                         ? (target.closest('[data-media-key]') as HTMLElement | null)
                         : null
+                    // A picture inside the email's frame, forwarded by HtmlFrame.
+                    const frameImageKey: string | undefined = (event.nativeEvent as any)?.meronImageKey
                     const image = imageEl
                       ? { key: imageEl.dataset.mediaKey!, filename: imageEl.dataset.mediaFilename ?? '' }
-                      : undefined
+                      : frameImageKey
+                        ? { key: frameImageKey, filename: mediaFilename(frameImageKey, message.attachments) }
+                        : undefined
                     thread$.messageContextMenu.set({ x: event.clientX, y: event.clientY, message, linkUrl, image })
                   }}
                   className={`rounded-2xl transition-shadow ${traditional ? 'space-y-2' : 'space-y-4'} ${
