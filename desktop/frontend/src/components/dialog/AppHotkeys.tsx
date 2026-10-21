@@ -58,12 +58,29 @@ function bareShortcutsActive(): boolean {
 }
 
 function kanbanArrowNavigationActive(): boolean {
-  return !!kanban$.activeBoardId.peek() && !modalOpen()
+  return !!kanban$.activeBoardId.peek() && !modalOpen() && !ui$.calendarOpen.peek()
 }
 
 function chatArrowNavigationActive(): boolean {
-  return !kanban$.activeBoardId.peek() && !modalOpen()
+  return !kanban$.activeBoardId.peek() && !modalOpen() && !ui$.calendarOpen.peek()
 }
+
+// Shortcuts that act on the mail on screen. The calendar takes the place of
+// mail (and of a board) while keeping their selection for when it closes, so
+// these must not reach mail the user can no longer see.
+const MAIL_VIEW_ACTIONS = new Set<ShortcutId>([
+  'thread.next',
+  'thread.prev',
+  'thread.archive',
+  'thread.star',
+  'thread.unread',
+  'thread.delete',
+  'thread.details',
+  'thread.viewMode',
+  'reply.focus',
+  'compose.replyFull',
+  'search.thread',
+])
 
 // The thread a bare action applies to. On a board it's the one the pane shows:
 // an RSS card opens in a reader tab without retargeting ui$.selectedThread,
@@ -121,7 +138,8 @@ function deleteKeyFocusAllowed(): boolean {
 // Active in both the chat and kanban views (selection lives in
 // ui$.selectedThread either way), unlike the other bare shortcuts.
 function handleDeleteKey(key: string, target: EventTarget | null): boolean {
-  if (key !== 'Delete' || isTyping(target) || modalOpen() || !deleteKeyFocusAllowed()) return false
+  if (key !== 'Delete' || isTyping(target) || modalOpen() || ui$.calendarOpen.peek() || !deleteKeyFocusAllowed())
+    return false
   const threadId = activeThreadId()
   const bulkItems = selectedBulkItems()
   if (bulkItems.length > 0) {
@@ -240,6 +258,8 @@ export function AppHotkeys() {
       if (isBareKeystroke(event)) {
         if (isTyping(event.target) || !bareShortcutsActive()) return
       }
+
+      if (MAIL_VIEW_ACTIONS.has(action) && ui$.calendarOpen.peek()) return
 
       const selected = () => activeThreadId()
       const bulkSelected = () => selectedBulkItems()

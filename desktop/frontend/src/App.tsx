@@ -12,6 +12,7 @@ import { SideNav } from './components/sidenav/SideNav'
 import { ThreadList } from './components/threads/ThreadList'
 import { KanbanView } from './components/kanban/KanbanView'
 import { KanbanConversationPane } from './components/kanban/KanbanConversationPane'
+import { CalendarView } from './components/calendar/CalendarView'
 import { TasksPanel } from './components/tasks/TasksPanel'
 import { TasksSlide } from './components/tasks/TasksSlide'
 import { MessagePane } from './components/chat/MessagePane'
@@ -42,6 +43,7 @@ export default function App() {
   const accounts = useValue(accounts$)
   const activeBoardId = useValue(kanban$.activeBoardId)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
+  const calendarOpen = useValue(ui$.calendarOpen)
   const activeTaskList = useValue(ui$.activeTaskList)
   const composeTabs = useValue(compose$.tabs)
   const activeComposeTab = useValue(compose$.activeTab)
@@ -85,7 +87,11 @@ export default function App() {
         </ErrorBoundary>
         <div className={titleBar ? 'app-frame-content' : 'app-frame-content app-frame-detached'}>
           <ErrorBoundary label="thread list">
-            {activeBoardId ? (
+            {calendarOpen ? (
+              <ErrorBoundary label="calendar">
+                <CalendarView />
+              </ErrorBoundary>
+            ) : activeBoardId ? (
               <KanbanView
                 boardId={activeBoardId}
                 aside={
@@ -105,8 +111,9 @@ export default function App() {
               <ThreadList width={threadListWidth} onResizeStart={startThreadListResize} />
             )}
           </ErrorBoundary>
-          {/* On a board the conversation opens inside KanbanView, under its header. */}
-          {!activeBoardId && (
+          {/* On a board the conversation opens inside KanbanView, under its
+          header; the calendar opens mail in a tab, over itself. */}
+          {!activeBoardId && !calendarOpen && (
             <ErrorBoundary label="conversation">
               <MessagePane />
             </ErrorBoundary>

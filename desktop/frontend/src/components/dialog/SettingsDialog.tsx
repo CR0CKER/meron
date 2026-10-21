@@ -4,6 +4,7 @@ import { useTranslation } from '../../lib/i18n'
 import { useEscapeKey } from '../../lib/useEscapeKey'
 import type { LucideIcon } from 'lucide-react'
 import {
+  CalendarDays,
   X,
   UnfoldVertical,
   Upload,
@@ -51,6 +52,7 @@ import {
   KANBAN_COLUMN_MIN_WIDTH,
   sendShortcutLabel,
   setUnifiedInboxSideNavVisible,
+  setCalendarEnabled,
   setTasksEnabled,
   type ConversationLayout,
   type KanbanBoard,
@@ -398,6 +400,7 @@ function GeneralSection() {
   const showUnreadAccountBadge = useValue(settings$.showUnreadAccountBadge)
   const showUnifiedInbox = useValue(settings$.showUnifiedInboxInSideNav)
   const tasksEnabled = useValue(settings$.tasksEnabled)
+  const calendarEnabled = useValue(settings$.calendarEnabled)
   const kanbanColumnWidth = useValue(settings$.kanbanColumnWidth)
   const kanbanLockScroll = useValue(settings$.kanbanLockScroll)
   const language = useValue(settings$.language)
@@ -497,6 +500,13 @@ function GeneralSection() {
           hint={t('settings.tasks.enableHint')}
           checked={tasksEnabled}
           onChange={() => setTasksEnabled(!tasksEnabled)}
+        />
+        <ToggleRow
+          icon={<CalendarDays size={15} />}
+          title={t('settings.calendar.enable')}
+          hint={t('settings.calendar.enableHint')}
+          checked={calendarEnabled}
+          onChange={() => setCalendarEnabled(!calendarEnabled)}
         />
         <CloseToTrayRow />
         <IntegratedTitlebarRow />

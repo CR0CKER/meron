@@ -82,6 +82,8 @@ internal fun MessageRow(
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
     onRespondToInvite: (MessageBody, String) -> Unit = { _, _ -> },
+    onRemoveInviteEvent: (MessageBody) -> Unit = {},
+    onAddInviteToCalendar: (MessageBody) -> Unit = {},
 ) {
     val shape = RoundedCornerShape(12.dp)
     val textColor = MaterialTheme.colorScheme.onSurface
@@ -166,6 +168,8 @@ internal fun MessageRow(
                     onOpenUrl = onOpenUrl,
                     onRetryLoad = onRetryLoad,
                     onRespondToInvite = { response -> onRespondToInvite(message, response) },
+                    onRemoveInviteEvent = { onRemoveInviteEvent(message) },
+                    onAddInviteToCalendar = { onAddInviteToCalendar(message) },
                 )
             }
         }

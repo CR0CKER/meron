@@ -1091,6 +1091,8 @@ private fun MeronMobileScreenContent(
                     },
                     onRetryLoadMessages = { retryOpenThreadLoad() },
                     onRespondToInvite = { message, response -> scope.launch { respondToInvite(message, response) } },
+                    onRemoveInviteEvent = { message -> scope.launch { removeInviteFromCalendar(message) } },
+                    onAddInviteToCalendar = { message -> scope.launch { addInviteToCalendar(message) } },
                     onMessagesRead = ::markMessagesReadOnScroll,
                     onViewedToBottom = ::markThreadReadOnScroll,
                     snackbarHost = snackbarHost,
@@ -1378,6 +1380,12 @@ private fun MeronMobileScreenContent(
                         saveAppBoolean(prefs, TASKS_ENABLED_PREF, tasksEnabled)
                         if (!tasksEnabled && screen == Screen.Tasks) screen = Screen.Mail
                     },
+                    calendarEnabled = calendarEnabled,
+                    onToggleCalendar = {
+                        calendarEnabled = !calendarEnabled
+                        saveAppBoolean(prefs, CALENDAR_ENABLED_PREF, calendarEnabled)
+                        if (!calendarEnabled && screen == Screen.Calendar) screen = Screen.Mail
+                    },
                     sendShortcutMode = sendShortcutMode,
                     onToggleSendShortcut = {
                         val next = sendShortcutMode.next()
@@ -1500,6 +1508,14 @@ private fun MeronMobileScreenContent(
 
             composable(AppRoutes.Tasks) {
                 TasksRouteContent(
+                    state = state,
+                    drawerState = drawerState,
+                    drawerFolders = drawerFolders,
+                )
+            }
+
+            composable(AppRoutes.Calendar) {
+                CalendarRouteContent(
                     state = state,
                     drawerState = drawerState,
                     drawerFolders = drawerFolders,

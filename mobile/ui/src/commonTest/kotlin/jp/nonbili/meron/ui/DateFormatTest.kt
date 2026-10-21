@@ -36,6 +36,7 @@ class DateFormatTest {
                         DateStyle.MonthDay -> "Jun 9"
                         DateStyle.MonthDayYear -> "Dec 31, 2025"
                         DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
+                        DateStyle.MonthYear -> "June 2026"
                         DateStyle.FullTimestamp -> "Wed, Jun 10, 2026, 09:05"
                         DateStyle.IsoDate -> "2026-06-10"
                     }
@@ -62,6 +63,7 @@ class DateFormatTest {
                     DateStyle.MonthDay -> "Jun 9"
                     DateStyle.MonthDayYear -> "Dec 31, 2025"
                     DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
+                    DateStyle.MonthYear -> "June 2026"
                     DateStyle.FullTimestamp -> "Wed, Jun 10, 2026, 09:05"
                     DateStyle.IsoDate -> "2026-06-10"
                 }
@@ -75,6 +77,7 @@ class DateFormatTest {
                 DateStyle.MonthDay -> "Jun 9"
                 DateStyle.MonthDayYear -> "Jun 9, 2025"
                 DateStyle.WeekdayDate -> "Wed, Jun 10, 2026"
+                DateStyle.MonthYear -> "June 2026"
                 else -> ""
             }
         }

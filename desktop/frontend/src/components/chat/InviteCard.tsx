@@ -1,9 +1,9 @@
-import { CalendarDays, Check, Clock, HelpCircle, MapPin, Repeat, User, X } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CalendarX, Check, Clock, HelpCircle, MapPin, Repeat, User, X } from 'lucide-react'
 import { useState } from 'react'
 import { formatEventRange } from '../../lib/date'
 import { useTranslation } from '../../lib/i18n'
 import { clsx } from '../../lib/utils'
-import { respondToInvite } from '../../states/calendar'
+import { addInviteToCalendar, removeInviteFromCalendar, respondToInvite } from '../../states/calendar'
 import type { Invite, InviteResponse, Message } from '../../types'
 import { Button } from '../button/Button'
 
@@ -97,6 +97,17 @@ export function InviteCard({ message, invite }: { message: Message; invite: Invi
             )}
           </div>
           {reply && <div className="mt-2 font-semibold">{t(reply.key, { name: reply.name })}</div>}
+          {invite.cancelled && invite.event_id && (
+            <Button
+              className="mt-2.5"
+              size="sm"
+              variant="secondary"
+              leftIcon={CalendarX}
+              onClick={() => void removeInviteFromCalendar(message)}
+            >
+              {t('calendar.removeFromCalendar')}
+            </Button>
+          )}
           {invite.can_respond && (
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {RESPONSES.map(({ response, icon, label }) => (
@@ -113,6 +124,16 @@ export function InviteCard({ message, invite }: { message: Message; invite: Invi
                 </Button>
               ))}
               {invite.response && <span className="ml-1 text-secondary">{t(OWN_RESPONSE[invite.response])}</span>}
+              {invite.response && invite.response !== 'declined' && !invite.event_id && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  leftIcon={CalendarPlus}
+                  onClick={() => void addInviteToCalendar(message)}
+                >
+                  {t('calendar.addToCalendar')}
+                </Button>
+              )}
             </div>
           )}
         </div>

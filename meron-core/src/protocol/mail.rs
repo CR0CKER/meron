@@ -281,18 +281,25 @@ fn finish_mobile_sent(
 /// Answer a calendar invitation from its card: see [`crate::calendar::respond`].
 pub(crate) fn respond_mobile_invite(data_dir: &str, params: &Value) -> Result<Value, String> {
     let message = req_str(params, "message")?;
+    let thread_id = opt_str(params, "thread_id");
     let response = req_str(params, "response")?;
     let response = crate::calendar::Response::parse(&response)
         .ok_or_else(|| format!("unknown invitation response: {response}"))?;
     let engine = crate::ffi::engine_for(data_dir)?;
-    let (account_id, raw) = crate::ffi::engine_block_on(crate::calendar::respond(
+    let responded = crate::ffi::engine_block_on(crate::calendar::respond(
         &engine,
         &message,
+        &thread_id,
         response,
         &std::path::PathBuf::from(data_dir).join("attachments"),
     ))?;
-    finish_mobile_sent(&engine, &account_id, &raw);
-    Ok(json!({ "ok": true, "response": response.as_str() }))
+    finish_mobile_sent(&engine, &responded.account, &responded.raw);
+    crate::ffi::emit_event("calendar.changed", json!({ "method": "invite.respond" }));
+    Ok(json!({
+        "ok": true,
+        "response": response.as_str(),
+        "event_id": responded.event_id,
+    }))
 }
 
 pub(crate) fn save_mobile_draft(data_dir: &str, params: &Value) -> Result<Value, String> {

@@ -17,6 +17,7 @@ internal actual fun formatDate(
             DateStyle.MonthDay -> "MMM d"
             DateStyle.MonthDayYear -> "MMM d, yyyy"
             DateStyle.WeekdayDate -> "EEE, MMM d, yyyy"
+            DateStyle.MonthYear -> "LLLL yyyy"
             DateStyle.FullTimestamp -> "EEE, MMM d, yyyy, HH:mm"
             DateStyle.IsoDate -> "yyyy-MM-dd"
         }
@@ -59,3 +60,32 @@ internal actual fun epochSecondsForLocalDate(
         }
     return calendar.timeInMillis / 1000
 }
+
+internal actual fun localDateParts(epochMillis: Long): LocalDateParts {
+    val calendar = GregorianCalendar().apply { timeInMillis = epochMillis }
+    return LocalDateParts(
+        year = calendar.get(Calendar.YEAR),
+        month = calendar.get(Calendar.MONTH) + 1,
+        day = calendar.get(Calendar.DAY_OF_MONTH),
+        weekday = calendar.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY,
+        hour = calendar.get(Calendar.HOUR_OF_DAY),
+        minute = calendar.get(Calendar.MINUTE),
+    )
+}
+
+internal actual fun epochSecondsForLocalDateTime(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+): Long {
+    val calendar =
+        GregorianCalendar().apply {
+            clear()
+            set(year, month - 1, day, hour, minute)
+        }
+    return calendar.timeInMillis / 1000
+}
+
+internal actual fun firstDayOfWeek(): Int = Calendar.getInstance().firstDayOfWeek - Calendar.SUNDAY

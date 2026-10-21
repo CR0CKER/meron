@@ -307,7 +307,9 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		"tasks.setDone", "tasks.delete", "tasks.reorder", "tasks.clearCompleted",
 		"tasks.restore", "tasks.forThread":
 		return a.tasksInvoke(command, payload)
-	case "invite.respond":
+	case "invite.respond", "calendar.events", "calendar.get", "calendar.create",
+		"calendar.update", "calendar.delete", "calendar.restore", "invite.removeFromCalendar",
+		"invite.addToCalendar":
 		return a.calendarInvoke(command, payload)
 	case "backup.export":
 		return a.exportBackup(payload)

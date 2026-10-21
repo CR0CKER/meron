@@ -320,6 +320,12 @@ data class MessageInvite(
     val canRespond: Boolean = false,
     /** The user's answer (`accepted`, `tentative`, `declined`), empty when none. */
     val response: String = "",
+    /** The calendar event this invitation is filed as; empty when it is not
+     *  in the calendar. */
+    val eventId: String = "",
+    /** Which occurrence of a repeating event this is about (epoch seconds);
+     *  0 for the whole event. */
+    val recurrenceId: Long = 0,
 )
 
 fun newDraftMessageId(accountId: String = ""): String {

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Repeat
@@ -20,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,8 @@ internal fun InviteCard(
     outgoing: Boolean,
     textColor: Color,
     onRespond: (String) -> Unit,
+    onRemoveFromCalendar: () -> Unit,
+    onAddToCalendar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val secondary = textColor.copy(alpha = 0.7f)
@@ -107,6 +113,12 @@ internal fun InviteCard(
                     )
                 }
             }
+            if (invite.cancelled && invite.eventId.isNotBlank()) {
+                TextButton(onClick = onRemoveFromCalendar, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    Icon(Icons.Filled.EventBusy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(tr("calendar.removeFromCalendar"), modifier = Modifier.padding(start = 6.dp))
+                }
+            }
             if (invite.canRespond) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -121,6 +133,13 @@ internal fun InviteCard(
                     }
                 }
                 ownResponse[invite.response]?.let { key -> Text(tr(key), fontSize = 12.sp, color = secondary) }
+                // Answered, but its event was deleted since.
+                if (invite.response != "" && invite.response != "declined" && invite.eventId.isBlank()) {
+                    TextButton(onClick = onAddToCalendar, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(tr("calendar.addToCalendar"), modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
             }
         }
     }

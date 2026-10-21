@@ -170,6 +170,8 @@ export type Settings = {
    * the core's own tables, not here — this is only whether the app shows them.
    */
   tasksEnabled: boolean
+  /** Whether the optional calendar is available, like [tasksEnabled]. */
+  calendarEnabled: boolean
   /**
    * Whether the window's close button hides Meron to the tray instead of
    * quitting (Linux and Windows; macOS keeps its own close/quit split).
@@ -227,6 +229,7 @@ const DB_KEY = {
   hiddenSideNavAccounts: 'hidden_sidenav_accounts',
   showUnifiedInboxInSideNav: 'show_unified_inbox_in_sidenav',
   tasksEnabled: 'tasks_enabled',
+  calendarEnabled: 'calendar_enabled',
   closeToTray: 'close_to_tray',
   autoUpdateCheck: 'auto_update_check',
   dismissedUpdateVersion: 'dismissed_update_version',
@@ -439,6 +442,7 @@ export const settings$ = observable<Settings>({
   hiddenSideNavAccounts: [],
   showUnifiedInboxInSideNav: true,
   tasksEnabled: true,
+  calendarEnabled: true,
   closeToTray: true,
   // Boot gets the native saved choice/default before hydrating settings.
   monochromeTrayIcon: false,
@@ -853,6 +857,11 @@ export function setUnifiedInboxSideNavVisible(visible: boolean) {
   settings$.showUnifiedInboxInSideNav.set(visible)
 }
 
+export function setCalendarEnabled(enabled: boolean) {
+  settings$.calendarEnabled.set(enabled)
+  if (!enabled) ui$.calendarOpen.set(false)
+}
+
 export function setTasksEnabled(enabled: boolean) {
   settings$.tasksEnabled.set(enabled)
   // Switching the feature off takes its panel with it; the list it was on is
@@ -985,6 +994,10 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.tasksEnabled] === 'boolean') {
       settings$.tasksEnabled.set(prefs[DB_KEY.tasksEnabled] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.calendarEnabled] === 'boolean') {
+      settings$.calendarEnabled.set(prefs[DB_KEY.calendarEnabled] as boolean)
     }
 
     if (typeof prefs[DB_KEY.closeToTray] === 'boolean') {

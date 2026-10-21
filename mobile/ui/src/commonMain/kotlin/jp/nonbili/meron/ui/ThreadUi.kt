@@ -213,6 +213,8 @@ internal fun ThreadScreen(
     onCopyMessageText: (String, String) -> Unit,
     onRetryLoadMessages: () -> Unit,
     onRespondToInvite: (MessageBody, String) -> Unit,
+    onRemoveInviteEvent: (MessageBody) -> Unit,
+    onAddInviteToCalendar: (MessageBody) -> Unit,
     onMessagesRead: (List<String>) -> Unit,
     onViewedToBottom: () -> Unit,
     snackbarHost: SnackbarHostState,
@@ -1027,6 +1029,8 @@ internal fun ThreadScreen(
                                         onOpenUrl = services::openUrl,
                                         onRetryLoad = onRetryLoadMessages,
                                         onRespondToInvite = onRespondToInvite,
+                                        onRemoveInviteEvent = onRemoveInviteEvent,
+                                        onAddInviteToCalendar = onAddInviteToCalendar,
                                     )
                                 } else {
                                     MessageBubble(
@@ -1060,6 +1064,8 @@ internal fun ThreadScreen(
                                         onOpenUrl = services::openUrl,
                                         onRetryLoad = onRetryLoadMessages,
                                         onRespondToInvite = onRespondToInvite,
+                                        onRemoveInviteEvent = onRemoveInviteEvent,
+                                        onAddInviteToCalendar = onAddInviteToCalendar,
                                     )
                                 }
                             }

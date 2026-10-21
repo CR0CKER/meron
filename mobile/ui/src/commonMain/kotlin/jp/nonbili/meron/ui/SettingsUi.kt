@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatSize
@@ -167,6 +168,8 @@ internal fun SettingsScreen(
     onToggleUnifiedInboxNav: () -> Unit,
     tasksEnabled: Boolean,
     onToggleTasks: () -> Unit,
+    calendarEnabled: Boolean,
+    onToggleCalendar: () -> Unit,
     sendShortcutMode: SendShortcutMode,
     onToggleSendShortcut: () -> Unit,
     quoteReplies: Boolean,
@@ -345,6 +348,8 @@ internal fun SettingsScreen(
                     onToggleUnifiedInboxNav = onToggleUnifiedInboxNav,
                     tasksEnabled = tasksEnabled,
                     onToggleTasks = onToggleTasks,
+                    calendarEnabled = calendarEnabled,
+                    onToggleCalendar = onToggleCalendar,
                     kanbanColumnWidth = kanbanColumnWidth,
                     onCycleKanbanColumnWidth = onCycleKanbanColumnWidth,
                     appProxy = appProxy,
@@ -767,6 +772,8 @@ internal fun SettingsGeneralPage(
     onToggleUnifiedInboxNav: () -> Unit,
     tasksEnabled: Boolean,
     onToggleTasks: () -> Unit,
+    calendarEnabled: Boolean,
+    onToggleCalendar: () -> Unit,
     kanbanColumnWidth: Int,
     onCycleKanbanColumnWidth: () -> Unit,
     appProxy: ProxySpec,
@@ -881,6 +888,15 @@ internal fun SettingsGeneralPage(
                 hint = tr("settings.tasks.enableHint"),
                 checked = tasksEnabled,
                 onToggle = onToggleTasks,
+            )
+        }
+        item {
+            SettingsToggleRow(
+                icon = Icons.Filled.Event,
+                title = tr("settings.calendar.enable"),
+                hint = tr("settings.calendar.enableHint"),
+                checked = calendarEnabled,
+                onToggle = onToggleCalendar,
             )
         }
 

@@ -187,15 +187,12 @@ pub(crate) async fn dispatch(
                     )
                 })
                 .map(|invite| {
-                    let recorded = store::invite_response(
+                    meron_core::calendar::invite_json_for(
                         &engine.db.lock().unwrap(),
                         &account,
-                        &invite.uid,
-                        invite.recurrence_id,
+                        &invite,
+                        &mine,
                     )
-                    .ok()
-                    .flatten();
-                    meron_core::calendar::invite_json(&invite, &mine, recorded.as_ref())
                 });
             let outgoing =
                 store::is_outgoing(&mine, &folder, &message.from_addr, message.delivered);

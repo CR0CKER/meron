@@ -799,6 +799,16 @@ pub fn delete_account(conn: &Connection, id: &str) -> Result<()> {
         "DELETE FROM invite_responses WHERE account = ?1",
         params![id],
     )?;
+    // Invitations the account accepted came with it; events typed in by
+    // hand stay, unlinked.
+    tx.execute(
+        "DELETE FROM events WHERE account = ?1 AND invite_uid <> ''",
+        params![id],
+    )?;
+    tx.execute(
+        "UPDATE events SET account = '', thread_id = '', message_id = '' WHERE account = ?1",
+        params![id],
+    )?;
     tx.commit()?;
     Ok(())
 }

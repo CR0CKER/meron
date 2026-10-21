@@ -932,3 +932,43 @@ fn task_backup_preserves_distinct_rows_with_matching_titles_and_timestamps() {
         }
     }
 }
+
+/// Calendar events are local-only like tasks, so the backup carries them; a
+/// second import adds nothing, and an event edited since the export keeps the
+/// edit.
+#[test]
+fn calendar_events_round_trip_once() {
+    let source = test_conn();
+    let made = crate::calendar::events::create_event(
+        &source,
+        &crate::calendar::events::EventInput {
+            title: "Dentist".into(),
+            start: 1_790_812_800,
+            end: 1_790_816_400,
+            repeat: "yearly".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let id = made["event"]["id"].as_str().unwrap().to_string();
+    let data = collect(&source, false, &no_secrets).unwrap();
+
+    let target = test_conn();
+    assert_eq!(apply(&target, &data, &|_, _, _| Ok(())).unwrap().events, 1);
+    let restored = store::event(&target, &id).unwrap().unwrap();
+    assert_eq!(restored.title, "Dentist");
+    assert_eq!(restored.rrule, "yearly");
+    assert!(restored.recurring);
+
+    target
+        .execute(
+            "UPDATE events SET title = 'Dentist (moved)' WHERE id = ?1",
+            [&id],
+        )
+        .unwrap();
+    assert_eq!(apply(&target, &data, &|_, _, _| Ok(())).unwrap().events, 0);
+    assert_eq!(
+        store::event(&target, &id).unwrap().unwrap().title,
+        "Dentist (moved)"
+    );
+}

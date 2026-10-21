@@ -178,6 +178,10 @@ pub struct BackupData {
     /// newer file ignores the field rather than failing on it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub task_lists: Vec<BackupTaskList>,
+    /// Calendar events, local-only like tasks and carried the same way; absent
+    /// in files written before the calendar existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<store::CalendarEvent>,
 }
 
 /// What [`import`] changed, for the "restored N accounts" confirmation.
@@ -189,6 +193,8 @@ pub struct ImportSummary {
     pub settings: u32,
     pub secrets: u32,
     pub tasks: u32,
+    #[serde(default)]
+    pub events: u32,
 }
 
 impl ImportSummary {
@@ -200,6 +206,7 @@ impl ImportSummary {
             "settings": self.settings,
             "secrets": self.secrets,
             "tasks": self.tasks,
+            "events": self.events,
         })
     }
 }
@@ -262,6 +269,7 @@ pub fn collect(
         accounts,
         settings,
         task_lists: collect_task_lists(conn)?,
+        events: store::all_events(conn)?,
     })
 }
 
@@ -629,6 +637,14 @@ pub fn apply(
 
     for (index, list) in data.task_lists.iter().enumerate() {
         summary.tasks += restore_task_list(&tx, list, index, now)?;
+    }
+
+    // By id, never over an event already here: importing the same file twice
+    // adds nothing, and an edit made since the export is kept.
+    for event in &data.events {
+        if !event.id.is_empty() && store::insert_event_if_absent(&tx, event)? {
+            summary.events += 1;
+        }
     }
 
     tx.commit()?;

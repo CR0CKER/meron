@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { createPortal } from 'react-dom'
-import { Menu, SquareCheckBig } from 'lucide-react'
+import { CalendarDays, Menu, SquareCheckBig } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import logo from '../../assets/logo.png'
 import { useTranslation } from '../../lib/i18n'
@@ -8,6 +8,7 @@ import { isMac } from '../../lib/shortcuts'
 import { windowChrome$ } from '../../lib/windowChrome'
 import { kanban$ } from '../../states/kanban'
 import { settings$ } from '../../states/settings'
+import { toggleCalendar } from '../../states/calendar'
 import { toggleTasksPanel } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
 import { KanbanSearch } from '../kanban/KanbanSearch'
@@ -112,6 +113,8 @@ function TitleBarTools({ menu, setMenu }: { menu: MenuPosition; setMenu: Dispatc
   const windows = useValue(windowChrome$.platform) === 'windows'
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
+  const calendarEnabled = useValue(settings$.calendarEnabled)
+  const calendarOpen = useValue(ui$.calendarOpen)
   // As tall as the search, so hover highlights line up with it.
   const button = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors cursor-pointer'
   const idle = 'text-sidenav-ink/60 hover:bg-sidenav-ink/10 hover:text-sidenav-ink'
@@ -120,6 +123,18 @@ function TitleBarTools({ menu, setMenu }: { menu: MenuPosition; setMenu: Dispatc
 
   return (
     <div className={`flex items-center gap-1 ${isMac ? '' : windows ? 'mr-2' : 'mr-1.5'}`}>
+      {calendarEnabled && (
+        <button
+          type="button"
+          className={`${button} ${calendarOpen ? pressed : idle}`}
+          onClick={toggleCalendar}
+          title={t('calendar.title')}
+          aria-label={t('calendar.title')}
+          aria-pressed={calendarOpen}
+        >
+          <CalendarDays size={iconSize} />
+        </button>
+      )}
       {tasksEnabled && (
         // Hidden with the panel itself, which doesn't fit below 900px.
         <button

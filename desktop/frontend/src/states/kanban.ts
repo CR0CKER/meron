@@ -101,6 +101,7 @@ export function selectKanbanBoard(boardId: string) {
   if (!compose$.tabs.peek().some((tab) => tab.id === activeTab)) ui$.selectedThread.set('')
   kanban$.paneThreadId.set('')
   kanban$.paneColumnKey.set('')
+  ui$.calendarOpen.set(false)
   kanban$.activeBoardId.set(boardId)
 }
 
@@ -183,6 +184,7 @@ export function openMailAccount(accountId: string, folderId = 'inbox', resumeCur
     pauseMailFolderPersist(false)
   }
   closeKanbanBoard()
+  ui$.calendarOpen.set(false)
   ui$.selectedAccount.set(accountId)
   if (resumesMailView) return
   ui$.selectedFolder.set(folderId)

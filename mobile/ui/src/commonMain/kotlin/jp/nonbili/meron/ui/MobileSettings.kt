@@ -67,6 +67,7 @@ internal val mobileSettings =
         // Layout and navigation.
         MobileSetting(PrefStore.App, SHOW_UNIFIED_INBOX_PREF, PrefType.Bool),
         MobileSetting(PrefStore.App, TASKS_ENABLED_PREF, PrefType.Bool),
+        MobileSetting(PrefStore.App, CALENDAR_ENABLED_PREF, PrefType.Bool),
         MobileSetting(PrefStore.App, CONVERSATION_LAYOUT_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, SEND_SHORTCUT_PREF, PrefType.Str),
         MobileSetting(PrefStore.App, QUOTE_REPLIES_PREF, PrefType.Bool),

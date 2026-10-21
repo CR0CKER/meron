@@ -78,6 +78,9 @@ export const ui$ = observable({
   // chrome, like the dialogs above it.
   tasksPanelOpen: false,
   activeTaskList: '',
+  // The optional calendar. Unlike Tasks it is a view: it takes the main pane,
+  // the way a board does, until an account or a board is opened.
+  calendarOpen: false,
   // Command palette (⌘/Ctrl+K). Ephemeral: open flag, search query, and the
   // highlighted row index.
   paletteOpen: false,

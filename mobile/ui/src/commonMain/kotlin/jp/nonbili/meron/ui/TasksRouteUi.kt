@@ -82,72 +82,7 @@ internal fun TasksRouteContent(
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                MailDrawer(
-                    accounts = coreAccounts.filterNot { it.id in hiddenNavigationAccountIds },
-                    selectedAccountId = selectedCoreAccountId,
-                    folders = drawerFolders,
-                    currentScreen = screen,
-                    showUnreadBadges = showUnreadBadges,
-                    showUnifiedInboxNav = showUnifiedInboxNav,
-                    kanbanBoards = kanbanBoards,
-                    activeKanbanBoardId = activeKanbanBoardId,
-                    tasksEnabled = tasksEnabled,
-                    onSelectUnified = {
-                        screen = Screen.Mail
-                        if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
-                            selectCoreMailbox(UNIFIED_ACCOUNT_ID)
-                            syncCoreThreads(
-                                accountOverride = UNIFIED_ACCOUNT_ID,
-                                folderOverride = selectedCoreFolder,
-                                syncFirst = false,
-                            )
-                        }
-                        scope.launch { drawerState.close() }
-                    },
-                    onSelectAccount = { account ->
-                        screen = Screen.Mail
-                        if (selectedCoreAccountId != account.id) {
-                            selectCoreMailbox(account.id)
-                            syncCoreThreads(
-                                accountOverride = account.id,
-                                folderOverride = selectedCoreFolder,
-                                syncFirst = false,
-                            )
-                        }
-                        scope.launch { drawerState.close() }
-                    },
-                    onSelectKanbanBoard = { board ->
-                        screen = Screen.Kanban
-                        if (activeKanbanBoardId != board.id) {
-                            activeKanbanBoardId = board.id
-                            saveActiveKanbanBoardId(kanbanPrefs, board.id)
-                            loadKanbanBoard(refresh = false)
-                        }
-                        scope.launch { drawerState.close() }
-                    },
-                    onSelectTasks = { scope.launch { drawerState.close() } },
-                    onAddAccount = {
-                        resetPasswordAccountForm()
-                        addSection = 0
-                        previousTopScreen = Screen.Tasks
-                        screen = Screen.AddAccount
-                        scope.launch { drawerState.close() }
-                    },
-                    onOpenSettings = {
-                        previousTopScreen = screen
-                        screen = Screen.Settings
-                        scope.launch { drawerState.close() }
-                    },
-                    onShowAbout = {
-                        showAboutDialog = true
-                        scope.launch { drawerState.close() }
-                    },
-                    googleReauthAccountId = googleReauthAccountId,
-                    onReconnectGoogle = {
-                        connectGoogleDeviceAccount()
-                        scope.launch { drawerState.close() }
-                    },
-                )
+                ViewsDrawer(state, drawerState, drawerFolders)
             },
         ) {
             Scaffold(
@@ -400,5 +335,97 @@ private fun TaskEditDialog(
         ) {
             DatePicker(state = pickerState)
         }
+    }
+}
+
+/**
+ * The drawer of the top-level screens that are not mail — Tasks and Calendar —
+ * where picking a mailbox or a board leaves for it.
+ */
+@Composable
+internal fun ViewsDrawer(
+    state: MeronMobileState,
+    drawerState: DrawerState,
+    drawerFolders: List<jp.nonbili.meron.shared.FolderSummary>,
+) {
+    with(state) {
+        MailDrawer(
+            accounts = coreAccounts.filterNot { it.id in hiddenNavigationAccountIds },
+            selectedAccountId = selectedCoreAccountId,
+            folders = drawerFolders,
+            currentScreen = screen,
+            showUnreadBadges = showUnreadBadges,
+            showUnifiedInboxNav = showUnifiedInboxNav,
+            kanbanBoards = kanbanBoards,
+            activeKanbanBoardId = activeKanbanBoardId,
+            tasksEnabled = tasksEnabled,
+            calendarEnabled = calendarEnabled,
+            onSelectUnified = {
+                screen = Screen.Mail
+                if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
+                    selectCoreMailbox(UNIFIED_ACCOUNT_ID)
+                    syncCoreThreads(
+                        accountOverride = UNIFIED_ACCOUNT_ID,
+                        folderOverride = selectedCoreFolder,
+                        syncFirst = false,
+                    )
+                }
+                scope.launch { drawerState.close() }
+            },
+            onSelectAccount = { account ->
+                screen = Screen.Mail
+                if (selectedCoreAccountId != account.id) {
+                    selectCoreMailbox(account.id)
+                    syncCoreThreads(
+                        accountOverride = account.id,
+                        folderOverride = selectedCoreFolder,
+                        syncFirst = false,
+                    )
+                }
+                scope.launch { drawerState.close() }
+            },
+            onSelectKanbanBoard = { board ->
+                screen = Screen.Kanban
+                if (activeKanbanBoardId != board.id) {
+                    activeKanbanBoardId = board.id
+                    saveActiveKanbanBoardId(kanbanPrefs, board.id)
+                    loadKanbanBoard(refresh = false)
+                }
+                scope.launch { drawerState.close() }
+            },
+            onSelectTasks = {
+                scope.launch {
+                    if (screen != Screen.Tasks) openTasks()
+                    drawerState.close()
+                }
+            },
+            onSelectCalendar = {
+                scope.launch {
+                    if (screen != Screen.Calendar) openCalendar()
+                    drawerState.close()
+                }
+            },
+            onAddAccount = {
+                resetPasswordAccountForm()
+                addSection = 0
+                previousTopScreen = screen
+                screen = Screen.AddAccount
+                scope.launch { drawerState.close() }
+            },
+            onOpenSettings = {
+                previousTopScreen = screen
+                screen = Screen.Settings
+                scope.launch { drawerState.close() }
+            },
+            onShowAbout = {
+                showAboutDialog = true
+                scope.launch { drawerState.close() }
+            },
+            googleReauthAccountId = googleReauthAccountId,
+            onReconnectGoogle = {
+                connectGoogleDeviceAccount()
+                scope.launch { drawerState.close() }
+            },
+        )
     }
 }

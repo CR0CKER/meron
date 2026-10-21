@@ -265,6 +265,18 @@ pub fn task(conn: &Connection, id: &str) -> Result<Option<Task>> {
 /// same conversation, so a `t.` thread key — derived from the messages, not the
 /// mailbox — matches in any folder of the same account. A `uid` key is a
 /// per-folder IMAP UID and only ever matches exactly.
+/// Open tasks due in `[from, to)`, soonest first, for the calendar.
+pub fn tasks_due_between(conn: &Connection, from: i64, to: i64) -> Result<Vec<Task>> {
+    let sql = format!(
+        "SELECT {TASK_COLUMNS} FROM tasks
+         WHERE due_at > 0 AND due_at >= ?1 AND due_at < ?2 AND completed_at = 0
+         ORDER BY due_at, sort_order, id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![from, to], read_task)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 pub fn tasks_for_thread(conn: &Connection, thread_id: &str) -> Result<Vec<Task>> {
     let sql =
         format!("SELECT {TASK_COLUMNS} FROM tasks WHERE thread_id != '' ORDER BY created_at, id");

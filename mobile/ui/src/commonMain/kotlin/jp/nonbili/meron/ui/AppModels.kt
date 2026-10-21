@@ -5,12 +5,13 @@ import jp.nonbili.meron.shared.AccountSummary
 import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.ThreadSummary
 
-internal enum class Screen { Mail, Kanban, Tasks, Thread, Compose, AddAccount, Settings }
+internal enum class Screen { Mail, Kanban, Tasks, Calendar, Thread, Compose, AddAccount, Settings }
 
 internal object AppRoutes {
     const val Mail = "mail"
     const val Kanban = "kanban"
     const val Tasks = "tasks"
+    const val Calendar = "calendar"
     const val Thread = "thread"
     const val Compose = "compose"
     const val AddAccount = "add-account"
@@ -22,6 +23,7 @@ internal fun Screen.route(): String =
         Screen.Mail -> AppRoutes.Mail
         Screen.Kanban -> AppRoutes.Kanban
         Screen.Tasks -> AppRoutes.Tasks
+        Screen.Calendar -> AppRoutes.Calendar
         Screen.Thread -> AppRoutes.Thread
         Screen.Compose -> AppRoutes.Compose
         Screen.AddAccount -> AppRoutes.AddAccount
@@ -33,6 +35,7 @@ internal fun appRouteToScreen(route: String?): Screen? =
         AppRoutes.Mail -> Screen.Mail
         AppRoutes.Kanban -> Screen.Kanban
         AppRoutes.Tasks -> Screen.Tasks
+        AppRoutes.Calendar -> Screen.Calendar
         AppRoutes.Thread -> Screen.Thread
         AppRoutes.Compose -> Screen.Compose
         AppRoutes.AddAccount -> Screen.AddAccount
@@ -136,6 +139,9 @@ internal const val SHOW_UNIFIED_INBOX_PREF = "show_unified_inbox_v1"
 
 /** Whether the optional Tasks screen is offered. Off until the user asks for it. */
 internal const val TASKS_ENABLED_PREF = "tasks_enabled_v1"
+
+/** Whether the optional Calendar screen is offered, like Tasks. */
+internal const val CALENDAR_ENABLED_PREF = "calendar_enabled_v1"
 internal const val SHOW_SENDER_IMAGES_PREF = "show_sender_images_v1"
 
 /** Whether HTML mail bodies are darkened under a dark theme. Off by default:

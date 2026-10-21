@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import jp.nonbili.meron.shared.AccountSummary
+import jp.nonbili.meron.shared.CalendarItem
 import jp.nonbili.meron.shared.ChangelogRelease
 import jp.nonbili.meron.shared.ContactSuggestion
 import jp.nonbili.meron.shared.DraftAttachment
@@ -345,6 +346,12 @@ internal class MeronMobileState(
     var showUnreadBadges by mutableStateOf(loadAppBoolean(prefs, SHOW_UNREAD_BADGES_PREF, true))
     var showUnifiedInboxNav by mutableStateOf(loadAppBoolean(prefs, SHOW_UNIFIED_INBOX_PREF, true))
     var tasksEnabled by mutableStateOf(loadAppBoolean(prefs, TASKS_ENABLED_PREF, false))
+    var calendarEnabled by mutableStateOf(loadAppBoolean(prefs, CALENDAR_ENABLED_PREF, false))
+
+    /** The calendar screen's month (1-12) and what is in it; empty until opened. */
+    var calendarYear by mutableStateOf(localDateParts(currentTimeMillis()).year)
+    var calendarMonth by mutableStateOf(localDateParts(currentTimeMillis()).month)
+    var calendarItems by mutableStateOf(emptyList<CalendarItem>())
 
     /** Lists and items for the Tasks screen; empty until it is first opened. */
     var taskLists by mutableStateOf(emptyList<TaskListSummary>())
@@ -399,7 +406,7 @@ internal class MeronMobileState(
         get() = screenState
         set(value) {
             screenState = value
-            if (value == Screen.Mail || value == Screen.Kanban || value == Screen.Tasks) {
+            if (value == Screen.Mail || value == Screen.Kanban || value == Screen.Tasks || value == Screen.Calendar) {
                 saveLastTopScreen(prefs, value)
             }
         }

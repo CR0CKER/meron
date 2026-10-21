@@ -232,7 +232,7 @@ Content-Disposition: attachment; filename=invite.ics\r\n\r\n\
 #[test]
 fn invite_json_hides_the_calendar_text() {
     let invite = parse_invite(OUTLOOK).unwrap();
-    let value = invite_json(&invite, &mine(&["sam@example.org"]), None);
+    let value = invite_json(&invite, &mine(&["sam@example.org"]), None, None);
     assert_eq!(value["method"], "request");
     assert_eq!(value["can_respond"], true);
     assert_eq!(value["response"], "");

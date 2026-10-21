@@ -62,6 +62,15 @@ object MobileCommand {
 
     // Answer a calendar invitation; the desktop sidecar serves the same name.
     const val InviteRespond = "invite.respond"
+
+    // Optional local calendar, served under the same names on desktop.
+    const val CalendarEvents = "calendar.events"
+    const val CalendarCreate = "calendar.create"
+    const val CalendarUpdate = "calendar.update"
+    const val CalendarDelete = "calendar.delete"
+    const val CalendarRestore = "calendar.restore"
+    const val InviteRemoveFromCalendar = "invite.removeFromCalendar"
+    const val InviteAddToCalendar = "invite.addToCalendar"
     const val SaveDraft = "mail.saveDraft"
     const val DiscardDraft = "mail.discardDraft"
     const val Archive = "mail.archive"
@@ -1266,6 +1275,26 @@ class MobileMailCommandClient(
 
     suspend fun respondToInvite(params: InviteRespondParams): String = core.invoke(MobileCommand.InviteRespond, params.toJson())
 
+    suspend fun calendarEvents(params: CalendarRangeParams): String = core.invoke(MobileCommand.CalendarEvents, params.toJson())
+
+    suspend fun createCalendarEvent(params: CalendarEventParams): String = core.invoke(MobileCommand.CalendarCreate, params.toJson())
+
+    suspend fun updateCalendarEvent(params: CalendarEventParams): String = core.invoke(MobileCommand.CalendarUpdate, params.toJson())
+
+    suspend fun deleteCalendarEvent(eventId: String): String = core.invoke(MobileCommand.CalendarDelete, jsonObject("event_id" to eventId.jsonString()))
+
+    /** Take a cancelled invitation (by thread message `id`) out of the calendar. */
+    suspend fun removeInviteFromCalendar(message: String): String = core.invoke(MobileCommand.InviteRemoveFromCalendar, jsonObject("message" to message.jsonString()))
+
+    /** Put an answered invitation (by thread message `id`) back in the calendar. */
+    suspend fun addInviteToCalendar(
+        message: String,
+        threadId: String,
+    ): String = core.invoke(MobileCommand.InviteAddToCalendar, jsonObject("message" to message.jsonString(), "thread_id" to threadId.jsonString()))
+
+    /** Hand back what `calendar.delete` returned as `restore`, untouched. */
+    suspend fun restoreCalendarEvent(restore: String): String = core.invoke(MobileCommand.CalendarRestore, jsonObject("restore" to restore))
+
     suspend fun saveDraft(params: SaveDraftParams): String = core.invoke(MobileCommand.SaveDraft, params.toJson())
 
     suspend fun discardDraft(params: DiscardDraftParams): String = core.invoke(MobileCommand.DiscardDraft, params.toJson())
@@ -1669,16 +1698,66 @@ data class TaskUpdateParams(
         )
 }
 
-/** [message] is the thread message's `id`; [response] is `accepted`,
+/** [message] is the thread message's `id` and [threadId] its conversation's,
+ * which the calendar event links back to; [response] is `accepted`,
  * `tentative` or `declined`. */
 data class InviteRespondParams(
     val message: String,
     val response: String,
+    val threadId: String = "",
 ) {
     fun toJson(): String =
         jsonObject(
             "message" to message.jsonString(),
+            "thread_id" to threadId.jsonString(),
             "response" to response.jsonString(),
+        )
+}
+
+/** A calendar range in epoch seconds, `[from, to)`. */
+data class CalendarRangeParams(
+    val from: Long,
+    val to: Long,
+    val includeTasks: Boolean,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "from" to from.toString(),
+            "to" to to.toString(),
+            "include_tasks" to includeTasks.toString(),
+        )
+}
+
+/**
+ * An event to create, or (with [eventId]) to change. Times are epoch seconds;
+ * an all-day event's are UTC midnights with [end] exclusive. [repeat] is
+ * `daily`, `weekly`, `monthly`, `yearly`, or empty for once.
+ */
+data class CalendarEventParams(
+    val eventId: String = "",
+    val title: String,
+    val notes: String = "",
+    val location: String = "",
+    val start: Long,
+    val end: Long,
+    val allDay: Boolean = false,
+    val repeat: String = "",
+    /** Editing a repeating event: the start of the occurrence the editor was
+     *  opened on, so the core moves the series by the change rather than
+     *  restarting it there. 0 for none. */
+    val occurrenceStart: Long = 0,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "event_id" to eventId.takeIf { it.isNotEmpty() }?.jsonString(),
+            "occurrence_start" to occurrenceStart.takeIf { it > 0 }?.toString(),
+            "title" to title.jsonString(),
+            "notes" to notes.jsonString(),
+            "location" to location.jsonString(),
+            "start" to start.toString(),
+            "end" to end.toString(),
+            "all_day" to allDay.toString(),
+            "repeat" to repeat.jsonString(),
         )
 }
 

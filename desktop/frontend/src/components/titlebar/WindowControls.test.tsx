@@ -89,10 +89,20 @@ describe('TitleBar', () => {
   it('holds the app buttons between the two sides of window controls', () => {
     windowChrome$.layout.set({ start: ['close'], end: ['minimize'] })
     settings$.tasksEnabled.set(false)
+    settings$.calendarEnabled.set(false)
     render(<TitleBar />)
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'Search options', 'More', 'Minimize'])
     act(() => settings$.tasksEnabled.set(true))
     expect(labels(screen.getAllByRole('button'))).toEqual(['Close', 'Search options', 'Tasks', 'More', 'Minimize'])
+    act(() => settings$.calendarEnabled.set(true))
+    expect(labels(screen.getAllByRole('button'))).toEqual([
+      'Close',
+      'Search options',
+      'Calendar',
+      'Tasks',
+      'More',
+      'Minimize',
+    ])
   })
 
   it("holds the thread list's search, or the kanban board's", () => {

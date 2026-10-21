@@ -568,6 +568,8 @@ private fun parseMessageInvite(json: String): MessageInvite? {
                 }.orEmpty(),
         canRespond = entries["can_respond"] == "true",
         response = string(entries["response"]),
+        eventId = string(entries["event_id"]),
+        recurrenceId = entries["recurrence_id"]?.toLongOrNull() ?: 0,
     )
 }
 
@@ -783,6 +785,76 @@ private fun String.jsonObjectEntries(): List<Pair<String, String>> {
     }
     return out
 }
+
+// ---- Calendar ---------------------------------------------------------------
+
+/**
+ * One occurrence in a calendar range, as meron-core/src/calendar/events.rs
+ * shapes it. Times are epoch seconds; an all-day item's are UTC midnights
+ * with [end] exclusive. [key] is unique within one answer.
+ */
+data class CalendarItem(
+    val id: String,
+    val key: String,
+    /** `event`, `invite` or `task`. */
+    val source: String,
+    val title: String,
+    val notes: String = "",
+    val location: String = "",
+    val start: Long,
+    val end: Long,
+    val allDay: Boolean = false,
+    val recurring: Boolean = false,
+    val repeat: String = "",
+    val account: String = "",
+    val threadId: String = "",
+    /** An invitation's answer: `accepted` or `tentative`. */
+    val response: String = "",
+    /** A task's list. */
+    val listId: String = "",
+)
+
+fun parseCalendarEventsResponse(responseJson: String): List<CalendarItem> =
+    responseJson
+        .findJsonArrayProperty("events")
+        ?.jsonArrayElements()
+        ?.mapNotNull { element ->
+            // Own keys only: titles and notes are the user's (or a sender's) text.
+            val entries = element.jsonObjectEntries().toMap()
+
+            fun string(name: String): String =
+                entries[name]
+                    ?.takeIf { it.startsWith('"') }
+                    ?.readJsonString(0)
+                    ?.value
+                    .orEmpty()
+            val id = string("id")
+            if (id.isBlank()) return@mapNotNull null
+            CalendarItem(
+                id = id,
+                key = string("key").ifBlank { id },
+                source = string("source"),
+                title = string("title"),
+                notes = string("notes"),
+                location = string("location"),
+                start = entries["start"]?.toLongOrNull() ?: 0,
+                end = entries["end"]?.toLongOrNull() ?: 0,
+                allDay = entries["all_day"] == "true",
+                recurring = entries["recurring"] == "true",
+                repeat = string("repeat"),
+                account = string("account"),
+                threadId = string("thread_id"),
+                response = string("response"),
+                listId = string("list_id"),
+            )
+        }.orEmpty()
+
+/** The calendar event id an `invite.addToCalendar` filed, or empty. */
+fun parseCalendarEventIdResponse(responseJson: String): String = responseJson.findJsonStringProperty("event_id").orEmpty()
+
+/** The raw `restore` object a `calendar.delete` returned, or null. Not parsed:
+ *  it goes back to the core untouched. */
+fun parseCalendarRestorePayload(responseJson: String): String? = responseJson.findJsonPropertyValue("restore")?.takeIf { it.startsWith('{') }
 
 // ---- Tasks ------------------------------------------------------------------
 

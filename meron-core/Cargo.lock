@@ -1947,6 +1947,7 @@ dependencies = [
  "futures",
  "hickory-resolver",
  "html-to-markdown-rs",
+ "iana-time-zone",
  "image",
  "jni 0.21.1",
  "keyring",

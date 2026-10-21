@@ -172,6 +172,7 @@ internal fun KanbanRouteContent(
                     kanbanBoards = kanbanBoards,
                     activeKanbanBoardId = activeKanbanBoardId,
                     tasksEnabled = tasksEnabled,
+                    calendarEnabled = calendarEnabled,
                     onSelectUnified = {
                         screen = Screen.Mail
                         if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
@@ -199,6 +200,12 @@ internal fun KanbanRouteContent(
                     onSelectTasks = {
                         scope.launch {
                             openTasks()
+                            drawerState.close()
+                        }
+                    },
+                    onSelectCalendar = {
+                        scope.launch {
+                            openCalendar()
                             drawerState.close()
                         }
                     },
@@ -594,6 +601,7 @@ internal fun MailRouteContent(
                     kanbanBoards = kanbanBoards,
                     activeKanbanBoardId = activeKanbanBoardId,
                     tasksEnabled = tasksEnabled,
+                    calendarEnabled = calendarEnabled,
                     onSelectUnified = {
                         if (selectedCoreAccountId != UNIFIED_ACCOUNT_ID) {
                             selectCoreMailbox(UNIFIED_ACCOUNT_ID)
@@ -621,6 +629,12 @@ internal fun MailRouteContent(
                     onSelectTasks = {
                         scope.launch {
                             openTasks()
+                            drawerState.close()
+                        }
+                    },
+                    onSelectCalendar = {
+                        scope.launch {
+                            openCalendar()
                             drawerState.close()
                         }
                     },

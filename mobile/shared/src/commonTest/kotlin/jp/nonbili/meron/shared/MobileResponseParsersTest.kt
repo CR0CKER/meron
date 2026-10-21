@@ -743,4 +743,20 @@ class MobileResponseParsersTest {
         val message = parseThreadReadPage("""{"id":10,"result":{"messages":[{"body":"\"invite\":{}","id":"m1"}]}}""").messages.single()
         assertEquals(null, message.invite)
     }
+
+    @Test
+    fun parsesCalendarItemsAndTheirRestorePayload() {
+        val items =
+            parseCalendarEventsResponse(
+                """{"events":[{"account":"","all_day":true,"end":1790899200,"id":"task-1","key":"task:task-1","list_id":"l1","notes":"\"id\":\"forged\"","recurring":false,"repeat":"","response":"","source":"task","start":1790812800,"thread_id":"","title":"File report"},{"account":"acct","all_day":false,"end":1790816400,"id":"event-1","key":"event-1@1790812800","location":"Room 4","recurring":true,"repeat":"","response":"tentative","source":"invite","start":1790812800,"thread_id":"acct#INBOX#t.x","title":"Review"},{"title":"no id"}]}""",
+            )
+        assertEquals(2, items.size)
+        assertEquals(CalendarItem(id = "task-1", key = "task:task-1", source = "task", title = "File report", notes = "\"id\":\"forged\"", start = 1_790_812_800, end = 1_790_899_200, allDay = true, listId = "l1"), items[0])
+        assertEquals("invite", items[1].source)
+        assertEquals("tentative", items[1].response)
+        assertEquals("acct#INBOX#t.x", items[1].threadId)
+        assertTrue(items[1].recurring)
+        assertEquals("""{"id":"event-1"}""", parseCalendarRestorePayload("""{"ok":true,"restore":{"id":"event-1"}}"""))
+        assertEquals(null, parseCalendarRestorePayload("""{"ok":true,"restore":null}"""))
+    }
 }

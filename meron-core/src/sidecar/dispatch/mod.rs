@@ -3,6 +3,7 @@
 mod accounts;
 mod actions;
 mod backup;
+mod calendar;
 mod compose;
 mod feeds;
 mod folders;
@@ -95,6 +96,15 @@ pub(crate) async fn dispatch(
         | "tasks.clearCompleted"
         | "tasks.restore"
         | "tasks.forThread" => tasks::dispatch(engine, req, out).await,
+
+        "calendar.events"
+        | "calendar.get"
+        | "calendar.create"
+        | "calendar.update"
+        | "calendar.delete"
+        | "calendar.restore"
+        | "invite.removeFromCalendar"
+        | "invite.addToCalendar" => calendar::dispatch(engine, req, out).await,
 
         "folders.list"
         | "folders.create"

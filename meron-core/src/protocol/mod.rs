@@ -12,6 +12,7 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
 mod accounts;
 mod backup;
+mod calendar;
 mod feeds;
 mod helpers;
 mod mail;
@@ -22,6 +23,7 @@ mod tasks;
 
 pub(crate) use accounts::*;
 pub(crate) use backup::*;
+pub(crate) use calendar::*;
 pub(crate) use feeds::*;
 pub(crate) use helpers::*;
 pub(crate) use mail::*;
@@ -123,7 +125,7 @@ pub fn dispatch_protocol_request(req: &Request) -> Result<Value, String> {
         "rss.thread" => Ok(json!({ "messages": [] })),
         "rss.markRead" => Ok(json!({ "ok": true })),
         "rss.markStarred" => Ok(json!({ "ok": true })),
-        method => match stub_mobile_tasks(method) {
+        method => match stub_mobile_tasks(method).or_else(|| stub_mobile_calendar(method)) {
             Some(value) => Ok(value),
             None => Err(format!("unknown method: {method}")),
         },
@@ -239,7 +241,9 @@ pub fn dispatch_mobile_protocol_request(req: &Request, data_dir: &str) -> Result
         "rss.thread" => read_mobile_rss_thread(data_dir, &req.params),
         "rss.markRead" => mark_mobile_rss_thread_read(data_dir, &req.params),
         "rss.markStarred" => mark_mobile_rss_thread_starred(data_dir, &req.params),
-        method => match dispatch_mobile_tasks(data_dir, method, &req.params) {
+        method => match dispatch_mobile_tasks(data_dir, method, &req.params)
+            .or_else(|| dispatch_mobile_calendar(data_dir, method, &req.params))
+        {
             Some(result) => result,
             None => dispatch_protocol_request(req),
         },

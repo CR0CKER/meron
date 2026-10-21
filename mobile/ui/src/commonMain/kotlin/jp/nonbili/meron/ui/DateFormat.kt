@@ -2,13 +2,38 @@ package jp.nonbili.meron.ui
 
 /** [IsoDate] is the machine-readable `YYYY-MM-DD` a typed due date uses; every
  *  other style is for display and follows the device's locale. */
-internal enum class DateStyle { Time, Weekday, MonthDay, MonthDayYear, WeekdayDate, FullTimestamp, IsoDate }
+internal enum class DateStyle { Time, Weekday, MonthDay, MonthDayYear, WeekdayDate, MonthYear, FullTimestamp, IsoDate }
 
 /** Locale-aware short date; only this piece needs platform date formatting. */
 internal expect fun formatDate(
     epochMillis: Long,
     style: DateStyle,
 ): String
+
+/** An instant's local calendar fields. [month] is 1-12, [weekday] 0 (Sunday)
+ *  to 6 (Saturday). */
+internal data class LocalDateParts(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val weekday: Int,
+    val hour: Int,
+    val minute: Int,
+)
+
+internal expect fun localDateParts(epochMillis: Long): LocalDateParts
+
+/** The local instant a wall-clock date and time name, as epoch seconds. */
+internal expect fun epochSecondsForLocalDateTime(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+): Long
+
+/** The device's first day of the week: 0 Sunday … 6 Saturday. */
+internal expect fun firstDayOfWeek(): Int
 
 internal expect fun isSameLocalDate(
     epochMillis: Long,
@@ -118,16 +143,6 @@ private fun localDateOfUtcDay(
     epochSeconds: Long,
     localDate: (Int, Int, Int) -> Long,
 ): Long {
-    // Days since 1970-01-01 to a proleptic Gregorian date (Hinnant's
-    // civil_from_days), so no platform calendar is needed for UTC.
-    val z = epochSeconds.floorDiv(86_400L) + 719_468
-    val era = z.floorDiv(146_097L)
-    val doe = z - era * 146_097
-    val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
-    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-    val mp = (5 * doy + 2) / 153
-    val day = (doy - (153 * mp + 2) / 5 + 1).toInt()
-    val month = (if (mp < 10) mp + 3 else mp - 9).toInt()
-    val year = (yoe + era * 400 + if (month <= 2) 1 else 0).toInt()
-    return localDate(year, month, day)
+    val date = CivilDate.ofUtcSeconds(epochSeconds)
+    return localDate(date.year, date.month, date.day)
 }

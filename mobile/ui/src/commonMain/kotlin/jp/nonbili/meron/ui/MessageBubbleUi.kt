@@ -219,6 +219,8 @@ internal fun MessageBubble(
     onOpenUrl: (String) -> Unit,
     onRetryLoad: () -> Unit,
     onRespondToInvite: (MessageBody, String) -> Unit = { _, _ -> },
+    onRemoveInviteEvent: (MessageBody) -> Unit = {},
+    onAddInviteToCalendar: (MessageBody) -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var addressesOpen by remember(message.id) { mutableStateOf(false) }
@@ -470,6 +472,8 @@ internal fun MessageBubble(
                 onOpenUrl = onOpenUrl,
                 onRetryLoad = onRetryLoad,
                 onRespondToInvite = { response -> onRespondToInvite(message, response) },
+                onRemoveInviteEvent = { onRemoveInviteEvent(message) },
+                onAddInviteToCalendar = { onAddInviteToCalendar(message) },
                 imageColumns = if (htmlBody) 3 else visibleImageCount.coerceIn(1, 3),
                 onHtmlNaturalWidth =
                     if (hugsText) {
@@ -676,6 +680,10 @@ internal fun ColumnScope.MessageBodyContent(
     onRetryLoad: () -> Unit,
     // Accept / Maybe / Decline on an invitation's card, with the response.
     onRespondToInvite: (String) -> Unit = {},
+    // A cancelled invitation's "Remove from calendar".
+    onRemoveInviteEvent: () -> Unit = {},
+    // An answered invitation's "Add to calendar", once its event is gone.
+    onAddInviteToCalendar: () -> Unit = {},
     // HTML body only: the width a plain-text-like document needs (zero when it
     // should fill the bubble). Null where the caller doesn't size to the body.
     onHtmlNaturalWidth: ((Dp) -> Unit)? = null,
@@ -699,6 +707,8 @@ internal fun ColumnScope.MessageBodyContent(
             outgoing = message.outgoing,
             textColor = textColor,
             onRespond = onRespondToInvite,
+            onRemoveFromCalendar = onRemoveInviteEvent,
+            onAddToCalendar = onAddInviteToCalendar,
             modifier = Modifier.padding(horizontal = chromeInset).padding(bottom = 6.dp),
         )
     }

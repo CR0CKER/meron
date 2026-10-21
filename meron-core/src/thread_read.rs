@@ -447,15 +447,12 @@ pub async fn read_thread_page(
                     crate::calendar::invite_from_attachments(&media_root, &cached.attachments);
             }
             if let Some(invite) = &cached.invite {
-                let recorded = store::invite_response(
+                message["invite"] = crate::calendar::invite_json_for(
                     &engine.db.lock().unwrap(),
                     account,
-                    &invite.uid,
-                    invite.recurrence_id,
-                )
-                .ok()
-                .flatten();
-                message["invite"] = crate::calendar::invite_json(invite, &mine, recorded.as_ref());
+                    invite,
+                    &mine,
+                );
             }
         }
         // Tells a body still downloading in the background from one that

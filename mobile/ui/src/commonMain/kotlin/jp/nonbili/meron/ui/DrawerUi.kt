@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
@@ -245,10 +246,12 @@ internal fun MailDrawer(
     kanbanBoards: List<KanbanBoardSpec>,
     activeKanbanBoardId: String,
     tasksEnabled: Boolean,
+    calendarEnabled: Boolean,
     onSelectUnified: () -> Unit,
     onSelectAccount: (AccountSummary) -> Unit,
     onSelectKanbanBoard: (KanbanBoardSpec) -> Unit,
     onSelectTasks: () -> Unit,
+    onSelectCalendar: () -> Unit,
     onAddAccount: () -> Unit,
     onOpenSettings: () -> Unit,
     onShowAbout: () -> Unit,
@@ -326,10 +329,22 @@ internal fun MailDrawer(
                     )
                 }
             }
-            if (accounts.isNotEmpty() && (kanbanBoards.isNotEmpty() || tasksEnabled)) {
+            if (accounts.isNotEmpty() && (kanbanBoards.isNotEmpty() || tasksEnabled || calendarEnabled)) {
                 item { DrawerLabel(tr("drawer.views"), chat) }
             }
-            // Tasks is one row, shown only once the feature is switched on.
+            // Calendar and Tasks are a row each, shown once switched on.
+            if (calendarEnabled) {
+                item {
+                    SidebarRow(
+                        selected = currentScreen == Screen.Calendar,
+                        chat = chat,
+                        onClick = onSelectCalendar,
+                        leading = { Icon(Icons.Filled.Event, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        title = tr("calendar.title"),
+                        trailing = null,
+                    )
+                }
+            }
             if (tasksEnabled) {
                 item {
                     SidebarRow(

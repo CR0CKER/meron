@@ -399,6 +399,9 @@ export async function openThreadTabById(
   notFoundMessage = t('compose.toast.couldNotOpenNotificationThread'),
 ) {
   if (!threadId) return
+  // The conversation shows in the mail pane, which the calendar replaces —
+  // even when its tab is the active one already, so no tab change says so.
+  ui$.calendarOpen.set(false)
   const id = `thread-${threadId}`
   const existing = compose$.tabs.get().find((tab) => tab.id === id)
   if (existing) {
@@ -482,6 +485,8 @@ type ComposeSeed = Partial<ComposeDraft> & {
 export function openComposeTab(seed?: ComposeSeed): string | undefined {
   const sendable = accounts$.get().filter(isSendableAccount)
   if (sendable.length === 0) return undefined
+  // The composer opens in the mail pane, which the calendar replaces.
+  ui$.calendarOpen.set(false)
   const selected = ui$.selectedAccount.get()
   const accountId = seed?.accountId ?? sendable.find((acc) => acc.id === selected)?.id ?? sendable[0].id
   // Only a truly blank compose (no seeded body) should pick up the account's

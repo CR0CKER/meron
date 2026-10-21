@@ -123,6 +123,12 @@ export type Invite = {
   can_respond: boolean
   /** The user's answer as far as this device knows; empty when none. */
   response: InviteResponse | ''
+  /** The calendar event this invitation is filed as; empty when it is not in
+   * the calendar. */
+  event_id: string
+  /** Which occurrence of a repeating event this is about (Unix seconds); 0
+   * for the whole event. */
+  recurrence_id: number
 }
 
 export type Attachment = {

@@ -8,6 +8,7 @@
 //! VTIMEZONE blocks covers all three, so an event lands on the same instant
 //! whoever sent it.
 
+pub mod events;
 #[cfg(test)]
 mod tests;
 
@@ -63,6 +64,10 @@ pub struct Invite {
     /// 0 for the whole series.
     #[serde(default)]
     pub recurrence_id: i64,
+    /// Whether the occurrence it names stands for every later one too
+    /// (`RECURRENCE-ID;RANGE=THISANDFUTURE`).
+    #[serde(default)]
+    pub this_and_future: bool,
     #[serde(default)]
     pub summary: String,
     #[serde(default)]
@@ -144,14 +149,14 @@ impl Response {
     }
 }
 
-fn parse_ical(ics: &str) -> Option<ICalendar> {
+pub(crate) fn parse_ical(ics: &str) -> Option<ICalendar> {
     match calcard::Parser::new(ics).entry() {
         calcard::Entry::ICalendar(ical) => Some(ical),
         _ => None,
     }
 }
 
-fn text_of(component: &ICalendarComponent, prop: ICalendarProperty) -> String {
+pub(crate) fn text_of(component: &ICalendarComponent, prop: ICalendarProperty) -> String {
     component
         .property(&prop)
         .and_then(|entry| entry.values.first())
@@ -178,10 +183,20 @@ fn addr_of(entry: &ICalendarEntry) -> String {
         .to_string()
 }
 
+/// The device's IANA zone name, when the platform reports one.
+pub(crate) fn local_tzid() -> Option<String> {
+    iana_time_zone::get_timezone()
+        .ok()
+        .filter(|name| name.parse::<Tz>().is_ok())
+}
+
 /// The zone a floating time (no TZID, no `Z`) is read in: the device's own,
-/// which is what the organizer meant by "10:00 wherever you are".
-fn local_tz() -> Tz {
-    Tz::Fixed(*chrono::Local::now().offset())
+/// which is what the organizer meant by "10:00 wherever you are". By name when
+/// the platform has one, so a repeating event keeps its time across DST.
+pub(crate) fn local_tz() -> Tz {
+    local_tzid()
+        .and_then(|name| name.parse().ok())
+        .unwrap_or_else(|| Tz::Fixed(*chrono::Local::now().offset()))
 }
 
 /// The VEVENT a card describes: the series master (or a lone event) when the
@@ -252,6 +267,10 @@ pub fn parse_invite(ics: &str) -> Option<Invite> {
         .and_then(instant)
         .map(|(at, _)| at)
         .unwrap_or(0);
+    let this_and_future = event
+        .property(&ICalendarProperty::RecurrenceId)
+        .and_then(|entry| entry.parameter(&ICalendarParameterName::Range))
+        .is_some_and(|range| matches!(range, ICalendarParameterValue::Bool(true)));
 
     let organizer = event
         .property(&ICalendarProperty::Organizer)
@@ -284,6 +303,7 @@ pub fn parse_invite(ics: &str) -> Option<Invite> {
             .and_then(ICalendarValue::as_integer)
             .unwrap_or(0),
         recurrence_id,
+        this_and_future,
         summary: text_of(event, ICalendarProperty::Summary),
         location: text_of(event, ICalendarProperty::Location),
         description: text_of(event, ICalendarProperty::Description),
@@ -368,6 +388,7 @@ pub fn invite_json(
     invite: &Invite,
     mine: &HashSet<String>,
     recorded: Option<&crate::store::InviteResponse>,
+    event_id: Option<&str>,
 ) -> Value {
     json!({
         "method": if invite.method.is_empty() { "publish" } else { invite.method.as_str() },
@@ -392,7 +413,59 @@ pub fn invite_json(
             .collect::<Vec<_>>(),
         "can_respond": can_respond(invite, mine),
         "response": my_response(invite, mine, recorded),
+        // The calendar event this invitation is filed as, so a cancellation
+        // can offer to take it out; empty when it is not in the calendar.
+        "event_id": event_id.unwrap_or_default(),
+        // Which occurrence this is about (Unix seconds); 0 for the event.
+        "recurrence_id": invite.recurrence_id,
     })
+}
+
+/// [`invite_json`] for a message of `account`, with what the store knows of
+/// the user's answer and of the event it filed.
+pub fn invite_json_for(
+    conn: &rusqlite::Connection,
+    account: &str,
+    invite: &Invite,
+    mine: &HashSet<String>,
+) -> Value {
+    let recorded = crate::store::invite_response(conn, account, &invite.uid, invite.recurrence_id)
+        .ok()
+        .flatten();
+    let event_id = filed_event_id(conn, account, invite);
+    invite_json(
+        invite,
+        mine,
+        recorded.as_ref(),
+        (!event_id.is_empty()).then_some(event_id.as_str()),
+    )
+}
+
+/// The calendar event `invite` is filed as, or empty: an occurrence filed
+/// alone is its own; else the series, unless the occurrence it names is one
+/// the calendar leaves out.
+pub fn filed_event_id(conn: &rusqlite::Connection, account: &str, invite: &Invite) -> String {
+    let alone = (invite.recurrence_id != 0)
+        .then(|| {
+            crate::store::invite_occurrence_event(conn, account, &invite.uid, invite.recurrence_id)
+                .ok()
+                .flatten()
+        })
+        .flatten();
+    alone
+        .or_else(|| {
+            crate::store::invite_event(conn, account, &invite.uid)
+                .ok()
+                .flatten()
+        })
+        .filter(|event| {
+            event.recurrence_id != 0
+                || invite.recurrence_id == 0
+                || !event.recurring
+                || !events::excludes_occurrence(event, invite.recurrence_id)
+        })
+        .map(|event| event.id)
+        .unwrap_or_default()
 }
 
 /// The `METHOD:REPLY` calendar for `response`: the organizer's event pared to
@@ -507,18 +580,29 @@ pub fn reply_mail(
     })
 }
 
+/// What [`respond`] did: the account the answer went from, the message sent
+/// (for the host to file in Sent), and the calendar event the invitation is
+/// now filed as (empty when it is not, as after a decline).
+pub struct Responded {
+    pub account: String,
+    pub raw: Vec<u8>,
+    pub event_id: String,
+}
+
 /// Answer the invitation in a cached message: send the organizer the reply,
 /// remember the answer, and hand back the sent message so the host can file
 /// its Sent copy the way it does for any other send.
 ///
 /// `message` is the thread message's `id` (`account#folder#uid`, see
-/// [`crate::mail_model::format_thread_id`]), which both clients hold.
+/// [`crate::mail_model::format_thread_id`]), which both clients hold, and
+/// `thread_id` its conversation's, which the calendar event links back to.
 pub async fn respond(
     engine: &std::sync::Arc<crate::engine::Engine>,
     message: &str,
+    thread_id: &str,
     response: Response,
     media_root: &std::path::Path,
-) -> Result<(String, Vec<u8>)> {
+) -> Result<Responded> {
     let (account, folder, uid) =
         parse_message_ref(message).ok_or_else(|| anyhow!("invalid message id: {message}"))?;
     let (account, folder) = (account.as_str(), folder.as_str());
@@ -572,15 +656,34 @@ pub async fn respond(
         &message.references,
     )
     .await?;
-    crate::store::record_invite_response(
-        &engine.db.lock().unwrap(),
-        account,
-        &invite.uid,
-        invite.recurrence_id,
-        response.as_str(),
-        invite.sequence,
-    )?;
-    Ok((account.to_string(), raw))
+    {
+        let db = engine.db.lock().unwrap();
+        crate::store::record_invite_response(
+            &db,
+            account,
+            &invite.uid,
+            invite.recurrence_id,
+            response.as_str(),
+            invite.sequence,
+        )?;
+        if response == Response::Declined && invite.this_and_future {
+            crate::store::mark_this_and_future(&db, account, &invite.uid, invite.recurrence_id)?;
+        }
+        events::record_invite_event(
+            &db,
+            account,
+            thread_id,
+            &message.message_id,
+            &invite,
+            response,
+        )?;
+    }
+    let event_id = filed_event_id(&engine.db.lock().unwrap(), account, &invite);
+    Ok(Responded {
+        account: account.to_string(),
+        raw,
+        event_id,
+    })
 }
 
 /// Split a per-message id (`account#folder#uid`). The folder may itself hold
@@ -596,4 +699,73 @@ fn parse_message_ref(id: &str) -> Option<(String, String, u32)> {
         crate::mail_model::canon_folder(folder),
         uid.parse().ok()?,
     ))
+}
+
+/// Take a cancelled invitation out of the calendar, as a decline would but
+/// with nothing sent: the occurrence it names, or the whole event when it
+/// cancels the series. `message` is the thread message's `id`.
+pub fn remove_from_calendar(
+    conn: &rusqlite::Connection,
+    message: &str,
+    media_root: &std::path::Path,
+) -> Result<()> {
+    let (account, folder, uid) =
+        parse_message_ref(message).ok_or_else(|| anyhow!("invalid message id: {message}"))?;
+    let cached = crate::store::get_cached_message(conn, &account, &folder, uid)?
+        .ok_or_else(|| anyhow!("message is not downloaded"))?;
+    let invite = cached
+        .invite
+        .clone()
+        .or_else(|| invite_from_attachments(media_root, &cached.attachments))
+        .ok_or_else(|| anyhow!("message has no invitation"))?;
+    // Remembered like a decline, so a series accepted later — which folds in
+    // the occurrences answered on their own — keeps this one out.
+    if invite.recurrence_id != 0 {
+        crate::store::record_invite_response(
+            conn,
+            &account,
+            &invite.uid,
+            invite.recurrence_id,
+            Response::Declined.as_str(),
+            invite.sequence,
+        )?;
+        if invite.this_and_future {
+            crate::store::mark_this_and_future(conn, &account, &invite.uid, invite.recurrence_id)?;
+        }
+    }
+    events::record_invite_event(conn, &account, "", "", &invite, Response::Declined)
+}
+
+/// Put an invitation the user already answered back in the calendar — after
+/// its event was deleted — with the answer they gave and nothing sent.
+pub fn add_to_calendar(
+    conn: &rusqlite::Connection,
+    message: &str,
+    thread_id: &str,
+    media_root: &std::path::Path,
+) -> Result<String> {
+    let (account, folder, uid) =
+        parse_message_ref(message).ok_or_else(|| anyhow!("invalid message id: {message}"))?;
+    let cached = crate::store::get_cached_message(conn, &account, &folder, uid)?
+        .ok_or_else(|| anyhow!("message is not downloaded"))?;
+    let invite = cached
+        .invite
+        .clone()
+        .or_else(|| invite_from_attachments(media_root, &cached.attachments))
+        .ok_or_else(|| anyhow!("message has no invitation"))?;
+    let recorded =
+        crate::store::invite_response(conn, &account, &invite.uid, invite.recurrence_id)?;
+    let mine = crate::store::self_addrs(conn, &account);
+    let response = Response::parse(&my_response(&invite, &mine, recorded.as_ref()))
+        .filter(|response| *response != Response::Declined)
+        .ok_or_else(|| anyhow!("this invitation has not been accepted"))?;
+    events::record_invite_event(
+        conn,
+        &account,
+        thread_id,
+        &cached.message_id,
+        &invite,
+        response,
+    )?;
+    Ok(filed_event_id(conn, &account, &invite))
 }

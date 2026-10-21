@@ -296,6 +296,11 @@ internal fun MeronMobileState.applyHydratedSettings(changed: Map<String, Any>) {
                 if (!tasksEnabled && screen == Screen.Tasks) screen = Screen.Mail
             }
 
+            settingKeyFor(CALENDAR_ENABLED_PREF) -> {
+                calendarEnabled = loadAppBoolean(prefs, CALENDAR_ENABLED_PREF, false)
+                if (!calendarEnabled && screen == Screen.Calendar) screen = Screen.Mail
+            }
+
             settingKeyFor(SHOW_SENDER_IMAGES_PREF) -> {
                 showSenderImages = loadAppBoolean(prefs, SHOW_SENDER_IMAGES_PREF, false)
             }

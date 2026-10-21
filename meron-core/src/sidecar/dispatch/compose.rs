@@ -111,18 +111,25 @@ pub(crate) async fn dispatch(
 
         "invite.respond" => {
             let message = req_str(p, "message")?;
+            let thread_id = req_str(p, "thread_id").unwrap_or_default();
             let response = req_str(p, "response")?;
             let response = meron_core::calendar::Response::parse(&response)
                 .ok_or_else(|| anyhow::anyhow!("unknown invitation response: {response}"))?;
-            let (account, raw) = meron_core::calendar::respond(
+            let responded = meron_core::calendar::respond(
                 engine,
                 &message,
+                &thread_id,
                 response,
                 &meron_core::parse::media_root(),
             )
             .await?;
-            finish_sent(engine, out, account, raw);
-            Ok(json!({ "ok": true, "response": response.as_str() }))
+            finish_sent(engine, out, responded.account, responded.raw);
+            emit(out, "calendar.changed", json!({ "method": req.method })).await;
+            Ok(json!({
+                "ok": true,
+                "response": response.as_str(),
+                "event_id": responded.event_id,
+            }))
         }
 
         "save_draft" => {

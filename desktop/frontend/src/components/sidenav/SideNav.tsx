@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { DragEvent } from 'react'
-import { Mail, SquareCheckBig, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
+import { CalendarDays, Mail, SquareCheckBig, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { formatShortcut, isMac, RAIL_SHORTCUT_IDS } from '../../lib/shortcuts'
@@ -15,6 +15,7 @@ import { kanban$, openMailAccount, reorderKanbanBoards, selectKanbanBoard } from
 import { mail$ } from '../../states/mail'
 import { inboxUnread } from '../../states/mailFolders'
 import { settings$, setUnifiedInboxSideNavVisible } from '../../states/settings'
+import { toggleCalendar } from '../../states/calendar'
 import { toggleTasksPanel } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
 import { QuickSettingsMenu } from './QuickSettingsMenu'
@@ -37,6 +38,8 @@ export function SideNav() {
   useValue(settings$.shortcutOverrides)
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
+  const calendarEnabled = useValue(settings$.calendarEnabled)
+  const calendarOpen = useValue(ui$.calendarOpen)
   const boards = useValue(settings$.kanbanBoards)
   const hiddenSideNavAccounts = useValue(settings$.hiddenSideNavAccounts)
   const showUnifiedInbox = useValue(settings$.showUnifiedInboxInSideNav)
@@ -60,7 +63,7 @@ export function SideNav() {
 
   // Starred is a folder of the unified view, reachable from the column's folder
   // switcher, so the rail button covers it too.
-  const isUnifiedActive = !activeBoardId && selectedAccount === 'unified'
+  const isUnifiedActive = !calendarOpen && !activeBoardId && selectedAccount === 'unified'
   const unifiedUnread = showUnreadBadge
     ? accounts.reduce(
         (sum, account) =>
@@ -217,7 +220,7 @@ export function SideNav() {
                     key={board.id}
                     board={board}
                     shortcut={railShortcut(Number(showUnifiedInbox) + index)}
-                    active={board.id === activeBoardId}
+                    active={!calendarOpen && board.id === activeBoardId}
                     onSelect={() => selectKanbanBoard(board.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()
@@ -248,7 +251,7 @@ export function SideNav() {
                     key={account.id}
                     account={account}
                     shortcut={railShortcut(Number(showUnifiedInbox) + boards.length + index)}
-                    active={!activeBoardId && account.id === selectedAccount}
+                    active={!calendarOpen && !activeBoardId && account.id === selectedAccount}
                     onSelect={() => selectAccount(account.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()
@@ -270,6 +273,22 @@ export function SideNav() {
       {/* Utilities */}
       {utilities && (
         <div className="flex flex-col gap-3 items-center">
+          {calendarEnabled && (
+            <button
+              type="button"
+              className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+                calendarOpen
+                  ? 'bg-sidenav-ink/20 text-sidenav-ink'
+                  : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink'
+              }`}
+              onClick={toggleCalendar}
+              title={t('calendar.title')}
+              aria-label={t('calendar.title')}
+              aria-pressed={calendarOpen}
+            >
+              <CalendarDays size={18} />
+            </button>
+          )}
           {tasksEnabled && (
             <button
               type="button"
