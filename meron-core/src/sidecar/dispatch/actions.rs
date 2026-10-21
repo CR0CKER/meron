@@ -1,4 +1,3 @@
-use anyhow::Context as _;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -494,10 +493,7 @@ pub(crate) async fn dispatch(
                     let target_folder = target_folder.clone();
                     let raw_messages = raw_messages.clone();
                     Box::pin(async move {
-                        for message in &raw_messages {
-                            imap::append_copied_message(session, &target_folder, message).await?;
-                        }
-                        anyhow::Ok(())
+                        imap::append_copied_messages(session, &target_folder, &raw_messages).await
                     })
                 })
                 .await?;

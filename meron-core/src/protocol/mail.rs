@@ -1497,12 +1497,9 @@ pub(crate) fn copy_mobile_thread(data_dir: &str, params: &Value) -> Result<Value
         crate::ffi::engine_block_on(engine.with_write_session(&target_account, move |session| {
             let target = target_folder_op.clone();
             let raw_messages = raw_messages.clone();
-            Box::pin(async move {
-                for message in &raw_messages {
-                    imap::append_copied_message(session, &target, message).await?;
-                }
-                anyhow::Ok(())
-            })
+            Box::pin(
+                async move { imap::append_copied_messages(session, &target, &raw_messages).await },
+            )
         }))?;
         // Read-only refresh, on its own session; see the move handlers above.
         let copied_result = json!({

@@ -4,7 +4,13 @@ import './accounts'
 import { kanban$ } from './kanban'
 import { mail$, releaseRemovedThread } from './mail'
 import { markUnreadWithUndo } from './mailFlags'
-import { archiveThread, deleteThread, moveThreadToFolder } from './mailMoves'
+import {
+  archiveThread,
+  bulkMoveSelectedToFolder,
+  copyThreadToFolder,
+  deleteThread,
+  moveThreadToFolder,
+} from './mailMoves'
 import { ui$ } from './ui'
 
 const THREAD = 'acc#INBOX#t.dG9waWM'
@@ -132,6 +138,44 @@ describe('undo after moving a thread', () => {
       target_folder_id: 'INBOX',
       message_ids: ['5'],
     })
+  })
+
+  it('shows the server reason when Wails rejects a copy with a string', async () => {
+    ;(window as any).go.main.App.Invoke = async () => {
+      throw 'sidecar messages.copy error: [LIMIT] Mail size is larger than the maximum size allowed by server configuration'
+    }
+    await copyThreadToFolder(THREAD, 'other', 'INBOX')
+    expect(ui$.toast.get()).toContain('destination server rejected a message')
+    expect(ui$.toast.get()).not.toContain('sidecar')
+  })
+
+  it('keeps completed bulk moves removed and reports partial success', async () => {
+    mail$.threads.set([thread({ thread_id: 'a' }), thread({ thread_id: 'b' })])
+    ;(window as any).go.main.App.Invoke = (command: string, payload: { thread_id?: string }) => {
+      if (command === 'mail.move') {
+        return payload.thread_id === 'a' ? Promise.resolve({ moved: 1 }) : Promise.reject('[NOPERM] permission denied')
+      }
+      return Promise.resolve({ threads: mail$.threads.get() })
+    }
+    await bulkMoveSelectedToFolder(
+      ['a', 'b'].map((threadId) => ({
+        key: threadId,
+        groupKey: '',
+        threadId,
+        accountId: 'acc',
+        folderId: 'INBOX',
+        surface: 'thread-list',
+        kind: 'mail',
+        unread: false,
+        starred: false,
+        draft: false,
+        trash: false,
+      })),
+      'Work',
+    )
+    expect(mail$.threads.get().map((item) => item.thread_id)).toEqual(['b'])
+    expect(ui$.toast.get()).toContain('denied access')
+    expect(ui$.toast.get()).toContain('Completed 1 of 2 selected threads')
   })
 
   it('keeps later archives when an earlier one fails', async () => {

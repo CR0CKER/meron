@@ -3,6 +3,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { useValue } from '@legendapp/state/react'
 import { invoke } from '../../lib/bridge'
 import { t } from '../../lib/i18n'
+import { mailTransferError } from '../../lib/mailTransferErrors'
 import { moveFeed } from '../../states/feeds'
 import { showToast } from '../../states/ui'
 import { kanbanColumnKey, kanban$, reorderKanbanColumn, type KanbanColumn } from '../../states/kanban'
@@ -217,9 +218,9 @@ export function useKanbanDnd(boardId: string, accounts: Account[]) {
           showToast(t(KANBAN_MOVE_MESSAGES.moved))
         } catch (error) {
           showToast(
-            error instanceof Error
-              ? t(KANBAN_MOVE_MESSAGES.copiedNotRemovedReason, { error: error.message })
-              : t(KANBAN_MOVE_MESSAGES.copiedNotRemoved),
+            t(KANBAN_MOVE_MESSAGES.copiedNotRemovedReason, {
+              error: mailTransferError(error, t('mail.toast.deleteFailed')),
+            }),
             'error',
           )
         }
@@ -228,7 +229,7 @@ export function useKanbanDnd(boardId: string, accounts: Account[]) {
     } catch (error) {
       kanban$.threads[sourceKey].set(sourceBefore)
       kanban$.threads[targetKey].set(targetBefore)
-      showToast(error instanceof Error ? error.message : t(KANBAN_MOVE_MESSAGES.failed), 'error')
+      showToast(mailTransferError(error, t(KANBAN_MOVE_MESSAGES.failed)), 'error')
       await loadKanbanColumn(source, false, queryForColumn(source))
     } finally {
       kanban$.movingThread.set('')

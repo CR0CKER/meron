@@ -1,6 +1,7 @@
 import type { Message } from '../types'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
+import { mailTransferError } from '../lib/mailTransferErrors'
 import { clearBulkSelection, confirmAction, ui$, showToast, showUndoToast, type BulkSelectionItem } from './ui'
 import { kanban$ } from './kanban'
 import { isLocalSendId, discardPendingSend, cancelUnsentRescue } from './pendingSends'
@@ -280,7 +281,7 @@ export async function moveThreadToFolder(
     }
   } catch (error) {
     rollback()
-    showToast(error instanceof Error ? error.message : t('mail.toast.moveFailed'), 'error')
+    showToast(mailTransferError(error, t('mail.toast.moveFailed')), 'error')
   }
 }
 
@@ -300,7 +301,7 @@ export async function copyThreadToFolder(threadId: string, targetAccountId: stri
     }
     showToast(t('mail.toast.threadCopied'))
   } catch (error) {
-    showToast(error instanceof Error ? error.message : t('mail.toast.copyFailed'), 'error')
+    showToast(mailTransferError(error, t('mail.toast.copyFailed')), 'error')
   }
 }
 
@@ -308,6 +309,7 @@ export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
   const targets = uniqueThreadItems(items).filter((item) => !item.draft && !item.trash)
   if (targets.length === 0) return
   const rollbacks: Array<() => void> = []
+  let completed = 0
   try {
     for (const item of targets) {
       const sourceThread = findLocalThread(item.threadId)
@@ -316,6 +318,8 @@ export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
       const res = await invoke('mail.archive', { thread_id: item.threadId })
       assertMoveAffected(res, 'Archive')
       removal.complete()
+      rollbacks.pop()
+      completed++
       applyMutationFolderUnreads(res as MutationResult)
       if (sourceThread?.account_id) void refreshAccountFoldersCache(sourceThread.account_id, false)
     }
@@ -324,7 +328,12 @@ export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
     showToast(t('mail.toast.archivedCount', { count: targets.length }))
   } catch (error) {
     for (const rollback of rollbacks.reverse()) rollback()
-    showToast(error instanceof Error ? error.message : t('mail.toast.archiveFailed'), 'error')
+    const message = mailTransferError(error, t('mail.toast.archiveFailed'))
+    showToast(
+      completed ? `${message} ${t('mail.transferError.bulkProgress', { completed, total: targets.length })}` : message,
+      'error',
+    )
+    if (completed) void refreshThreadLocation(undefined, false)
   }
 }
 
@@ -332,6 +341,7 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
   const targets = uniqueThreadItems(items).filter((item) => item.folderId !== targetFolderId)
   if (targets.length === 0) return
   const rollbacks: Array<() => void> = []
+  let completed = 0
   try {
     for (const item of targets) {
       const removal = removeThreadLocally(item.threadId)
@@ -339,6 +349,8 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
       const res = await invoke('mail.move', { thread_id: item.threadId, target_folder_id: targetFolderId })
       assertMoveAffected(res)
       removal.complete()
+      rollbacks.pop()
+      completed++
       applyMutationFolderUnreads(res as MutationResult)
     }
     await refreshThreadLocation(targets[0]?.accountId, false)
@@ -346,7 +358,12 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
     showToast(t('mail.toast.movedCount', { count: targets.length }))
   } catch (error) {
     for (const rollback of rollbacks.reverse()) rollback()
-    showToast(error instanceof Error ? error.message : t('mail.toast.moveFailed'), 'error')
+    const message = mailTransferError(error, t('mail.toast.moveFailed'))
+    showToast(
+      completed ? `${message} ${t('mail.transferError.bulkProgress', { completed, total: targets.length })}` : message,
+      'error',
+    )
+    if (completed) void refreshThreadLocation(undefined, false)
   }
 }
 
@@ -357,6 +374,7 @@ export async function bulkCopySelectedToFolder(
 ) {
   const targets = uniqueThreadItems(items)
   if (targets.length === 0) return
+  let completed = 0
   try {
     for (const item of targets) {
       const res = await invoke('mail.copy', {
@@ -365,13 +383,19 @@ export async function bulkCopySelectedToFolder(
         target_folder_id: targetFolderId,
       })
       assertCopyAffected(res)
+      completed++
     }
     await refreshThreadLocation(targets[0]?.accountId, true)
     if (targetAccountId !== targets[0]?.accountId) void loadFolders(targetAccountId, false)
     clearBulkSelection()
     showToast(t('mail.toast.copiedCount', { count: targets.length }))
   } catch (error) {
-    showToast(error instanceof Error ? error.message : t('mail.toast.copyFailed'), 'error')
+    const message = mailTransferError(error, t('mail.toast.copyFailed'))
+    showToast(
+      completed ? `${message} ${t('mail.transferError.bulkProgress', { completed, total: targets.length })}` : message,
+      'error',
+    )
+    if (completed) void refreshThreadLocation(undefined, false)
   }
 }
 
@@ -449,7 +473,7 @@ export async function archiveThread(threadId: string) {
     }
   } catch (error) {
     rollback()
-    showToast(error instanceof Error ? error.message : t('mail.toast.archiveFailed'), 'error')
+    showToast(mailTransferError(error, t('mail.toast.archiveFailed')), 'error')
   }
 }
 

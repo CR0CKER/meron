@@ -1682,7 +1682,9 @@ pub async fn move_to_folder(
         }
     }
     if !supports_move {
-        expunge_uids(session, source_folder, uids).await?;
+        expunge_uids(session, source_folder, uids)
+            .await
+            .context("Move copied messages but could not confirm removal from the source folder")?;
     }
     Ok(target_uid_next)
 }
@@ -1818,6 +1820,27 @@ pub async fn append_copied_message(
     append_message(session, folder, flags, &message.raw)
         .await
         .context("IMAP APPEND copied message")?;
+    Ok(())
+}
+
+/// Copy sequentially so a failure retains the number of acknowledged APPENDs.
+/// The failing APPEND may have landed if its completion response was lost.
+pub async fn append_copied_messages(
+    session: &mut Session,
+    folder: &str,
+    messages: &[RawMessageCopy],
+) -> Result<()> {
+    for (copied, message) in messages.iter().enumerate() {
+        append_copied_message(session, folder, message)
+            .await
+            .with_context(|| {
+                format!(
+                    "Copy progress: {copied}/{} confirmed; message size: {} bytes",
+                    messages.len(),
+                    message.raw.len(),
+                )
+            })?;
+    }
     Ok(())
 }
 
@@ -3306,6 +3329,72 @@ pub async fn move_to_folder_checked(
 mod append_tests {
     use super::*;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn copy_failure_reports_only_confirmed_appends_and_keeps_server_reason() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (reader, mut writer) = socket.into_split();
+            let mut reader = tokio::io::BufReader::new(reader);
+            writer.write_all(b"* OK ready\r\n").await.unwrap();
+            for command in 0..3 {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                let tag = line.split_whitespace().next().unwrap();
+                let response = match command {
+                    0 => format!("{tag} OK logged in\r\n"),
+                    1 => {
+                        assert!(line.contains("APPEND"));
+                        writer.write_all(b"+ ready\r\n").await.unwrap();
+                        let mut literal = [0; 6];
+                        reader.read_exact(&mut literal).await.unwrap();
+                        assert_eq!(&literal, b"body\r\n");
+                        format!("{tag} OK copied\r\n")
+                    }
+                    _ => {
+                        assert!(line.contains("APPEND"));
+                        format!(
+                            "{tag} NO [LIMIT] Mail size is larger than the maximum size allowed by server configuration\r\n"
+                        )
+                    }
+                };
+                writer.write_all(response.as_bytes()).await.unwrap();
+            }
+            let mut remainder = Vec::new();
+            reader.read_to_end(&mut remainder).await.unwrap();
+            assert!(remainder.is_empty(), "must stop after the rejected APPEND");
+        });
+        let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut client = async_imap::Client::new(Stream::plain(tcp));
+        client.read_response().await.unwrap().unwrap();
+        let mut session = client
+            .login("test", "test")
+            .await
+            .map_err(|(err, _)| err)
+            .unwrap();
+        let messages = vec![
+            RawMessageCopy {
+                uid: 7,
+                raw: b"body".to_vec(),
+                seen: false,
+                starred: false,
+            };
+            3
+        ];
+        let error = append_copied_messages(&mut session, "INBOX", &messages)
+            .await
+            .unwrap_err();
+        let diagnostic = format!("{error:#}");
+        assert!(
+            diagnostic.contains("Copy progress: 1/3 confirmed; message size: 4 bytes"),
+            "{diagnostic}"
+        );
+        assert!(diagnostic.contains("Mail size is larger"), "{diagnostic}");
+        drop(session);
+        task.await.unwrap();
+    }
 
     async fn server(reply: &'static str) -> (Session, tokio::task::JoinHandle<Vec<u8>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -142,24 +142,32 @@ export function focusGlobalSearch() {
   ui$.globalSearchFocus.set(ui$.globalSearchFocus.peek() + 1)
 }
 
-// Show a transient toast for ~2.2s. Clears only if it's still showing this
-// message, so a newer toast isn't cut short. Pass tone "error" for failures.
-// A duration of 0 stays visible until the caller dismisses it.
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+
+export function dismissToast() {
+  clearTimeout(toastTimer)
+  toastTimer = undefined
+  ui$.toast.set('')
+  ui$.toastUndo.set(null)
+}
+
+// Success confirmations last ~2.2s; errors stay until dismissed or replaced.
+// An explicit duration overrides this default; 0 disables automatic dismissal.
 export function showToast(
   msg: string,
   tone: ToastTone = 'success',
-  duration = 2200,
+  duration = tone === 'error' ? 0 : 2200,
   placement: ToastPlacement = 'app',
 ) {
+  clearTimeout(toastTimer)
   ui$.toastUndo.set(null)
   ui$.toastPlacement.set(placement)
   ui$.toastTone.set(tone)
   ui$.toast.set(msg)
   if (duration === 0) return
-  setTimeout(() => {
+  toastTimer = setTimeout(() => {
     if (ui$.toast.get() === msg) {
-      ui$.toast.set('')
-      ui$.toastUndo.set(null)
+      dismissToast()
     }
   }, duration)
 }
@@ -167,14 +175,14 @@ export function showToast(
 // Like showToast but pairs the message with an Undo affordance. Given a longer
 // (5s) window since the whole point is to catch an accidental action.
 export function showUndoToast(msg: string, undo: () => void, placement: ToastPlacement = 'app') {
+  clearTimeout(toastTimer)
   ui$.toastTone.set('success')
   ui$.toastPlacement.set(placement)
   ui$.toast.set(msg)
   ui$.toastUndo.set(() => undo)
-  setTimeout(() => {
+  toastTimer = setTimeout(() => {
     if (ui$.toast.get() === msg) {
-      ui$.toast.set('')
-      ui$.toastUndo.set(null)
+      dismissToast()
     }
   }, 5000)
 }
@@ -182,8 +190,7 @@ export function showUndoToast(msg: string, undo: () => void, placement: ToastPla
 // Run the pending undo (if any) and dismiss the toast.
 export function runToastUndo() {
   const undo = ui$.toastUndo.peek() as (() => void) | null
-  ui$.toast.set('')
-  ui$.toastUndo.set(null)
+  dismissToast()
   undo?.()
 }
 
