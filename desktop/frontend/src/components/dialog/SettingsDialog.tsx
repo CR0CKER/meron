@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from '../../lib/i18n'
-import { useEscapeKey } from '../../lib/useEscapeKey'
+import { Dialog } from './Dialog'
 import type { LucideIcon } from 'lucide-react'
 import {
   CalendarDays,
@@ -161,18 +161,6 @@ export function SettingsDialog() {
     ui$.settingsOpen.set(false)
   }
 
-  const onBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || ui$.setupOpen.peek()) return
-    onClose()
-  }
-
-  // Esc closes the dialog, unless the add-account dialog is layered on top (it
-  // owns the keystroke then).
-  useEscapeKey(() => {
-    if (ui$.setupOpen.peek()) return
-    onClose()
-  })
-
   // Open the add-account dialog layered on top of Settings (Settings stays open
   // underneath, so cancelling or saving returns here).
   const onAddAccount = (mode: SetupMode) => {
@@ -181,76 +169,78 @@ export function SettingsDialog() {
   }
 
   return (
-    <div
-      onMouseDown={onBackdropMouseDown}
-      className="fixed inset-0 flex items-center justify-center bg-black/35 dark:bg-black/60 backdrop-blur-[3px] z-50 p-4 select-none animate-fade-in"
+    <Dialog
+      onClose={() => {
+        if (!ui$.setupOpen.peek()) onClose()
+      }}
+      aria-label={t('settings.label')}
+      backdropClassName="bg-black/35"
+      className="border-border/80 max-w-4xl h-[760px] max-h-[92vh] shadow-black/20 dark:shadow-black/45 flex flex-col overflow-hidden"
     >
-      <div className="bg-chats border border-border/80 text-primary max-w-4xl w-full h-[760px] max-h-[92vh] rounded-3xl shadow-2xl shadow-black/20 dark:shadow-black/45 animate-slide-up flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4 px-6 py-4.5 border-b border-border/60 shrink-0 bg-chats/95">
-          <div className="min-w-0">
-            <h2 className="text-base font-bold tracking-tight leading-tight">{t('settings.label')}</h2>
-          </div>
-          <IconButton icon={X} iconSize={16} label={t('buttons.close')} size="sm" onClick={onClose} />
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 px-6 py-4.5 border-b border-border/60 shrink-0 bg-chats/95">
+        <div className="min-w-0">
+          <h2 className="text-base font-bold tracking-tight leading-tight">{t('settings.label')}</h2>
         </div>
+        <IconButton icon={X} iconSize={16} label={t('buttons.close')} size="sm" onClick={onClose} />
+      </div>
 
-        {/* Body: nav rail + content */}
-        <div className="flex flex-1 min-h-0">
-          {/* Nav rail */}
-          <nav className="w-56 shrink-0 border-r border-border/60 p-3.5 flex flex-col gap-1 bg-raised/70 overflow-y-auto">
-            {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
-              <NavItem
-                key={id}
-                active={activeKey === id}
-                onClick={id === 'general' ? selectGeneral : () => selectAccount(id)}
-              >
-                <Icon size={15} className="shrink-0" />
-                <span className="truncate">{t(labelKey)}</span>
-              </NavItem>
-            ))}
-
-            <NavItem active={activeKey === 'mcp'} onClick={() => selectAccount('mcp')}>
-              <Server size={15} className="shrink-0" />
-              <span>{t('mcp.title')}</span>
+      {/* Body: nav rail + content */}
+      <div className="flex flex-1 min-h-0">
+        {/* Nav rail */}
+        <nav className="w-56 shrink-0 border-r border-border/60 p-3.5 flex flex-col gap-1 bg-raised/70 overflow-y-auto">
+          {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
+            <NavItem
+              key={id}
+              active={activeKey === id}
+              onClick={id === 'general' ? selectGeneral : () => selectAccount(id)}
+            >
+              <Icon size={15} className="shrink-0" />
+              <span className="truncate">{t(labelKey)}</span>
             </NavItem>
-            <BoardGroup boards={boards} activeKey={activeKey} onSelect={selectAccount} />
-            <AccountGroup
-              label={t('settings.sections.mailAccounts')}
-              accounts={mailAccounts}
-              activeKey={activeKey}
-              onSelect={selectAccount}
-              onAdd={() => onAddAccount('gmail')}
-              emptyLabel={t('settings.sections.noMailAccounts')}
-            />
-            <AccountGroup
-              label={t('settings.sections.feedAccounts')}
-              accounts={feedAccounts}
-              activeKey={activeKey}
-              onSelect={selectAccount}
-              onAdd={() => onAddAccount('rss')}
-              emptyLabel={t('settings.sections.noFeedAccounts')}
-            />
-          </nav>
+          ))}
 
-          {/* Content */}
-          <div className="flex-1 min-w-0 overflow-y-auto bg-chats p-6">
-            {selectedAccount ? (
-              <AccountPanel account={selectedAccount} />
-            ) : selectedBoard ? (
-              <BoardPanel board={selectedBoard} />
-            ) : selected === 'mcp' ? (
-              <McpSettingsPanel />
-            ) : selected === 'messages' ? (
-              <MessagesSection />
-            ) : selected === 'composer' ? (
-              <ComposerSection />
-            ) : (
-              <GeneralSection />
-            )}
-          </div>
+          <NavItem active={activeKey === 'mcp'} onClick={() => selectAccount('mcp')}>
+            <Server size={15} className="shrink-0" />
+            <span>{t('mcp.title')}</span>
+          </NavItem>
+          <BoardGroup boards={boards} activeKey={activeKey} onSelect={selectAccount} />
+          <AccountGroup
+            label={t('settings.sections.mailAccounts')}
+            accounts={mailAccounts}
+            activeKey={activeKey}
+            onSelect={selectAccount}
+            onAdd={() => onAddAccount('gmail')}
+            emptyLabel={t('settings.sections.noMailAccounts')}
+          />
+          <AccountGroup
+            label={t('settings.sections.feedAccounts')}
+            accounts={feedAccounts}
+            activeKey={activeKey}
+            onSelect={selectAccount}
+            onAdd={() => onAddAccount('rss')}
+            emptyLabel={t('settings.sections.noFeedAccounts')}
+          />
+        </nav>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 overflow-y-auto bg-chats p-6">
+          {selectedAccount ? (
+            <AccountPanel account={selectedAccount} />
+          ) : selectedBoard ? (
+            <BoardPanel board={selectedBoard} />
+          ) : selected === 'mcp' ? (
+            <McpSettingsPanel />
+          ) : selected === 'messages' ? (
+            <MessagesSection />
+          ) : selected === 'composer' ? (
+            <ComposerSection />
+          ) : (
+            <GeneralSection />
+          )}
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -989,10 +979,6 @@ function LogViewerDialog({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  // Layered above Settings; useEscapeKey hands Esc to the topmost layer only,
-  // so Settings stays open underneath.
-  useEscapeKey(onClose)
-
   const exportLog = async () => {
     try {
       const res = await invoke<{ saved: boolean; path?: string }>('log.export')
@@ -1003,38 +989,36 @@ function LogViewerDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-      className="fixed inset-0 flex items-center justify-center bg-black/35 dark:bg-black/60 backdrop-blur-[3px] z-50 p-4 select-none animate-fade-in"
+    <Dialog
+      onClose={onClose}
+      aria-label={t('settings.viewSyncLog')}
+      backdropClassName="bg-black/35"
+      className="border-border/80 max-w-3xl h-[560px] max-h-[85vh] shadow-black/20 dark:shadow-black/45 flex flex-col overflow-hidden"
     >
-      <div className="bg-chats border border-border/80 text-primary max-w-3xl w-full h-[560px] max-h-[85vh] rounded-3xl shadow-2xl shadow-black/20 dark:shadow-black/45 animate-slide-up flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between gap-4 px-6 py-4.5 border-b border-border/60 shrink-0 bg-chats/95">
-          <h2 className="text-base font-bold tracking-tight leading-tight">{t('settings.viewSyncLog')}</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => void exportLog()}
-              disabled={!log}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download size={12} />
-              {t('common.export')}
-            </button>
-            <IconButton icon={X} iconSize={16} label={t('buttons.close')} size="sm" onClick={onClose} />
-          </div>
-        </div>
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 select-text">
-          {log === null ? (
-            <p className="text-xs text-secondary">{t('common.loading')}</p>
-          ) : log === '' ? (
-            <p className="text-xs text-secondary">{t('settings.syncLogEmpty')}</p>
-          ) : (
-            <pre className="whitespace-pre-wrap break-all font-mono text-[0.6875rem] leading-4 text-primary">{log}</pre>
-          )}
+      <div className="flex items-center justify-between gap-4 px-6 py-4.5 border-b border-border/60 shrink-0 bg-chats/95">
+        <h2 className="text-base font-bold tracking-tight leading-tight">{t('settings.viewSyncLog')}</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void exportLog()}
+            disabled={!log}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={12} />
+            {t('common.export')}
+          </button>
+          <IconButton icon={X} iconSize={16} label={t('buttons.close')} size="sm" onClick={onClose} />
         </div>
       </div>
-    </div>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 select-text">
+        {log === null ? (
+          <p className="text-xs text-secondary">{t('common.loading')}</p>
+        ) : log === '' ? (
+          <p className="text-xs text-secondary">{t('settings.syncLogEmpty')}</p>
+        ) : (
+          <pre className="whitespace-pre-wrap break-all font-mono text-[0.6875rem] leading-4 text-primary">{log}</pre>
+        )}
+      </div>
+    </Dialog>
   )
 }
 

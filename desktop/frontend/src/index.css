@@ -947,6 +947,24 @@ html:not(.native-scrollbars) [data-thread-list]::-webkit-scrollbar-thumb:hover {
   overflow-anchor: auto;
 }
 
+/* Component-layer defaults let individual overlays customize size, padding,
+   radius or color with utilities without conflicting utility classes. Keep
+   overlay surfaces static: entrance opacity/transform animations can flash in
+   the desktop webview. */
+@layer components {
+  .dialog-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[3px] dark:bg-black/60;
+  }
+
+  .dialog-surface {
+    @apply w-full rounded-3xl border border-border bg-chats text-primary shadow-2xl outline-none;
+  }
+
+  .menu-surface {
+    @apply rounded-xl border border-border bg-chats p-1 text-primary shadow-2xl;
+  }
+}
+
 /* Custom animations */
 @keyframes slideUp {
   from {

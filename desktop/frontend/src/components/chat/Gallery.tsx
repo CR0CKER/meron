@@ -181,7 +181,7 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
   // would otherwise mis-position the overlay and clip its controls.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm animate-fade-in select-none"
+      className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm select-none"
       onClick={onClose}
       // React bubbles a portal's events to the component that rendered it: a
       // right-click here must not also open the message's menu behind.
@@ -306,8 +306,8 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
               setMenu(null)
             }}
           />
-          <div
-            className="fixed z-[61] min-w-[160px] rounded-xl border border-border bg-header p-1 shadow-xl"
+          <MenuSurface
+            className="fixed z-[61] min-w-[160px] bg-header shadow-xl"
             style={{ top: menu.y, left: menu.x }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -321,7 +321,7 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
               label={t('chat.actions.copyImage')}
               onClick={copyCurrent}
             />
-          </div>
+          </MenuSurface>
         </>
       )}
 
@@ -338,3 +338,4 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
     document.body,
   )
 }
+import { MenuSurface } from '../menu/MenuSurface'

@@ -213,7 +213,7 @@ export function FolderSwitcher({
           offset={2}
           onClose={close}
           overlay
-          className="fixed z-50 flex max-h-[min(420px,calc(100vh-1rem))] w-60 flex-col rounded-xl border border-border bg-chats p-1 shadow-2xl animate-fade-in text-primary"
+          className="fixed z-50 flex max-h-[min(420px,calc(100vh-1rem))] w-60 flex-col"
           onContextMenu={(event) => {
             event.preventDefault()
             event.stopPropagation()
@@ -271,7 +271,7 @@ export function FolderSwitcher({
           offset={4}
           onClose={() => setFolderMenu(null)}
           overlay
-          className="fixed z-50 min-w-[176px] rounded-xl border border-border bg-chats p-1 shadow-2xl animate-fade-in text-primary"
+          className="fixed z-50 min-w-[176px]"
           onContextMenu={(event) => {
             event.preventDefault()
             event.stopPropagation()

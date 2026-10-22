@@ -236,7 +236,7 @@ export function TasksPanel({ listId }: { listId: string }) {
           y={listMenu.y}
           onClose={() => setListMenu(null)}
           overlay
-          className="fixed z-50 min-w-[200px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+          className="fixed z-50 min-w-[200px] shadow-xl"
         >
           {lists.map((list) => (
             <MenuItem
@@ -269,7 +269,7 @@ export function TasksPanel({ listId }: { listId: string }) {
           y={actionsMenu.y}
           onClose={() => setActionsMenu(null)}
           overlay
-          className="fixed z-50 min-w-[200px] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+          className="fixed z-50 min-w-[200px] shadow-xl"
         >
           <MenuItem
             icon={<Pencil size={13} className="text-secondary" />}

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { MenuSurface } from '../menu/MenuSurface'
 import type { ReactNode } from 'react'
 import {
   MoreHorizontal,
@@ -363,8 +364,8 @@ export function ThreadActionsMenu({
         <MoreHorizontal size={size} />
       </button>
       {open && (
-        <div
-          className="absolute right-0 mt-1.5 z-50 min-w-[160px] w-max rounded-xl border border-border bg-chats p-1 shadow-2xl animate-fade-in select-none"
+        <MenuSurface
+          className="absolute right-0 mt-1.5 z-50 min-w-[160px] w-max select-none"
           onClick={(event) => event.stopPropagation()}
         >
           <ThreadActionsMenuItems
@@ -392,7 +393,7 @@ export function ThreadActionsMenu({
             onEditSearch={onEditSearch}
             closeMenu={() => setOpen(false)}
           />
-        </div>
+        </MenuSurface>
       )}
     </div>
   )

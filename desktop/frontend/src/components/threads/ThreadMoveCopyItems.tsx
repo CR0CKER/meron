@@ -16,8 +16,7 @@ const COPY_FLYOUT_WIDTH = 230
 // The flyouts are portalled out of the menu that opens them, so that menu's
 // "click outside" check has to count them as inside: they carry this marker.
 // Above every menu that hosts them, the conversation's overlay included.
-const flyoutClass =
-  'fixed z-[62] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in'
+const flyoutClass = 'fixed z-[62] max-h-[calc(100vh-1rem)] overflow-y-auto shadow-xl'
 
 /** Where a flyout of `width` opens beside its menu row: to the right, or to the
  *  left when the window has no room there. Null while closed. */

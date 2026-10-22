@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { MenuSurface } from '../menu/MenuSurface'
 import {
   Check,
   Columns3,
@@ -148,8 +149,8 @@ export function BoardMenu({
         }}
       />
       {open && (
-        <div
-          className="absolute right-0 mt-1.5 z-50 min-w-[180px] w-max rounded-xl border border-border bg-chats p-1 shadow-2xl select-none"
+        <MenuSurface
+          className="absolute right-0 mt-1.5 z-50 min-w-[180px] w-max select-none"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="@min-[640px]:hidden">
@@ -248,7 +249,7 @@ export function BoardMenu({
               setOpen(false)
             }}
           />
-        </div>
+        </MenuSurface>
       )}
     </div>
   )

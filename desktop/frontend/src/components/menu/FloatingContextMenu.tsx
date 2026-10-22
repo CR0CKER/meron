@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEscapeKey } from '../../lib/useEscapeKey'
+import { MenuSurface } from './MenuSurface'
 
 const noop = () => {}
 
@@ -71,7 +72,7 @@ export function FloatingContextMenu({
           }}
         />
       )}
-      <div
+      <MenuSurface
         ref={menuRef}
         className={className}
         style={{ left: x + offset, top: y + offset }}
@@ -80,7 +81,7 @@ export function FloatingContextMenu({
         {...dataProps}
       >
         {children}
-      </div>
+      </MenuSurface>
     </>
   )
 

@@ -16,7 +16,7 @@ export function EmlExportProgress() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-16 left-1/2 z-50 flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-black/80 py-2 pl-4 pr-2 text-xs font-semibold text-white shadow-xl"
+      className="fixed bottom-16 left-1/2 z-[140] flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-black/80 py-2 pl-4 pr-2 text-xs font-semibold text-white shadow-xl"
     >
       <Loader2 size={14} className="shrink-0 animate-spin" />
       <span className="tabular-nums">{t('mail.toast.exportProgress', { done, total })}</span>

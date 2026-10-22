@@ -59,7 +59,7 @@ export function AddToTasksButton({ title, account, threadId }: { title: string; 
           onClose={() => setMenu(null)}
           overlay
           overlayClassName="fixed inset-0 z-[60]"
-          className="fixed z-[61] max-h-[calc(100vh-1rem)] w-[200px] overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl"
+          className="fixed z-[61] max-h-[calc(100vh-1rem)] w-[200px] overflow-y-auto shadow-xl"
         >
           {menu.lists.map((list) => (
             <MenuItem

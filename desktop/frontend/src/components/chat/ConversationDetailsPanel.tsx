@@ -272,7 +272,7 @@ export function ConversationDetailsPanel({
           onClose={() => setPersonMenu(null)}
           overlay
           overlayClassName="fixed inset-0 z-[80]"
-          className="fixed z-[81] min-w-[180px] rounded-xl border border-border bg-header p-1 shadow-xl"
+          className="fixed z-[81] min-w-[180px] bg-header shadow-xl"
           onContextMenu={(event) => event.preventDefault()}
         >
           <MenuItem

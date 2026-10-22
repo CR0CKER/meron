@@ -50,7 +50,7 @@ export function QuickReplyFrom() {
           y={menu.y}
           overlay
           onClose={() => setMenu(null)}
-          className="fixed z-50 min-w-[220px] max-w-[min(420px,90vw)] rounded-xl border border-border bg-chats p-1 shadow-xl animate-fade-in"
+          className="fixed z-50 min-w-[220px] max-w-[min(420px,90vw)] shadow-xl"
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >

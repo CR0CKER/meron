@@ -24,7 +24,7 @@ export function AppToast() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 animate-slide-up flex items-center gap-2 bg-black/80 py-2 pl-4 pr-2 text-xs font-semibold text-white shadow-xl z-50 ${
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 animate-slide-up flex items-center gap-2 bg-black/80 py-2 pl-4 pr-2 text-xs font-semibold text-white shadow-xl z-[140] ${
         toastTone === 'error' ? 'w-max max-w-[min(40rem,calc(100vw-2rem))] rounded-xl' : 'rounded-full'
       } ${
         overTasks

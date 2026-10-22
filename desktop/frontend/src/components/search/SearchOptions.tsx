@@ -345,7 +345,7 @@ function ScopeSelect({
         />
       </button>
       {open && (
-        <div className="absolute top-full right-0 left-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl shadow-black/10 dark:shadow-black/35">
+        <MenuSurface className="absolute top-full right-0 left-0 z-50 mt-1 max-h-72 overflow-y-auto shadow-xl shadow-black/10 dark:shadow-black/35">
           <ScopeOption selected={value === 'all'} onClick={() => pick('all')}>
             <Columns3 size={14} className="shrink-0 text-secondary" />
             <ScopeText label={{ folder: t('kanban.searchScope.allColumns'), account: '' }} />
@@ -359,7 +359,7 @@ function ScopeSelect({
               </ScopeOption>
             )
           })}
-        </div>
+        </MenuSurface>
       )}
     </div>
   )
@@ -388,3 +388,4 @@ function ScopeText({ label }: { label: { folder: string; account: string } }) {
     </span>
   )
 }
+import { MenuSurface } from '../menu/MenuSurface'

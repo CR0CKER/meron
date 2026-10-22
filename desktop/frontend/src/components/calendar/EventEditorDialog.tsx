@@ -2,7 +2,7 @@ import { CalendarDays, Mail, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { dateValue, localInstant, parseDateValue, timeValue, utcDate, utcDateValue } from '../../lib/calendarGrid'
 import { formatEventRange } from '../../lib/date'
-import { useEscapeKey } from '../../lib/useEscapeKey'
+import { Dialog } from '../dialog/Dialog'
 import { useTranslation } from '../../lib/i18n'
 import {
   calendar$,
@@ -108,7 +108,6 @@ export function EventEditorDialog({ editor }: { editor: EventEditor }) {
   const item = editor.mode === 'edit' ? editor.item : null
   const invite = item?.source === 'invite'
   const close = () => calendar$.editor.set(null)
-  useEscapeKey(close, !saving)
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }))
   // Moving the start moves the end with it, keeping the event's length.
@@ -149,14 +148,9 @@ export function EventEditorDialog({ editor }: { editor: EventEditor }) {
   const label = 'text-[0.6875rem] font-semibold text-secondary'
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[3px] select-none animate-fade-in dark:bg-black/60"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
-    >
+    <Dialog onClose={close} dismissible={!saving} aria-labelledby="event-editor-title" className="max-w-md p-6">
       <form
-        className="flex w-full max-w-md flex-col gap-4 rounded-3xl border border-border bg-chats p-6 text-primary shadow-2xl animate-slide-up"
+        className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault()
           void save()
@@ -166,7 +160,7 @@ export function EventEditorDialog({ editor }: { editor: EventEditor }) {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent">
             <CalendarDays size={17} />
           </div>
-          <h2 className="min-w-0 flex-1 truncate text-[0.9375rem] font-bold tracking-tight">
+          <h2 id="event-editor-title" className="min-w-0 flex-1 truncate text-[0.9375rem] font-bold tracking-tight">
             {item ? (invite ? item.title || t('invite.untitled') : t('calendar.editEvent')) : t('calendar.newEvent')}
           </h2>
           <IconButton icon={X} iconSize={15} label={t('buttons.close')} size="sm" onClick={close} />
@@ -285,6 +279,6 @@ export function EventEditorDialog({ editor }: { editor: EventEditor }) {
           </Button>
         </div>
       </form>
-    </div>
+    </Dialog>
   )
 }

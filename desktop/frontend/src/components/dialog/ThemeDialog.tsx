@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Palette, Plus, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
-import { useEscapeKey } from '../../lib/useEscapeKey'
+import { Dialog } from './Dialog'
 import { BUILTIN_THEMES, type Appearance, type CustomTheme, type ThemeDef } from '../../lib/themes'
 import { useChosenThemeIds } from '../../lib/useThemeChoice'
 import { confirmAction } from '../../states/ui'
@@ -76,8 +76,6 @@ export function ThemeDialog({ onClose }: { onClose: () => void }) {
   const customThemes = useValue(settings$.customThemes)
   const chosenIds = useChosenThemeIds()
 
-  useEscapeKey(onClose)
-
   const themes = [...BUILTIN_THEMES, ...customThemes]
 
   const onDelete = async (themeToDelete: CustomTheme) => {
@@ -99,40 +97,44 @@ export function ThemeDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 dark:bg-black/65 backdrop-blur-[3px] p-4 animate-fade-in">
-        <div className="w-full max-w-3xl h-[620px] max-h-[90vh] rounded-3xl border border-border bg-chats text-primary shadow-2xl animate-slide-up flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border/70 px-6 py-4 shrink-0">
-            <div className="flex items-center gap-2">
-              <Palette className="text-accent" size={16} />
-              <h3 className="text-[0.875rem] font-bold leading-tight">{t('common.theme')}</h3>
-            </div>
-            <IconButton icon={X} iconSize={15} label={t('buttons.close')} size="sm" onClick={onClose} />
+      <Dialog
+        onClose={onClose}
+        closeOnBackdrop={false}
+        aria-label={t('common.theme')}
+        backdropClassName="z-[70] bg-black/45 dark:bg-black/65"
+        className="max-w-3xl h-[620px] max-h-[90vh] flex flex-col overflow-hidden"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border/70 px-6 py-4 shrink-0">
+          <div className="flex items-center gap-2">
+            <Palette className="text-accent" size={16} />
+            <h3 className="text-[0.875rem] font-bold leading-tight">{t('common.theme')}</h3>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="shrink-0 rounded-2xl bg-raised/80 border border-border/60 overflow-hidden">
-              <ToggleRow
-                title={t('theme.matchSystem')}
-                hint={t('theme.matchSystemHint')}
-                checked={followSystem}
-                onChange={() => setThemeFollowSystem(!followSystem)}
-              />
-            </div>
-            <ThemeSection
-              label={t('theme.light')}
-              themes={themes.filter((item) => item.appearance === 'light')}
-              newTileAppearance="light"
-              {...sectionProps}
-            />
-            <ThemeSection
-              label={t('theme.dark')}
-              themes={themes.filter((item) => item.appearance === 'dark')}
-              newTileAppearance="dark"
-              {...sectionProps}
-            />
-          </div>
+          <IconButton icon={X} iconSize={15} label={t('buttons.close')} size="sm" onClick={onClose} />
         </div>
-      </div>
+
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          <div className="shrink-0 rounded-2xl bg-raised/80 border border-border/60 overflow-hidden">
+            <ToggleRow
+              title={t('theme.matchSystem')}
+              hint={t('theme.matchSystemHint')}
+              checked={followSystem}
+              onChange={() => setThemeFollowSystem(!followSystem)}
+            />
+          </div>
+          <ThemeSection
+            label={t('theme.light')}
+            themes={themes.filter((item) => item.appearance === 'light')}
+            newTileAppearance="light"
+            {...sectionProps}
+          />
+          <ThemeSection
+            label={t('theme.dark')}
+            themes={themes.filter((item) => item.appearance === 'dark')}
+            newTileAppearance="dark"
+            {...sectionProps}
+          />
+        </div>
+      </Dialog>
 
       {editor && (
         <ThemeEditorDialog appearance={editor.appearance} initial={editor.theme} onClose={() => setEditor(null)} />

@@ -380,9 +380,7 @@ export function ConversationHeader({
               onClick={() => setActionsMenuOpen((open) => !open)}
             />
             {actionsMenuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border border-border bg-chats p-1 shadow-xl">
-                {actionItems}
-              </div>
+              <MenuSurface className="absolute right-0 top-full z-50 mt-2 w-52 shadow-xl">{actionItems}</MenuSurface>
             )}
           </div>
         </div>
@@ -394,7 +392,7 @@ export function ConversationHeader({
           onClose={() => thread$.conversationMenu.set(null)}
           overlay
           overlayClassName="fixed inset-0 z-[60]"
-          className="fixed z-[61] w-52 rounded-xl border border-border bg-chats p-1 shadow-xl"
+          className="fixed z-[61] w-52 shadow-xl"
           onContextMenu={(event) => event.preventDefault()}
         >
           {actionItems}
@@ -403,3 +401,4 @@ export function ConversationHeader({
     </>
   )
 }
+import { MenuSurface } from '../menu/MenuSurface'

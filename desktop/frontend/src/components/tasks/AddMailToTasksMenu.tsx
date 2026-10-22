@@ -59,7 +59,7 @@ export function AddMailToTasksMenu({
           x={anchor.x}
           y={anchor.y}
           dataAttribute="data-thread-context-menu"
-          className="fixed z-[51] max-h-[calc(100vh-1rem)] w-[200px] overflow-y-auto rounded-xl border border-border bg-chats p-1 shadow-xl"
+          className="fixed z-[51] max-h-[calc(100vh-1rem)] w-[200px] overflow-y-auto shadow-xl"
         >
           {lists.map((list) => (
             <MenuItem
