@@ -1485,7 +1485,7 @@ describe('bulk thread actions', () => {
     expect(ui$.toast.get()).toBe('Marked unread')
   })
 
-  it('rolls back all local removals when a bulk archive fails', async () => {
+  it('keeps completed bulk archives removed and rolls back the failed thread', async () => {
     const second = thread({ id: 'm2', thread_id: 'acc#inbox#t.NQ' })
     mail$.threads.set([thread({ thread_id: 'acc#inbox#t.MQ' }), second])
     responses['mail.archive'] = [
@@ -1496,9 +1496,11 @@ describe('bulk thread actions', () => {
 
     await bulkArchiveSelected(mail$.threads.get().map((item) => bulkItem(item)))
 
-    expect(mail$.threads.get().map((item) => item.thread_id)).toEqual(['acc#inbox#t.MQ', 'acc#inbox#t.NQ'])
+    expect(mail$.threads.get().map((item) => item.thread_id)).toEqual(['acc#inbox#t.NQ'])
     expect(ui$.toastTone.get()).toBe('error')
-    expect(ui$.toast.get()).toBe('Archive failed: no matching messages found')
+    expect(ui$.toast.get()).toBe(
+      'Archive failed: no matching messages found Completed 1 of 2 selected threads before the failure. Check the destination before retrying.',
+    )
   })
 
   it('uses one confirmation for permanent bulk delete', async () => {

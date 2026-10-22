@@ -89,6 +89,7 @@ func TestSidecarCallTimeouts(t *testing.T) {
 		"account.connect":             45 * time.Second,
 		"messages.thread":             30 * time.Second,
 		"messages.markRead":           30 * time.Second,
+		"messages.markStarred":        30 * time.Second,
 		"messages.markAllRead":        30 * time.Second,
 		"messages.markAllReadUnified": 30 * time.Second,
 		"folders.list":                15 * time.Second,

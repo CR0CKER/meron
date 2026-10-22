@@ -358,7 +358,7 @@ func sidecarCallTimeout(method string) time.Duration {
 		return 2 * time.Minute
 	case "messages.exportUids":
 		return 30 * time.Second
-	case "messages.read", "messages.thread", "messages.markRead", "messages.markAllRead", "messages.markAllReadUnified", "send", "save_draft", "folders.delete":
+	case "messages.read", "messages.thread", "messages.markRead", "messages.markStarred", "messages.markAllRead", "messages.markAllReadUnified", "send", "save_draft", "folders.delete":
 		return 30 * time.Second
 	case "folders.list", "folders.create", "folders.archive", "messages.recent", "messages.sync", "rss.markRead", "rss.markAllRead", "watch.start", "watch.stop", "discard_draft", "account.addRss", "feed.add", "rss.importOpml":
 		return 15 * time.Second
