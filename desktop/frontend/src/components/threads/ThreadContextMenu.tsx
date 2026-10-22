@@ -267,6 +267,7 @@ export function ThreadContextMenu({
             <MenuItem
               icon={<FolderInput size={13} className="text-secondary" />}
               label={t('threads.actions.moveTo')}
+              submenuOpen={moveOpen}
               trailing={<ChevronRight size={13} className="text-secondary" />}
               onClick={() => setMoveOpen((open) => !open)}
             />

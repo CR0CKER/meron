@@ -183,6 +183,7 @@ export function ThreadMoveCopyItems({
           <MenuItem
             icon={<FolderInput size={iconSize} className="shrink-0 text-secondary" />}
             label={t('threads.actions.moveTo')}
+            submenuOpen={moveOpen}
             trailing={<ChevronRight size={13} className="text-secondary" />}
             className={itemClassName}
             onClick={() => setMoveOpen((open) => !open)}
@@ -228,6 +229,7 @@ export function ThreadMoveCopyItems({
           <MenuItem
             icon={<Copy size={iconSize} className="shrink-0 text-secondary" />}
             label={t('threads.actions.copyTo')}
+            submenuOpen={copyOpen}
             trailing={<ChevronRight size={13} className="text-secondary" />}
             className={itemClassName}
             onClick={() => {

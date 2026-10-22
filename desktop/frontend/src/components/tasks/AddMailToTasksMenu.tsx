@@ -51,6 +51,7 @@ export function AddMailToTasksMenu({
         icon={<ListPlus size={13} className="text-secondary" />}
         label={t('tasks.addFromMessage')}
         disabled={!lists.length}
+        submenuOpen={lists.length > 1 ? anchor !== null : undefined}
         trailing={lists.length > 1 ? <ChevronRight size={13} /> : undefined}
         onClick={() => (lists.length === 1 ? pick(lists[0].id) : open())}
       />

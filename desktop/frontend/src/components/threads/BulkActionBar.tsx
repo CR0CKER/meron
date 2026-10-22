@@ -263,6 +263,7 @@ export function BulkActionBar({
             <MenuItem
               icon={<FolderInput size={13} className="text-secondary" />}
               label={t('threads.actions.moveTo')}
+              submenuOpen={moveOpen}
               trailing={<ChevronRight size={13} className="text-secondary" />}
               disabled={!canMove}
               onClick={() => {
@@ -317,6 +318,7 @@ export function BulkActionBar({
             <MenuItem
               icon={<Copy size={13} className="text-secondary" />}
               label={t('threads.actions.copyTo')}
+              submenuOpen={copyOpen}
               trailing={<ChevronRight size={13} className="text-secondary" />}
               disabled={!canCopy}
               onClick={() => {
