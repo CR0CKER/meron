@@ -91,7 +91,13 @@ export function ReaderTabView({ tab }: { tab: MessageTab }) {
         const imageKey = (event.nativeEvent as { meronImageKey?: string }).meronImageKey ?? imageEl?.dataset.mediaKey
         if (!imageKey && (event.target as Element | null)?.closest?.('img')) return
         event.preventDefault()
-        const image = imageKey ? { key: imageKey, filename: mediaFilename(imageKey, tab.attachments) } : undefined
+        const image = imageKey
+          ? {
+              key: imageKey,
+              filename: mediaFilename(imageKey, tab.attachments),
+              mime: tab.attachments?.find((att) => att.key === imageKey)?.mime,
+            }
+          : undefined
         const anchor = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
         const linkUrl: string | undefined =
           (event.nativeEvent as { meronLinkUrl?: string }).meronLinkUrl ?? anchor?.href
@@ -289,7 +295,13 @@ function ReaderCorrespondents({
   )
 }
 
-type ReaderMenuAt = { x: number; y: number; linkUrl?: string; image?: { key: string; filename: string }; tabId: string }
+type ReaderMenuAt = {
+  x: number
+  y: number
+  linkUrl?: string
+  image?: { key: string; filename: string; mime?: string }
+  tabId: string
+}
 
 // The message card's menu, on the tab. It reads the message from the open
 // thread while that is loaded, so a star or read change made anywhere shows;

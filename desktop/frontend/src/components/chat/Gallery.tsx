@@ -13,14 +13,6 @@ import { VideoAttachment } from './VideoAttachment'
 // navigation backing it. The media key behind a cached picture's src (see
 // mediaKeyFromSrc) lets us save through the bridge instead.
 
-// An inline picture's name is its alt text, which rarely carries an extension;
-// borrow the cached file's so the saved copy opens as an image.
-function saveFilename(filename: string, key: string): string {
-  if (/\.[a-z0-9]+$/i.test(filename)) return filename
-  const ext = key.match(/\.[a-z0-9]+$/i)?.[0] ?? ''
-  return `${filename}${ext}`
-}
-
 const MIN_SCALE = 1
 const MAX_SCALE = 8
 const ZOOM_SPEED = 0.0025
@@ -31,6 +23,7 @@ export type GalleryItem = {
   type?: 'image' | 'video'
   src: string
   filename: string
+  mime?: string
   // External/source URL for videos, used by the system-player fallback.
   url?: string
   // The text of the message the media came from, shown as a one-line caption.
@@ -173,7 +166,7 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
     setMenu(null)
     const key = mediaKeyFromSrc(current.src)
     if (!key) return
-    void downloadAttachment({ key, filename: saveFilename(current.filename, key) })
+    void downloadAttachment({ key, filename: current.filename, mime: current.mime })
   }
   const copyCurrent = () => {
     setMenu(null)
@@ -205,8 +198,8 @@ export function Gallery({ items, index, onIndexChange, onClose }: GalleryProps) 
                 saveCurrent()
               }}
               className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/15 cursor-pointer transition-colors"
-              title={t('chat.saveFile', { filename: current.filename })}
-              aria-label={t('chat.saveFile', { filename: current.filename })}
+              title={t('chat.saveFile', { filename: current.filename, mime: current.mime })}
+              aria-label={t('chat.saveFile', { filename: current.filename, mime: current.mime })}
             >
               <Download size={18} />
             </button>

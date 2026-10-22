@@ -3,7 +3,7 @@ import type { Attachment } from '../../types'
 import { Gallery, type GalleryItem } from './Gallery'
 import { HtmlFrame } from './HtmlFrame'
 import { LinkHoverPreview } from './LinkHoverPreview'
-import { mediaSrc, readerAttachmentImages, readerAttachmentVideos } from './messageHelpers'
+import { mediaKeyFromSrc, mediaSrc, readerAttachmentImages, readerAttachmentVideos } from './messageHelpers'
 import {
   applyReaderFont,
   applyReaderLayout,
@@ -106,6 +106,7 @@ export function HtmlMessageView({
         attachmentImages.map((attachment) => ({
           src: mediaSrc(attachment),
           filename: attachment.filename,
+          mime: attachment.mime,
         })),
       )
       setGalleryIndex(index)
@@ -177,26 +178,30 @@ export function HtmlMessageView({
     setHoveredLink(null)
   }, [html, viewMode])
 
-  const openImage = useCallback((doc: Document, img: HTMLImageElement, event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!img.currentSrc && !img.src) return
-    const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((el) => {
-      if (!el.currentSrc && !el.src) return false
-      const w = el.getAttribute('width') || ''
-      const h = el.getAttribute('height') || ''
-      if ((w === '1' || w === '0') && (h === '1' || h === '0')) return false
-      if (el.naturalWidth === 1 || el.naturalHeight === 1) return false
-      return true
-    })
-    setGalleryItems(
-      imgs.map((el) => ({
-        src: el.currentSrc || el.src,
-        filename: el.alt || el.title || 'image',
-      })),
-    )
-    setGalleryIndex(Math.max(0, imgs.indexOf(img)))
-  }, [])
+  const openImage = useCallback(
+    (doc: Document, img: HTMLImageElement, event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!img.currentSrc && !img.src) return
+      const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((el) => {
+        if (!el.currentSrc && !el.src) return false
+        const w = el.getAttribute('width') || ''
+        const h = el.getAttribute('height') || ''
+        if ((w === '1' || w === '0') && (h === '1' || h === '0')) return false
+        if (el.naturalWidth === 1 || el.naturalHeight === 1) return false
+        return true
+      })
+      setGalleryItems(
+        imgs.map((el) => ({
+          src: el.currentSrc || el.src,
+          filename: el.alt || el.title || 'image',
+          mime: attachments?.find((att) => att.key === mediaKeyFromSrc(el.currentSrc || el.src))?.mime,
+        })),
+      )
+      setGalleryIndex(Math.max(0, imgs.indexOf(img)))
+    },
+    [attachments],
+  )
 
   const handleFrameClick = useCallback(
     (event: MouseEvent, doc: Document) => {

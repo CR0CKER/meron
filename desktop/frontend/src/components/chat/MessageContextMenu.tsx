@@ -110,7 +110,10 @@ export function MessageContextMenu({
                 onClick={() => {
                   const image = state.image!
                   onClose()
-                  void downloadAttachment(image)
+                  void downloadAttachment({
+                    ...image,
+                    mime: image.mime ?? state.message.attachments?.find((att) => att.key === image.key)?.mime,
+                  })
                 }}
               />
               <MenuItem

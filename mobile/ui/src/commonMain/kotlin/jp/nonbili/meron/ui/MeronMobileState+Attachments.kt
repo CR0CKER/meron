@@ -35,7 +35,7 @@ internal fun MeronMobileState.saveMessageAttachment(attachment: MessageAttachmen
         return
     }
     pendingAttachmentSave = attachment
-    launchAttachmentSave(safeAttachmentFilename(attachment.filename))
+    launchAttachmentSave(safeAttachmentFilename(attachment))
 }
 
 internal fun MeronMobileState.openMessageAttachment(attachment: MessageAttachment) {
@@ -70,13 +70,13 @@ internal fun MeronMobileState.openMessageAttachment(attachment: MessageAttachmen
                         image = image,
                         bytes = bytes,
                         mimeType = attachment.mimeType.ifBlank { "image/*" },
-                        fileName = safeAttachmentFilename(attachment.filename),
+                        fileName = safeAttachmentFilename(attachment),
                     )
             } else {
                 when (
                     services.openFile(
                         bytes,
-                        safeAttachmentFilename(attachment.filename),
+                        safeAttachmentFilename(attachment),
                         attachment.mimeType.ifBlank { "application/octet-stream" },
                     )
                 ) {
@@ -115,7 +115,7 @@ internal fun MeronMobileState.shareImageAttachment(attachment: MessageAttachment
         }.onSuccess { bytes ->
             services.shareFile(
                 bytes,
-                safeAttachmentFilename(attachment.filename),
+                safeAttachmentFilename(attachment),
                 attachment.mimeType.ifBlank { "image/*" },
             )
         }.onFailure {

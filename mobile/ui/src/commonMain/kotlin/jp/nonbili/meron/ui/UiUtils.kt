@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import jp.nonbili.meron.shared.AccountSummary
 import jp.nonbili.meron.shared.FolderSummary
+import jp.nonbili.meron.shared.MessageAttachment
 import jp.nonbili.meron.shared.MessageBody
 import jp.nonbili.meron.shared.SendIdentity
 import jp.nonbili.meron.shared.ThreadSummary
@@ -487,6 +488,45 @@ internal fun formatBytes(bytes: Long): String =
         bytes >= 1_000 -> "${bytes / 1_000} KB"
         else -> "$bytes B"
     }
+
+// Inline MIME parts can have no filename extension even though the cached
+// media key has one. Keep it when saving, sharing, or opening the attachment.
+internal fun safeAttachmentFilename(attachment: MessageAttachment): String {
+    val name = safeAttachmentFilename(attachment.filename)
+    val mediaMime =
+        attachment.mimeType
+            .substringBefore(';')
+            .trim()
+            .lowercase()
+    if (!mediaMime.startsWith("image/") && !mediaMime.startsWith("video/")) return name
+    val extension = Regex("\\.[a-z0-9]+$", RegexOption.IGNORE_CASE)
+    val imageExtension = Regex("\\.(?:a?png|jpe?g|jpe|jfif|gif|webp|bmp|tiff?|heic|heif|avif|svg|ico|jxl|jp2|jpx)$", RegexOption.IGNORE_CASE)
+    val cachedSuffix = extension.find(attachment.key)?.value.orEmpty()
+    val mimeSuffix =
+        when (
+            attachment.mimeType
+                .substringBefore(';')
+                .trim()
+                .lowercase()
+        ) {
+            "image/png" -> ".png"
+            "image/jpeg" -> ".jpg"
+            "image/gif" -> ".gif"
+            "image/webp" -> ".webp"
+            "image/bmp", "image/x-ms-bmp" -> ".bmp"
+            "image/tiff" -> ".tiff"
+            "image/heic" -> ".heic"
+            "image/heif" -> ".heif"
+            "image/avif" -> ".avif"
+            "image/svg+xml" -> ".svg"
+            "image/x-icon", "image/vnd.microsoft.icon" -> ".ico"
+            else -> ""
+        }
+    val suffix = cachedSuffix.takeIf { imageExtension.matches(it) } ?: mimeSuffix.ifBlank { cachedSuffix }
+    val hasExtension =
+        if (imageExtension.matches(suffix)) imageExtension.containsMatchIn(name) else extension.containsMatchIn(name)
+    return if (hasExtension) name else name + suffix
+}
 
 internal fun safeAttachmentFilename(name: String): String {
     val cleaned =

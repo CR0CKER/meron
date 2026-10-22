@@ -1,3 +1,4 @@
+import type { Attachment } from '../../types'
 import { useValue } from '@legendapp/state/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
@@ -14,7 +15,7 @@ import {
   releaseFailedImageBox,
   restoreImageBox,
 } from './bubbleHtml'
-import { bodyContentKey } from './messageHelpers'
+import { bodyContentKey, mediaKeyFromSrc } from './messageHelpers'
 import { applyFrameHighlights, clearFrameHighlights } from './frameSearchHighlight'
 import { frameMetrics, measureFrameHeight } from './frameHeight'
 import { useMessageFrameFont } from './useMessageFrameFont'
@@ -38,6 +39,7 @@ const NON_TEXT_SELECTOR = 'table, img, video, iframe, svg, pre, [width], [style*
 // the frame grows to fit while the bubble wrapper owns scrolling.
 export function BubbleHtmlFrame({
   html,
+  attachments,
   outgoing = false,
   surface = 'bubble',
   allowRemote = false,
@@ -49,6 +51,7 @@ export function BubbleHtmlFrame({
   onNaturalWidth,
 }: {
   html: string
+  attachments?: Attachment[]
   /** Which bubble the frame sits in: its colors are the ones the frame paints with. */
   outgoing?: boolean
   /** A chat bubble, a draft's, or a traditional layout's row: what a darkened body blends onto. */
@@ -128,26 +131,30 @@ export function BubbleHtmlFrame({
   const quoteKey = useMemo(() => bodyContentKey(html), [html])
   const foldQuoteRef = useRef<((open: boolean) => void) | null>(null)
 
-  const openImage = useCallback((doc: Document, img: HTMLImageElement, event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!img.currentSrc && !img.src) return
-    const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((el) => {
-      if (!el.currentSrc && !el.src) return false
-      const w = el.getAttribute('width') || ''
-      const h = el.getAttribute('height') || ''
-      if ((w === '1' || w === '0') && (h === '1' || h === '0')) return false
-      if (el.naturalWidth === 1 || el.naturalHeight === 1) return false
-      return true
-    })
-    setGalleryItems(
-      imgs.map((el) => ({
-        src: el.currentSrc || el.src,
-        filename: el.alt || el.title || 'image',
-      })),
-    )
-    setGalleryIndex(Math.max(0, imgs.indexOf(img)))
-  }, [])
+  const openImage = useCallback(
+    (doc: Document, img: HTMLImageElement, event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!img.currentSrc && !img.src) return
+      const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((el) => {
+        if (!el.currentSrc && !el.src) return false
+        const w = el.getAttribute('width') || ''
+        const h = el.getAttribute('height') || ''
+        if ((w === '1' || w === '0') && (h === '1' || h === '0')) return false
+        if (el.naturalWidth === 1 || el.naturalHeight === 1) return false
+        return true
+      })
+      setGalleryItems(
+        imgs.map((el) => ({
+          src: el.currentSrc || el.src,
+          filename: el.alt || el.title || 'image',
+          mime: attachments?.find((att) => att.key === mediaKeyFromSrc(el.currentSrc || el.src))?.mime,
+        })),
+      )
+      setGalleryIndex(Math.max(0, imgs.indexOf(img)))
+    },
+    [attachments],
+  )
 
   const handleFrameClick = useCallback(
     (event: MouseEvent, doc: Document) => {

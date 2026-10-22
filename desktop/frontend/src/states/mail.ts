@@ -1,3 +1,4 @@
+import { attachmentSaveFilename } from '../lib/attachmentFilename'
 import type { Folder, Message } from '../types'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
@@ -191,16 +192,17 @@ export async function openAttachment(att: { key: string | null; filename: string
 
 // Save a local attachment to disk via the native save dialog. The bytes already
 // live in the media cache (keyed); the bridge copies them to the chosen path.
-export async function downloadAttachment(att: { key: string | null; filename: string }) {
+export async function downloadAttachment(att: { key: string | null; filename: string; mime?: string }) {
   if (!att.key) return
+  const filename = attachmentSaveFilename(att.filename, att.key, att.mime)
   try {
     const res = await invoke<{ saved: boolean; path?: string }>('mail.saveAttachment', {
       key: att.key,
-      filename: att.filename,
+      filename,
     })
-    if (res?.saved) showToast(t('chat.savedAttachment', { filename: att.filename }))
+    if (res?.saved) showToast(t('chat.savedAttachment', { filename }))
   } catch {
-    showToast(t('chat.couldNotSaveAttachment', { filename: att.filename }))
+    showToast(t('chat.couldNotSaveAttachment', { filename }))
   }
 }
 
