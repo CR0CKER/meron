@@ -79,6 +79,16 @@ fun MainViewController(
     val appVersion = (bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String).orEmpty()
     val packageName = bundle.bundleIdentifier.orEmpty()
     val services = IosPlatformServices()
+    // Built once, outside the composition: MeronApp keys its state on the host,
+    // so a new instance per recomposition (a system appearance change, say)
+    // would rebuild MeronMobileState and drop everything loaded into it.
+    val mobileHost =
+        IosMobileHost(
+            delegate = host,
+            packageName = packageName,
+            appVersionName = appVersion,
+            coreProtocolVersion = coreProtocolVersion,
+        )
     return ComposeUIViewController {
         MeronApp(
             core = core,
@@ -87,13 +97,7 @@ fun MainViewController(
             kanbanPrefs = kanbanPrefs,
             services = services,
             locale = locale,
-            mobileHost =
-                IosMobileHost(
-                    delegate = host,
-                    packageName = packageName,
-                    appVersionName = appVersion,
-                    coreProtocolVersion = coreProtocolVersion,
-                ),
+            mobileHost = mobileHost,
             coreInitJson = coreInitJson,
             incomingMailtoDraft = incomingMailtoEvents?.draft ?: incomingMailtoDraft,
             onMailtoDraftConsumed = { incomingMailtoEvents?.consume() },

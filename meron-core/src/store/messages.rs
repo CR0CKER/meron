@@ -1175,5 +1175,18 @@ pub fn save_cached_message(
         ],
     )?;
 
+    // Every body fetch lands here, so an organizer's update reaches the
+    // calendar whichever path read it. A calendar failure must not lose the
+    // message.
+    if let Some(invite) = &message.invite {
+        let _ = crate::calendar::events::apply_invite_update(
+            conn,
+            account,
+            &message.from_addr,
+            &message.message_id,
+            invite,
+        );
+    }
+
     Ok(())
 }

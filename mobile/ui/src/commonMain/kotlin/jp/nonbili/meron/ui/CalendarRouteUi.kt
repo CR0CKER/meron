@@ -83,8 +83,9 @@ internal fun CalendarRouteContent(
                 ?: CivilDate(calendarYear, calendarMonth, 1)
         val dayItems = calendarItems.filter { occursOn(it, visibleDay, ::localMidnight) }
 
-        // Also covers a process restart straight onto the remembered route.
-        LaunchedEffect(Unit) { loadCalendar() }
+        // Also covers a process restart straight onto the remembered route, and
+        // a rebuilt state, which starts with no items.
+        LaunchedEffect(state) { loadCalendar() }
 
         ModalNavigationDrawer(
             drawerState = drawerState,

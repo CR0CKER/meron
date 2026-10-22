@@ -447,12 +447,17 @@ pub async fn read_thread_page(
                     crate::calendar::invite_from_attachments(&media_root, &cached.attachments);
             }
             if let Some(invite) = &cached.invite {
-                message["invite"] = crate::calendar::invite_json_for(
-                    &engine.db.lock().unwrap(),
+                let db = engine.db.lock().unwrap();
+                // Covers an update downloaded before updates were applied on
+                // download, or before what it revises was filed.
+                let _ = crate::calendar::events::apply_invite_update(
+                    &db,
                     account,
+                    &cached.from_addr,
+                    &cached.message_id,
                     invite,
-                    &mine,
                 );
+                message["invite"] = crate::calendar::invite_json_for(&db, account, invite, &mine);
             }
         }
         // Tells a body still downloading in the background from one that

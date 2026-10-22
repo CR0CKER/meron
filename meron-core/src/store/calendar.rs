@@ -181,6 +181,35 @@ pub fn invite_occurrence_event(
         .optional()?)
 }
 
+/// The invitations about `uid` among the account's downloaded messages, as
+/// (From address, Message-ID, invitation).
+pub fn cached_invites(
+    conn: &Connection,
+    account: &str,
+    uid: &str,
+) -> Result<Vec<(String, String, crate::calendar::Invite)>> {
+    let mut stmt = conn.prepare(
+        "SELECT from_addr, json_extract(json, '$.message_id'), json_extract(json, '$.invite')
+         FROM messages
+         WHERE account = ?1 AND json_extract(json, '$.invite.uid') = ?2",
+    )?;
+    let rows = stmt.query_map(params![account, uid], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut invites = Vec::new();
+    for row in rows {
+        let (from, message_id, invite) = row?;
+        if let Ok(invite) = serde_json::from_str(&invite) {
+            invites.push((from, message_id, invite));
+        }
+    }
+    Ok(invites)
+}
+
 /// Every occurrence of an invitation filed on its own.
 pub fn invite_occurrence_events(
     conn: &Connection,

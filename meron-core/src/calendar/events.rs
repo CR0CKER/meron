@@ -237,7 +237,7 @@ pub fn record_invite_event(
         // An answer about one occurrence of a series already in the calendar
         // changes that occurrence, not the series.
         if let Some(mut series) = series.filter(|event| event.recurring && !event.ics.is_empty()) {
-            series.ics = with_occurrence(&series.ics, invite, response)?;
+            series.ics = with_occurrence(&series.ics, invite, Some(response))?;
             settle_start(&mut series);
             store::save_event(conn, &series)?;
             if let Some(alone) = alone {
@@ -296,7 +296,7 @@ pub fn record_invite_event(
                 recurrence_id: occurrence.recurrence_id,
                 ..Default::default()
             };
-            series.ics = with_occurrence(&series.ics, &update, answer)?;
+            series.ics = with_occurrence(&series.ics, &update, Some(answer))?;
             // The series has one set of notes; the user's on this occurrence
             // join them rather than go with its row.
             let notes = occurrence.notes.trim();
@@ -313,6 +313,222 @@ pub fn record_invite_event(
         store::save_event(conn, &series)?;
     }
     Ok(())
+}
+
+/// Bring a filed invitation up to date with the organizer's newer revision of
+/// it (a later SEQUENCE: moved, renamed, ...), as soon as that message is read.
+/// The calendar would otherwise keep the old time until the user answered
+/// again. The answer they gave carries over; the card asks for a new one.
+/// `sender` is the message's From address.
+pub fn apply_invite_update(
+    conn: &Connection,
+    account: &str,
+    sender: &str,
+    message_id: &str,
+    invite: &Invite,
+) -> Result<()> {
+    if invite.method != "request" || invite.cancelled || invite.uid.is_empty() {
+        return Ok(());
+    }
+    let alone = if invite.recurrence_id == 0 {
+        None
+    } else {
+        store::invite_occurrence_event(conn, account, &invite.uid, invite.recurrence_id)?
+    };
+    let Some(filed) = alone.or(store::invite_event(conn, account, &invite.uid)?) else {
+        return Ok(());
+    };
+    // An occurrence the calendar leaves out stays out.
+    if invite.recurrence_id != 0
+        && filed.recurrence_id == 0
+        && filed.recurring
+        && excludes_occurrence(&filed, invite.recurrence_id)
+    {
+        return Ok(());
+    }
+    // Only the organizer revises an event, and only in mail from them: anyone
+    // else who knows its UID (another attendee, say) must not move it on the
+    // user's calendar unasked. Answering their copy still can.
+    let organizer = super::parse_invite(&filed.ics)
+        .map(|filed| filed.organizer.addr.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if organizer.is_empty()
+        || organizer != invite.organizer.addr.trim().to_ascii_lowercase()
+        || organizer != sender.trim().to_ascii_lowercase()
+    {
+        return Ok(());
+    }
+    // Something in it is newer than what is filed, and the series it brings
+    // (if it brings one) is not older: that replaces the filed one whole.
+    let revisions = revisions(invite);
+    let newer = revisions
+        .iter()
+        .any(|&(recurrence_id, sequence)| sequence > filed_sequence(&filed, recurrence_id));
+    let older_series = invite.recurrence_id == 0
+        && revisions.iter().any(|&(recurrence_id, sequence)| {
+            recurrence_id == 0 && sequence < filed_sequence(&filed, 0)
+        });
+    if !newer || older_series {
+        return Ok(());
+    }
+    let recorded = store::invite_response(conn, account, &invite.uid, invite.recurrence_id)?;
+    let Some(response) = recorded
+        .and_then(|recorded| Response::parse(&recorded.response))
+        .or_else(|| Response::parse(&filed.response))
+        .filter(|response| *response != Response::Declined)
+    else {
+        return Ok(());
+    };
+    // An automatic update is no answer: the dates the user answered one by
+    // one keep those answers, and the others stay with the series'.
+    if invite.recurrence_id != 0
+        && filed.recurrence_id == 0
+        && filed.recurring
+        && !filed.ics.is_empty()
+    {
+        let mut series = filed;
+        let answer = occurrence_answer(&series.ics, invite.recurrence_id);
+        series.ics = with_occurrence(&series.ics, invite, answer)?;
+        settle_start(&mut series);
+        store::save_event(conn, &series)?;
+        return Ok(());
+    }
+    let invite = if invite.recurrence_id == 0 && filed.recurring {
+        &with_occurrence_answers(conn, account, invite, &filed)?
+    } else {
+        invite
+    };
+    record_invite_event(
+        conn,
+        account,
+        &filed.thread_id,
+        message_id,
+        invite,
+        response,
+    )
+}
+
+/// The answer the user gave the date at `recurrence_id` on its own, if any.
+fn occurrence_answer(series_ics: &str, recurrence_id: i64) -> Option<Response> {
+    let series = super::parse_ical(series_ics)?;
+    overrides(&series)
+        .filter(|component| recurrence_instant(&series, component) == Some(recurrence_id))
+        .find_map(|component| {
+            Response::parse(&super::text_of(
+                component,
+                ICalendarProperty::Other(OCCURRENCE_RESPONSE.to_string()),
+            ))
+        })
+}
+
+/// [`apply_invite_update`] for the revisions of `uid` already downloaded,
+/// oldest first: an update can arrive before the user answers the invitation
+/// it revises, and then had nothing filed to change.
+pub fn apply_cached_updates(conn: &Connection, account: &str, uid: &str) -> Result<()> {
+    let mut cached = store::cached_invites(conn, account, uid)?;
+    cached.sort_by_key(|(_, _, invite)| invite.sequence);
+    for (sender, message_id, invite) in cached {
+        apply_invite_update(conn, account, &sender, &message_id, &invite)?;
+    }
+    Ok(())
+}
+
+/// The revised series `invite` with the user's own answers about its dates:
+/// the organizer's override of a date they declined goes, so the decline (put
+/// back by [`record_invite_event`]) still holds, and an override of a date
+/// they answered otherwise than the series takes that answer.
+fn with_occurrence_answers(
+    conn: &Connection,
+    account: &str,
+    invite: &Invite,
+    filed: &CalendarEvent,
+) -> Result<Invite> {
+    let (Some(mut incoming), Some(stored)) = (
+        super::parse_ical(&invite.ics),
+        super::parse_ical(&filed.ics),
+    ) else {
+        return Ok(invite.clone());
+    };
+    for (recurrence_id, _) in store::declined_occurrences(conn, account, &invite.uid)? {
+        remove_overrides(&mut incoming, recurrence_id);
+    }
+    let private = ICalendarProperty::Other(OCCURRENCE_RESPONSE.to_string());
+    let answers: Vec<(i64, String)> = overrides(&stored)
+        .filter_map(|component| {
+            let answer = super::text_of(component, private.clone());
+            (!answer.is_empty())
+                .then(|| Some((recurrence_instant(&stored, component)?, answer)))
+                .flatten()
+        })
+        .collect();
+    let at: Vec<(usize, i64)> = incoming
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, component)| {
+            component.component_type == ICalendarComponentType::VEvent
+                && component.is_recurrence_override()
+        })
+        .filter_map(|(index, component)| Some((index, recurrence_instant(&incoming, component)?)))
+        .collect();
+    for (index, recurrence_id) in at {
+        if let Some((_, answer)) = answers.iter().find(|(rid, _)| *rid == recurrence_id) {
+            let component = &mut incoming.components[index];
+            component.entries.retain(|entry| entry.name != private);
+            component.add_property(private.clone(), ICalendarValue::Text(answer.clone()));
+        }
+    }
+    Ok(Invite {
+        ics: incoming.to_string(),
+        ..invite.clone()
+    })
+}
+
+/// Each event `invite` carries, as (RECURRENCE-ID, SEQUENCE): a series may
+/// bring occurrences the organizer revised on their own, at their own count.
+fn revisions(invite: &Invite) -> Vec<(i64, i64)> {
+    if invite.recurrence_id != 0 {
+        return vec![(invite.recurrence_id, invite.sequence)];
+    }
+    let Some(ical) = super::parse_ical(&invite.ics) else {
+        return vec![(0, invite.sequence)];
+    };
+    ical.components
+        .iter()
+        .filter(|component| component.component_type == ICalendarComponentType::VEvent)
+        .filter_map(|component| {
+            let recurrence_id = if component.is_recurrence_override() {
+                recurrence_instant(&ical, component)?
+            } else {
+                0
+            };
+            Some((recurrence_id, own_sequence(component)))
+        })
+        .collect()
+}
+
+/// The revision of `filed` an update about `recurrence_id` must be newer than.
+/// An occurrence moved within a series keeps its own (see [`OWN_SEQUENCE`]);
+/// the series' counts too, as an organizer's SEQUENCE only grows.
+fn filed_sequence(filed: &CalendarEvent, recurrence_id: i64) -> i64 {
+    if recurrence_id == 0 || filed.recurrence_id != 0 {
+        return super::parse_invite(&filed.ics).map_or(0, |filed| filed.sequence);
+    }
+    let Some(ical) = super::parse_ical(&filed.ics) else {
+        return 0;
+    };
+    ical.components
+        .iter()
+        .enumerate()
+        .filter(|(index, component)| {
+            Some(*index) == master_index(&ical)
+                || (component.component_type == ICalendarComponentType::VEvent
+                    && component.is_recurrence_override()
+                    && recurrence_instant(&ical, component) == Some(recurrence_id))
+        })
+        .map(|(_, component)| own_sequence(component))
+        .max()
+        .unwrap_or(0)
 }
 
 /// Put the event `invite` describes in the calendar, over `existing` (the row
@@ -504,6 +720,44 @@ struct Occurrence {
 /// Where an occurrence's own answer is kept in a stored invitation: a private
 /// property on its override VEVENT, which never leaves the device.
 const OCCURRENCE_RESPONSE: &str = "X-MERON-RESPONSE";
+
+/// An override's SEQUENCE as the organizer sent it, kept beside the series'
+/// one it is given (see [`put_override`]) so a late, older revision of the
+/// occurrence is known for one. A private property, like [`OCCURRENCE_RESPONSE`].
+const OWN_SEQUENCE: &str = "X-MERON-SEQUENCE";
+
+/// Note an override's own SEQUENCE before it takes the series', once: an
+/// override filed again keeps what was first noted.
+fn keep_own_sequence(component: &mut calcard::icalendar::ICalendarComponent) {
+    let name = ICalendarProperty::Other(OWN_SEQUENCE.to_string());
+    if component.property(&name).is_some() {
+        return;
+    }
+    // None given is 0 (RFC 5545), not the series' count it is about to take.
+    let sequence = component
+        .property(&ICalendarProperty::Sequence)
+        .and_then(|entry| entry.values.first())
+        .and_then(ICalendarValue::as_integer)
+        .unwrap_or(0);
+    component.add_property(name, ICalendarValue::Text(sequence.to_string()));
+}
+
+/// An event's SEQUENCE as the organizer sent it.
+fn own_sequence(component: &calcard::icalendar::ICalendarComponent) -> i64 {
+    super::text_of(
+        component,
+        ICalendarProperty::Other(OWN_SEQUENCE.to_string()),
+    )
+    .parse()
+    .ok()
+    .or_else(|| {
+        component
+            .property(&ICalendarProperty::Sequence)
+            .and_then(|entry| entry.values.first())
+            .and_then(ICalendarValue::as_integer)
+    })
+    .unwrap_or(0)
+}
 
 /// An event's occurrences that overlap `[from, to)`.
 fn occurrences(event: &CalendarEvent, from: i64, to: i64) -> Vec<Occurrence> {
@@ -779,8 +1033,13 @@ fn repeat_ics(event: &CalendarEvent) -> String {
 /// `series_ics` with the occurrence `invite` is about answered: declined, it
 /// is excluded (EXDATE); accepted, the organizer's version of it replaces any
 /// earlier one (an override VEVENT with its RECURRENCE-ID), which the
-/// expansion then shows in place of the series' own.
-fn with_occurrence(series_ics: &str, invite: &Invite, response: Response) -> Result<String> {
+/// expansion then shows in place of the series' own. With no `response`, an
+/// organizer's update the user has not answered, it takes the series' answer.
+fn with_occurrence(
+    series_ics: &str,
+    invite: &Invite,
+    response: Option<Response>,
+) -> Result<String> {
     let mut series =
         super::parse_ical(series_ics).ok_or_else(|| anyhow!("stored event is not iCalendar"))?;
     let update =
@@ -799,7 +1058,7 @@ fn with_occurrence(series_ics: &str, invite: &Invite, response: Response) -> Res
     // An earlier answer about the same occurrence gives way to this one.
     remove_overrides(&mut series, invite.recurrence_id);
     remove_exdate(&mut series, invite.recurrence_id);
-    if response == Response::Declined {
+    if response == Some(Response::Declined) {
         let rid = occurrence
             .property(&ICalendarProperty::RecurrenceId)
             .cloned()
@@ -820,7 +1079,7 @@ fn with_occurrence(series_ics: &str, invite: &Invite, response: Response) -> Res
         {
             lift_end(&mut series);
         }
-        put_override(&mut series, occurrence.clone(), Some(response));
+        put_override(&mut series, occurrence.clone(), response);
     }
     Ok(series.to_string())
 }
@@ -869,6 +1128,7 @@ fn with_series_sequence(ics: &str) -> Result<String> {
             && component.is_recurrence_override()
     }) {
         if component.property(&ICalendarProperty::Sequence) != sequence.as_ref() {
+            keep_own_sequence(component);
             component
                 .entries
                 .retain(|entry| entry.name != ICalendarProperty::Sequence);
@@ -900,6 +1160,25 @@ fn carry_exceptions(stored: &str, incoming: &str) -> Result<String> {
     // cut go, while the user's own answers carried below stay.
     if let Some(cut) = ends_before(&old) {
         end_before(&mut series, cut)?;
+    }
+    // An occurrence the user already has at a newer revision than the one
+    // this calendar embeds (a late copy of the series) keeps the newer.
+    let stored_revision = |rid: i64| {
+        overrides(&old)
+            .filter(|component| recurrence_instant(&old, component) == Some(rid))
+            .map(own_sequence)
+            .max()
+    };
+    let older: Vec<i64> = overrides(&series)
+        .filter_map(|component| {
+            let rid = recurrence_instant(&series, component)?;
+            stored_revision(rid)
+                .is_some_and(|stored| stored > own_sequence(component))
+                .then_some(rid)
+        })
+        .collect();
+    for rid in &older {
+        remove_overrides(&mut series, *rid);
     }
     let overridden: Vec<i64> = overrides(&series)
         .filter_map(|component| recurrence_instant(&series, component))
@@ -1051,6 +1330,7 @@ fn put_override(
     let master_sequence = master_index(series)
         .and_then(|master| series.components[master].property(&ICalendarProperty::Sequence))
         .cloned();
+    keep_own_sequence(&mut component);
     let private = ICalendarProperty::Other(OCCURRENCE_RESPONSE.to_string());
     component.entries.retain(|entry| {
         entry.name != ICalendarProperty::Sequence && (response.is_none() || entry.name != private)

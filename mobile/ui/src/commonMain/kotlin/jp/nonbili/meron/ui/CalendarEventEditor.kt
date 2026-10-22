@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.nonbili.meron.shared.CalendarEventParams
 import jp.nonbili.meron.shared.CalendarItem
@@ -318,12 +319,22 @@ private fun DateTimeRow(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, modifier = Modifier.width(56.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // At phone width inside the dialog the full date leaves the time chip
+        // no room, wrapping "09:00" a character a line: the time keeps its width
+        // and the date gives way, ellipsized.
         AssistChip(
             onClick = onPickDate,
-            label = { Text(formatDate(localMidnight(day) * 1000, DateStyle.WeekdayDate)) },
+            label = {
+                Text(
+                    formatDate(localMidnight(day) * 1000, DateStyle.WeekdayDate),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            modifier = Modifier.weight(1f, fill = false),
         )
         if (minutes != null) {
-            AssistChip(onClick = onPickTime, label = { Text(formatMinutes(minutes)) })
+            AssistChip(onClick = onPickTime, label = { Text(formatMinutes(minutes), softWrap = false) })
         }
     }
 }

@@ -677,6 +677,7 @@ pub async fn respond(
             &invite,
             response,
         )?;
+        events::apply_cached_updates(&db, account, &invite.uid)?;
     }
     let event_id = filed_event_id(&engine.db.lock().unwrap(), account, &invite);
     Ok(Responded {
@@ -767,5 +768,6 @@ pub fn add_to_calendar(
         &invite,
         response,
     )?;
+    events::apply_cached_updates(conn, &account, &invite.uid)?;
     Ok(filed_event_id(conn, &account, &invite))
 }
