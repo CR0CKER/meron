@@ -87,13 +87,14 @@ internal fun MeronMobileState.ensureThreadActionFolders(
 internal fun MeronMobileState.moveThreadToFolder(
     thread: ThreadSummary,
     targetFolderId: String,
+    targetAccountId: String = thread.accountId,
     onMoved: () -> Unit = {},
 ) {
     if (threadIdIsRss(thread.id)) {
         status = trs("mobile.status.rssMoveBetweenAccounts")
         return
     }
-    if (kanbanFolderIdsEqual(targetFolderId, thread.folder)) {
+    if (targetAccountId == thread.accountId && kanbanFolderIdsEqual(targetFolderId, thread.folder)) {
         status = trs("mobile.status.alreadyInFolder", mapOf("folder" to targetFolderId.replaceFirstChar { it.uppercase() }))
         return
     }
@@ -121,7 +122,7 @@ internal fun MeronMobileState.moveThreadToFolder(
                 requireCoreOk(
                     withContext(ioDispatcher) {
                         MobileMailCommandClient(core).move(
-                            MoveThreadParams(threadId = thread.id, targetFolderId = targetFolderId),
+                            MoveThreadParams(threadId = thread.id, targetFolderId = targetFolderId, targetAccountId = targetAccountId),
                         )
                     },
                 ),
@@ -135,7 +136,7 @@ internal fun MeronMobileState.moveThreadToFolder(
                 messages = emptyList()
             }
             status = trs("mobile.status.moveComplete")
-            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, thread.accountId, targetFolderId))
+            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, targetAccountId, targetFolderId))
             onMoved()
         }.onFailure {
             removal.rollback()
@@ -312,14 +313,14 @@ internal fun MeronMobileState.moveThreadToColumn(
                 requireTransferAffected(
                     requireCoreOk(
                         MobileMailCommandClient(core).move(
-                            MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId),
+                            MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId, targetAccountId = target.accountId),
                         ),
                     ),
                     "moved",
                 )
             }
         }.onSuccess { response ->
-            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, thread.accountId, target.folderId))
+            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, target.accountId, target.folderId))
             removal.complete()
             releaseMovedThread(response)
             removeThreadEverywhere(thread.id)

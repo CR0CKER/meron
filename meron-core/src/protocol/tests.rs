@@ -1317,6 +1317,18 @@ fn mobile_protocol_move_requires_usable_account_secret() {
             .contains("account needs reconnect")
     );
 
+    // INBOX in another account must not be mistaken for the source INBOX.
+    let cross_account = invoke_mobile_protocol_json(
+        r#"{"id":69,"method":"mail.move","params":{"thread_id":"me@example.com#INBOX#t.dG9waWM","target_account_id":"other@example.com","target_folder_id":"INBOX"}}"#,
+        Some(data_dir.to_str().unwrap()),
+    );
+    assert!(
+        cross_account["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("account needs reconnect")
+    );
+
     let _ = std::fs::remove_dir_all(data_dir);
 }
 

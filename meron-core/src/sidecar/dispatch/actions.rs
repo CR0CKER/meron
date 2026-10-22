@@ -331,7 +331,8 @@ pub(crate) async fn dispatch(
                 mail_model::format_thread_id(&account, &folder, &key)
             };
 
-            if folder == target_folder {
+            let target_account = req_str(p, "target_account").unwrap_or_else(|_| account.clone());
+            if account == target_account && folder == target_folder {
                 return mail_model::mutation_result(
                     json!({ "ok": true, "moved": 0, "source_folder": folder, "target_folder": target_folder }),
                     &engine.db.lock().unwrap(),
@@ -370,6 +371,19 @@ pub(crate) async fn dispatch(
                     None,
                     false,
                 );
+            }
+
+            if target_account != account {
+                return move_between_accounts(
+                    engine,
+                    &account,
+                    &folder,
+                    &changed_thread_id,
+                    &target_account,
+                    &target_folder,
+                    &uids,
+                )
+                .await;
             }
 
             let cached_ids =

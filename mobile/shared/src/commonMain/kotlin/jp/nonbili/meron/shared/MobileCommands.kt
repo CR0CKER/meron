@@ -1020,11 +1020,13 @@ data class ThreadActionParams(
 data class MoveThreadParams(
     val threadId: String,
     val targetFolderId: String,
+    val targetAccountId: String? = null,
 ) {
     fun toJson(): String =
         jsonObject(
             "thread_id" to threadId.jsonString(),
             "target_folder_id" to targetFolderId.jsonString(),
+            "target_account_id" to targetAccountId?.jsonString(),
         )
 }
 

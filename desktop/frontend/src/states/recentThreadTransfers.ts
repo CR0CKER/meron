@@ -21,8 +21,7 @@ export function parseRecentThreadTransfers(raw: string | null): RecentThreadTran
           (entry.action === 'move' || entry.action === 'copy') &&
           ['sourceAccountId', 'targetAccountId', 'targetFolderId'].every(
             (key) => typeof entry[key] === 'string' && entry[key].length > 0,
-          ) &&
-          (entry.action !== 'move' || entry.sourceAccountId === entry.targetAccountId),
+          ),
       )
       .slice(0, LIMIT)
   } catch {

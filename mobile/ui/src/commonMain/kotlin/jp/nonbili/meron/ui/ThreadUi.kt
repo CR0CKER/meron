@@ -160,6 +160,8 @@ internal fun ThreadScreen(
     onAddToTasks: (() -> Unit)? = null,
     moveFolders: List<FolderSummary>,
     copyFolders: List<FolderSummary>,
+    transferAccounts: List<jp.nonbili.meron.shared.AccountSummary> = emptyList(),
+    loadTransferFolders: () -> Unit = {},
     onMoveToFolder: (FolderSummary) -> Unit,
     onCreateFolderAndMove: (String) -> Unit,
     onCopyToFolder: (FolderSummary) -> Unit,
@@ -262,8 +264,10 @@ internal fun ThreadScreen(
     val mediaItems =
         remember(messages, remoteContentPolicy, revealedRemote) { buildThreadMediaItems(messages, remoteAllowed) }
     val targetMoveFolders =
-        remember(currentThreadFolder, moveFolders) {
-            moveFolders.filterNot { folder -> folder.name.equals(currentThreadFolder, ignoreCase = true) }
+        remember(currentThreadAccountId, currentThreadFolder, moveFolders) {
+            moveFolders.filterNot { folder ->
+                folder.accountId.ifBlank { currentThreadAccountId } == currentThreadAccountId && folder.name.equals(currentThreadFolder, ignoreCase = true)
+            }
         }
     val targetCopyFolders =
         remember(currentThreadAccountId, currentThreadFolder, copyFolders) {
@@ -846,6 +850,7 @@ internal fun ThreadScreen(
                                             leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
                                             onClick = {
                                                 overflowOpen = false
+                                                loadTransferFolders()
                                                 moveDialogOpen = true
                                             },
                                         )
@@ -854,6 +859,7 @@ internal fun ThreadScreen(
                                             leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                                             onClick = {
                                                 overflowOpen = false
+                                                loadTransferFolders()
                                                 copyDialogOpen = true
                                             },
                                         )
@@ -900,6 +906,7 @@ internal fun ThreadScreen(
                 MoveThreadDialog(
                     thread = thread,
                     folders = targetMoveFolders,
+                    accounts = transferAccounts,
                     onMove = { folder ->
                         moveDialogOpen = false
                         onMoveToFolder(folder)
@@ -915,6 +922,7 @@ internal fun ThreadScreen(
                 CopyThreadDialog(
                     thread = thread,
                     folders = targetCopyFolders,
+                    accounts = transferAccounts,
                     onCopy = { folder ->
                         copyDialogOpen = false
                         onCopyToFolder(folder)

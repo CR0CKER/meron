@@ -136,6 +136,70 @@ describe('undo after moving a thread', () => {
     expect(recentThreadTransfers$.get()).toHaveLength(2)
   })
 
+  it('moves to another account even when the destination folder has the same name', async () => {
+    responses['mail.move'] = { moved: 1 }
+    expect(await moveThreadToFolder(THREAD, 'INBOX', { targetAccountId: 'other' })).toBe(true)
+    expect(calls.find((call) => call.command === 'mail.move')?.payload).toEqual({
+      thread_id: THREAD,
+      target_folder_id: 'INBOX',
+      target_account_id: 'other',
+    })
+    expect(recentThreadTransfers$.get()[0]).toEqual({
+      action: 'move',
+      sourceAccountId: 'acc',
+      targetAccountId: 'other',
+      targetFolderId: 'INBOX',
+    })
+    expect(ui$.toastUndo.get()).toBe(null)
+  })
+
+  it('restores the source after a cross-account removal failure and records no successful move', async () => {
+    responses['mail.move'] = new Error('Move copied messages but could not confirm removal from the source folder')
+    expect(await moveThreadToFolder(THREAD, 'INBOX', { targetAccountId: 'other' })).toBe(false)
+    expect(mail$.threads.get().some((item) => item.thread_id === THREAD)).toBe(true)
+    expect(recentThreadTransfers$.get()).toEqual([])
+    expect(ui$.toast.get()).toContain('copied')
+  })
+
+  it('bulk moves same-named folders across accounts and skips copies already at the destination', async () => {
+    responses['mail.move'] = { moved: 1 }
+    await bulkMoveSelectedToFolder(
+      [
+        {
+          kind: 'mail',
+          key: THREAD,
+          groupKey: '',
+          surface: 'thread-list',
+          unread: false,
+          starred: false,
+          draft: false,
+          trash: false,
+          threadId: THREAD,
+          accountId: 'acc',
+          folderId: 'INBOX',
+        },
+        {
+          kind: 'mail',
+          key: 'other',
+          groupKey: '',
+          surface: 'thread-list',
+          unread: false,
+          starred: false,
+          draft: false,
+          trash: false,
+          threadId: 'other#INBOX#t.dG9waWM',
+          accountId: 'other',
+          folderId: 'INBOX',
+        },
+      ],
+      'INBOX',
+      'other',
+    )
+    expect(calls.filter((call) => call.command === 'mail.move').map((call) => call.payload)).toEqual([
+      { thread_id: THREAD, target_folder_id: 'INBOX', target_account_id: 'other' },
+    ])
+  })
+
   it('moves the reported Trash copies back out of Trash', async () => {
     responses['mail.delete'] = { deleted: 1, trash: 'Trash', thread_id: 'acc#Trash#t.dG9waWM', target_uids: [42, 43] }
     await deleteThread(THREAD)

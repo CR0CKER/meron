@@ -743,6 +743,10 @@ class MobileCommandsTest {
         assertEquals(MobileCommand.Move, core.lastCommand)
         assertEquals("""{"thread_id":"thread1","target_folder_id":"Work"}""", core.lastPayloadJson)
 
+        runSuspend { client.move(MoveThreadParams(threadId = "thread1", targetFolderId = "INBOX", targetAccountId = "acc2")) }
+        assertEquals(MobileCommand.Move, core.lastCommand)
+        assertEquals("""{"thread_id":"thread1","target_folder_id":"INBOX","target_account_id":"acc2"}""", core.lastPayloadJson)
+
         runSuspend { client.copy(CopyThreadParams(threadId = "thread1", targetAccountId = "acc2", targetFolderId = "Archive")) }
         assertEquals(MobileCommand.Copy, core.lastCommand)
         assertEquals("""{"thread_id":"thread1","target_account_id":"acc2","target_folder_id":"Archive"}""", core.lastPayloadJson)

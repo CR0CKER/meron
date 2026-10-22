@@ -385,6 +385,7 @@ func (a *App) mailDelete(payload map[string]any) (any, error) {
 func (a *App) mailMove(payload map[string]any) (any, error) {
 	threadID, _ := payload["thread_id"].(string)
 	targetFolder, _ := payload["target_folder_id"].(string)
+	targetAccount, _ := payload["target_account_id"].(string)
 	if threadID == "" || targetFolder == "" {
 		return map[string]any{"ok": true}, nil
 	}
@@ -395,19 +396,23 @@ func (a *App) mailMove(payload map[string]any) (any, error) {
 		return nil, errors.New("feed items cannot be moved between folders")
 	}
 	if ids, ok := parseImapThreadID(threadID); ok {
-		if canonThreadFolder(ids.Folder) == canonThreadFolder(targetFolder) {
+		if (targetAccount == "" || targetAccount == ids.Account) && canonThreadFolder(ids.Folder) == canonThreadFolder(targetFolder) {
 			return map[string]any{"ok": true, "moved": 0}, nil
 		}
 		// Branch-compound thread keys pass through untouched; the sidecar
 		// splits them and scopes the move to the subject branch.
 		params := map[string]any{"account": ids.Account, "folder": ids.Folder, "target_folder": targetFolder, "thread_key": ids.ThreadKey}
+		if targetAccount != "" {
+			params["target_account"] = targetAccount
+		}
 		if uids := imapUIDsFromPayload(threadID, payload); len(uids) > 0 {
 			params["uids"] = uids
 			delete(params, "thread_key")
 			return a.sidecar.Call("messages.move", params)
 		}
 		if ids.ThreadKey == "" && ids.UID > 0 {
-			params = map[string]any{"account": ids.Account, "folder": ids.Folder, "target_folder": targetFolder, "uid": ids.UID}
+			delete(params, "thread_key")
+			params["uid"] = ids.UID
 		}
 		return a.sidecar.Call("messages.move", params)
 	}

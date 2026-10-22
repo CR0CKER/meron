@@ -372,6 +372,15 @@ export function ThreadContextMenu({
       )}
       <div className="my-1 border-t border-border" />
       <MenuItem
+        icon={<Download size={13} className="text-secondary" />}
+        label={t('chat.actions.saveAsEml')}
+        onClick={() => {
+          const { threadId, folderId, subject } = menu
+          close()
+          void exportThreadsAsEml([{ threadId, folderId }], subject)
+        }}
+      />
+      <MenuItem
         icon={<Archive size={13} className="text-secondary" />}
         label={t('threads.actions.archiveThread')}
         onClick={() => {
@@ -390,15 +399,6 @@ export function ThreadContextMenu({
         onCopied={(targetAccountId, targetFolderId) =>
           after('copy', menu.threadId, { targetAccountId, targetFolderId })
         }
-      />
-      <MenuItem
-        icon={<Download size={13} className="text-secondary" />}
-        label={t('chat.actions.saveAsEml')}
-        onClick={() => {
-          const { threadId, folderId, subject } = menu
-          close()
-          void exportThreadsAsEml([{ threadId, folderId }], subject)
-        }}
       />
       <div className="my-1 border-t border-border" />
       <MenuItem

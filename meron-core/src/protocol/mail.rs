@@ -1362,6 +1362,33 @@ pub(crate) fn move_mobile_thread(data_dir: &str, params: &Value) -> Result<Value
     let thread_id = req_str(params, "thread_id")?;
     let target_folder = canon_folder(&req_str(params, "target_folder_id")?);
     let parsed = parse_thread_id(&thread_id).ok_or_else(|| "invalid thread_id".to_string())?;
+    let target_account = params
+        .get("target_account_id")
+        .and_then(Value::as_str)
+        .unwrap_or(&parsed.account);
+    if target_account != parsed.account {
+        let engine = crate::ffi::engine_for(data_dir)?;
+        return with_mobile_db(data_dir, |conn| {
+            let uids = requested_mobile_uids(&conn, &parsed, params)?;
+            if !uids.is_empty() {
+                for account in [parsed.account.as_str(), target_account] {
+                    let creds = load_mobile_account_creds(&conn, account)?;
+                    if account_needs_reconnect(&creds) {
+                        return Err(format!("account needs reconnect: {account}"));
+                    }
+                }
+            }
+            crate::ffi::engine_block_on(crate::engine::move_between_accounts(
+                &engine,
+                &parsed.account,
+                &parsed.folder,
+                &thread_id,
+                target_account,
+                &target_folder,
+                &uids,
+            ))
+        });
+    }
     if parsed.folder == target_folder {
         return Ok(
             json!({ "ok": true, "moved": 0, "folder": target_folder, "thread_id": thread_id }),

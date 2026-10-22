@@ -11,7 +11,7 @@ import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { FolderMenuTree } from '../menu/FolderMenuTree'
 import { MenuItem } from '../menu/MenuItem'
 
-const MOVE_FLYOUT_WIDTH = 190
+const MOVE_FLYOUT_WIDTH = 230
 const COPY_FLYOUT_WIDTH = 230
 
 // The flyouts are portalled out of the menu that opens them, so that menu's
@@ -110,9 +110,9 @@ export function ThreadMoveCopyItems({
   }, [accountId, threadId])
 
   useEffect(() => {
-    if (!copyOpen) return
+    if (!copyOpen && !moveOpen) return
     void loadCopyTargetFolders()
-  }, [accounts, copyOpen])
+  }, [accounts, copyOpen, moveOpen])
 
   useEffect(() => {
     const targetAccounts = new Set(
@@ -128,8 +128,7 @@ export function ThreadMoveCopyItems({
     }
   }, [accountId, accounts, recentTransfers])
 
-  const accountFolders = foldersByAccount[accountId] ?? []
-  const canMove = accountFolders.some((folder) => folder.id !== folderId)
+  const canMove = mailAccounts.length > 0
   const copyAccountGroups = mailAccounts.map((account) => ({
     account,
     folders: foldersByAccount[account.id] ?? [],
@@ -152,13 +151,15 @@ export function ThreadMoveCopyItems({
     })
     .slice(0, 2)
 
-  const moveTo = (targetFolderId: string) => {
+  const moveTo = (targetAccountId: string, targetFolderId: string) => {
     close()
     if (onMove) {
-      onMove(threadId, accountId, targetFolderId)
+      onMove(threadId, targetAccountId, targetFolderId)
       return
     }
-    void moveThreadToFolder(threadId, targetFolderId).then(() => onMoved?.(accountId, targetFolderId))
+    void moveThreadToFolder(threadId, targetFolderId, { targetAccountId }).then((moved) => {
+      if (moved) return onMoved?.(targetAccountId, targetFolderId)
+    })
   }
 
   const copyTo = (targetAccountId: string, targetFolderId: string) => {
@@ -190,16 +191,26 @@ export function ThreadMoveCopyItems({
             <FloatingContextMenu
               x={moveFlyoutPosition.x}
               y={moveFlyoutPosition.y}
-              className={`${flyoutClass} min-w-[190px]`}
+              className={`${flyoutClass} min-w-[230px]`}
               dataAttribute="data-thread-context-menu"
             >
-              <FolderMenuTree
-                folders={accountFolders}
-                excludedFolderIds={[folderId]}
-                onPick={(folder) => {
-                  moveTo(folder.id)
-                }}
-              />
+              {copyAccountGroups.map(({ account, folders, excluded }) => (
+                <div key={account.id}>
+                  <div className="px-3 pb-1 pt-2 text-[0.6875rem] font-semibold text-secondary">
+                    {account.display_name || account.email || account.id}
+                  </div>
+                  {folders.length === 0 && (
+                    <div className="px-3 py-2 text-xs font-semibold text-secondary">
+                      {copyLoading ? t('folders.loading') : t('folders.noneAvailable')}
+                    </div>
+                  )}
+                  <FolderMenuTree
+                    folders={folders}
+                    excludedFolderIds={excluded}
+                    onPick={(folder) => moveTo(account.id, folder.id)}
+                  />
+                </div>
+              ))}
             </FloatingContextMenu>
           )}
         </div>
@@ -277,7 +288,7 @@ export function ThreadMoveCopyItems({
             className={itemClassName}
             onClick={() =>
               entry.action === 'move'
-                ? moveTo(entry.targetFolderId)
+                ? moveTo(entry.targetAccountId, entry.targetFolderId)
                 : copyTo(entry.targetAccountId, entry.targetFolderId)
             }
           />

@@ -26,7 +26,7 @@ class RecentThreadTransfersTest {
         assertEquals(emptyList(), parseRecentThreadTransfers("{}"))
         val valid = RecentThreadTransfer("move", "a", "a", "Work")
         val entries = listOf(valid.copy(action = "delete"), valid.copy(targetFolderId = ""), valid.copy(targetAccountId = "b"), valid, valid)
-        assertEquals(listOf(valid), parseRecentThreadTransfers(Json.encodeToString(entries)))
+        assertEquals(listOf(valid.copy(targetAccountId = "b"), valid), parseRecentThreadTransfers(Json.encodeToString(entries)))
     }
 
     @Test

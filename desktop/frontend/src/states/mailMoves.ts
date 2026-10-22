@@ -252,13 +252,15 @@ async function refreshThreadLocation(accountId?: string, refresh = false) {
 export async function moveThreadToFolder(
   threadId: string,
   targetFolderId: string,
-  options: { undo?: boolean; messageIds?: string[] } = {},
+  options: { undo?: boolean; messageIds?: string[]; targetAccountId?: string } = {},
 ) {
   if (!threadId || !targetFolderId) return
   const sourceThread = findLocalThread(threadId)
   const sourceFolder = sourceThread?.folder_id ?? ''
   const sourceAccountId = sourceThread?.account_id || threadAccountId(threadId)
-  if (sourceFolder === targetFolderId) return
+  const targetAccountId = options.targetAccountId || sourceAccountId
+  const crossAccount = targetAccountId !== sourceAccountId
+  if (!crossAccount && sourceFolder === targetFolderId) return
   const targetThreadId = threadIdInFolder(threadId, sourceThread?.account_id, targetFolderId)
 
   const { rollback, complete } = removeThreadLocally(threadId)
@@ -266,6 +268,7 @@ export async function moveThreadToFolder(
     const res = await invoke<MovedCopiesResult & MutationResult>('mail.move', {
       thread_id: threadId,
       target_folder_id: targetFolderId,
+      ...(options.targetAccountId ? { target_account_id: options.targetAccountId } : {}),
       ...(options.messageIds ? { message_ids: options.messageIds } : {}),
     })
     assertMoveAffected(res)
@@ -276,18 +279,20 @@ export async function moveThreadToFolder(
     // keeps the threads the reader had scrolled to; replacing the whole list
     // would drop them and can close the conversation that just became selected.
     await refreshThreadLocation(sourceThread?.account_id, false)
+    if (crossAccount) void loadFolders(targetAccountId, false)
     if (threadStillListed(threadId)) {
       showToast(t('mail.toast.moveFailedInSameFolder'), 'error')
+      return false
     } else {
       if (options.undo !== false && sourceAccountId) {
         rememberThreadTransfer({
           action: 'move',
           sourceAccountId,
-          targetAccountId: sourceAccountId,
+          targetAccountId,
           targetFolderId,
         })
       }
-      if (options.undo !== false && sourceFolder && copyIds) {
+      if (!crossAccount && options.undo !== false && sourceFolder && copyIds) {
         showUndoToast(t('mail.toast.threadMoved'), () => {
           releaseRemovedThread(threadId)
           void moveThreadToFolder(targetThreadId, sourceFolder, { undo: false, messageIds: copyIds })
@@ -296,9 +301,12 @@ export async function moveThreadToFolder(
         showToast(t('mail.toast.threadMoved'))
       }
     }
+    return true
   } catch (error) {
     rollback()
     showToast(mailTransferError(error, t('mail.toast.moveFailed')), 'error')
+    if (crossAccount) void loadFolders(targetAccountId, false)
+    return false
   }
 }
 
@@ -363,8 +371,14 @@ export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
   }
 }
 
-export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targetFolderId: string) {
-  const targets = uniqueThreadItems(items).filter((item) => item.folderId !== targetFolderId)
+export async function bulkMoveSelectedToFolder(
+  items: BulkSelectionItem[],
+  targetFolderId: string,
+  targetAccountId?: string,
+) {
+  const targets = uniqueThreadItems(items).filter(
+    (item) => (targetAccountId && item.accountId !== targetAccountId) || item.folderId !== targetFolderId,
+  )
   if (targets.length === 0) return
   const rollbacks: Array<() => void> = []
   let completed = 0
@@ -372,7 +386,11 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
     for (const item of targets) {
       const removal = removeThreadLocally(item.threadId)
       rollbacks.push(removal.rollback)
-      const res = await invoke('mail.move', { thread_id: item.threadId, target_folder_id: targetFolderId })
+      const res = await invoke('mail.move', {
+        thread_id: item.threadId,
+        target_folder_id: targetFolderId,
+        ...(targetAccountId ? { target_account_id: targetAccountId } : {}),
+      })
       assertMoveAffected(res)
       removal.complete()
       rollbacks.pop()
@@ -380,12 +398,13 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
       rememberThreadTransfer({
         action: 'move',
         sourceAccountId: item.accountId,
-        targetAccountId: item.accountId,
+        targetAccountId: targetAccountId || item.accountId,
         targetFolderId,
       })
       applyMutationFolderUnreads(res as MutationResult)
     }
     await refreshThreadLocation(targets[0]?.accountId, false)
+    if (targetAccountId) void loadFolders(targetAccountId, false)
     clearBulkSelection()
     showToast(t('mail.toast.movedCount', { count: targets.length }))
   } catch (error) {

@@ -979,16 +979,20 @@ private fun MeronMobileScreenContent(
                                 }
                             },
                     moveFolders =
-                        selectedCoreThread
-                            ?.let { thread -> foldersByAccount[thread.accountId].orEmpty() }
-                            .orEmpty(),
+                        coreAccounts
+                            .filterNot { accountSummaryIsRss(it) }
+                            .flatMap { account -> foldersByAccount[account.id].orEmpty() },
+                    transferAccounts = coreAccounts.filterNot { accountSummaryIsRss(it) },
+                    loadTransferFolders = {
+                        selectedCoreThread?.let { thread -> ensureThreadActionFolders(thread, includeAllMailAccounts = true) {} }
+                    },
                     copyFolders =
                         coreAccounts
                             .filterNot { accountSummaryIsRss(it) }
                             .flatMap { account -> foldersByAccount[account.id].orEmpty() },
                     onMoveToFolder = { folder ->
                         selectedCoreThread?.let { thread ->
-                            moveThreadToFolder(thread, folder.name) {
+                            moveThreadToFolder(thread, folder.name, folder.accountId.ifBlank { thread.accountId }) {
                                 popAppBack()
                             }
                         }
@@ -1566,13 +1570,14 @@ private fun MeronMobileScreenContent(
         selectedMailMoveThread?.let { thread ->
             MoveThreadDialog(
                 thread = thread,
+                accounts = coreAccounts.filterNot { accountSummaryIsRss(it) },
                 folders =
-                    foldersByAccount[thread.accountId]
-                        .orEmpty()
-                        .filterNot { folder -> folder.name.equals(thread.folder, ignoreCase = true) },
+                    coreAccounts
+                        .filterNot { accountSummaryIsRss(it) }
+                        .flatMap { account -> foldersByAccount[account.id].orEmpty() },
                 onMove = { folder ->
                     selectedMailMoveThread = null
-                    moveThreadToFolder(thread, folder.name) {
+                    moveThreadToFolder(thread, folder.name, folder.accountId.ifBlank { thread.accountId }) {
                         selectedMailThreadIds = emptySet()
                     }
                 },

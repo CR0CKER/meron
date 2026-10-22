@@ -62,6 +62,32 @@ class KanbanColumnLoadOrderTest {
         }
 
     @Test
+    fun crossAccountMoveKeepsTheTargetAccountForMenusAndBoardMoves() =
+        runBlocking {
+            for (boardMove in listOf(false, true)) {
+                val core = GatedCore()
+                core.gate.complete(Unit)
+                val state = state(core, this)
+                val thread = ThreadSummary(id = "a#INBOX#t1", accountId = "a", folder = "INBOX", subject = "Subject", sender = "Sender")
+                state.coreAccounts = state.coreAccounts + AccountSummary(id = "b", email = "b@example.com")
+                if (boardMove) {
+                    state.moveThreadToColumn(thread, KanbanColumnSpec("b", "INBOX"))
+                } else {
+                    state.moveThreadToFolder(thread, "INBOX", "b")
+                }
+                waitUntil { state.recentThreadTransfers.isNotEmpty() }
+                assertEquals(
+                    "b",
+                    core.actionRequests
+                        .single()
+                        .second
+                        .jsonStringValue("target_account_id"),
+                )
+                assertEquals(RecentThreadTransfer("move", "a", "b", "INBOX"), state.recentThreadTransfers.single())
+            }
+        }
+
+    @Test
     fun kanbanDragRecordsItsDestinationAndRejectsZeroMoves() =
         runBlocking {
             for (zero in listOf(false, true)) {

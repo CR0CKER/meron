@@ -61,9 +61,8 @@ export function BulkActionBar({
   const mailAccounts = accounts.filter(isSendableAccount)
   const accountIds = Array.from(new Set(mailItems.map((item) => item.accountId)))
   const singleAccountId = accountIds.length === 1 ? accountIds[0] : ''
-  const selectedFolders = new Set(mailItems.map((item) => item.folderId))
   const canArchive = mailItems.length > 0 && mailItems.every((item) => !item.draft && !item.trash)
-  const canMove = mailItems.length > 0 && !!singleAccountId
+  const canMove = mailItems.length > 0 && mailAccounts.length > 0
   const canCopy = mailItems.length > 0 && mailAccounts.length > 0
 
   const loadCopyTargetFolders = async () => {
@@ -95,9 +94,9 @@ export function BulkActionBar({
   }, [menu])
 
   useEffect(() => {
-    if (!copyOpen) return
+    if (!copyOpen && !moveOpen) return
     void loadCopyTargetFolders()
-  }, [accounts, copyOpen])
+  }, [accounts, copyOpen, moveOpen])
 
   useLayoutEffect(() => {
     if (!moveOpen) {
@@ -109,7 +108,7 @@ export function BulkActionBar({
     if (!anchor) return
 
     const gap = 4
-    const flyoutWidth = 190
+    const flyoutWidth = 230
     const rect = anchor.getBoundingClientRect()
     const x = rect.right + gap + flyoutWidth > window.innerWidth ? rect.left - flyoutWidth - gap : rect.right + gap
     const y = rect.top
@@ -143,8 +142,6 @@ export function BulkActionBar({
 
   if (items.length === 0) return null
 
-  const moveFolders = singleAccountId ? (foldersByAccount[singleAccountId] ?? []) : []
-  const hasMoveTarget = moveFolders.some((folder) => !selectedFolders.has(folder.id))
   const copyAccountGroups = mailAccounts.map((account) => ({
     account,
     folders: foldersByAccount[account.id] ?? [],
@@ -204,7 +201,7 @@ export function BulkActionBar({
           y={menu.y}
           overlay
           onClose={() => setMenu(null)}
-          className="fixed z-50 min-w-[190px] shadow-xl"
+          className="fixed z-50 min-w-[230px] shadow-xl"
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
@@ -277,20 +274,33 @@ export function BulkActionBar({
               <FloatingContextMenu
                 x={moveFlyoutPosition.x}
                 y={moveFlyoutPosition.y}
-                className="fixed z-[51] max-h-[calc(100vh-1rem)] min-w-[190px] overflow-y-auto shadow-xl"
+                className="fixed z-[51] max-h-[calc(100vh-1rem)] min-w-[230px] overflow-y-auto shadow-xl"
               >
-                {!hasMoveTarget && (
-                  <div className="px-3 py-2 text-xs font-semibold text-secondary">{t('folders.noneAvailable')}</div>
-                )}
-                <FolderMenuTree
-                  folders={moveFolders}
-                  excludedFolderIds={selectedFolders}
-                  onPick={(folder) => {
-                    setMenu(null)
-                    setMoveOpen(false)
-                    void bulkMoveSelectedToFolder(mailItems, folder.id)
-                  }}
-                />
+                {copyAccountGroups.map(({ account, folders }) => (
+                  <div key={account.id}>
+                    <div className="px-3 pb-1 pt-2 text-[0.6875rem] font-semibold text-secondary">
+                      {account.display_name || account.email || account.id}
+                    </div>
+                    {folders.length === 0 && (
+                      <div className="px-3 py-2 text-xs font-semibold text-secondary">
+                        {copyLoading ? t('folders.loading') : t('folders.noneAvailable')}
+                      </div>
+                    )}
+                    <FolderMenuTree
+                      folders={folders}
+                      excludedFolderIds={folders
+                        .filter((folder) =>
+                          mailItems.every((item) => item.accountId === account.id && item.folderId === folder.id),
+                        )
+                        .map((folder) => folder.id)}
+                      onPick={(folder) => {
+                        setMenu(null)
+                        setMoveOpen(false)
+                        void bulkMoveSelectedToFolder(mailItems, folder.id, account.id)
+                      }}
+                    />
+                  </div>
+                ))}
               </FloatingContextMenu>
             )}
           </div>

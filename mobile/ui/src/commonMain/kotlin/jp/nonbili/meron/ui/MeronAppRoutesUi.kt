@@ -346,7 +346,7 @@ internal fun KanbanRouteContent(
                                                     mailSelectionMenuOpen = false
                                                     ensureThreadActionFolders(
                                                         thread = singleSelectedMailThread,
-                                                        includeAllMailAccounts = false,
+                                                        includeAllMailAccounts = true,
                                                     ) {
                                                         selectedMailMoveThread = singleSelectedMailThread
                                                     }
@@ -833,7 +833,7 @@ internal fun MailRouteContent(
                                                     mailSelectionMenuOpen = false
                                                     ensureThreadActionFolders(
                                                         thread = singleSelectedMailThread,
-                                                        includeAllMailAccounts = false,
+                                                        includeAllMailAccounts = true,
                                                     ) {
                                                         selectedMailMoveThread = singleSelectedMailThread
                                                     }

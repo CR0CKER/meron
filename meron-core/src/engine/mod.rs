@@ -20,6 +20,7 @@ pub(crate) use prefetch::transfer_clock_tests::slow_fetch_engine;
 mod read;
 mod search;
 mod sync;
+mod transfers;
 
 pub use append::*;
 pub use background_sync::{BackgroundSyncCancelled, BackgroundSyncTimedOut, retry_background_sync};
@@ -28,6 +29,7 @@ pub use prefetch::*;
 pub use read::*;
 pub use search::*;
 pub use sync::*;
+pub use transfers::*;
 
 pub const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 

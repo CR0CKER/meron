@@ -44,8 +44,7 @@ internal fun parseRecentThreadTransfers(raw: String): List<RecentThreadTransfer>
             .decodeFromString<List<RecentThreadTransfer>>(raw)
             .filter {
                 it.action in listOf("move", "copy") && it.sourceAccountId.isNotBlank() &&
-                    it.targetAccountId.isNotBlank() && it.targetFolderId.isNotBlank() &&
-                    (it.action != "move" || it.sourceAccountId == it.targetAccountId)
+                    it.targetAccountId.isNotBlank() && it.targetFolderId.isNotBlank()
             }.distinct()
             .take(RECENT_TRANSFERS_LIMIT)
     }.getOrDefault(emptyList())
@@ -118,7 +117,7 @@ internal fun MeronMobileState.runRecentSelectionTransfer(
     item: RecentThreadTransferItem,
 ) {
     mailSelectionMenuOpen = false
-    if (item.transfer.action == "move") moveThreadToFolder(thread, item.folder.name) else copyThreadToFolder(thread, item.folder)
+    if (item.transfer.action == "move") moveThreadToFolder(thread, item.folder.name, item.transfer.targetAccountId) else copyThreadToFolder(thread, item.folder)
     selectedMailThreadIds = emptySet()
 }
 

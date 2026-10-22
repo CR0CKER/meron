@@ -196,54 +196,27 @@ export function useKanbanDnd(boardId: string, accounts: Account[]) {
           ...targetBefore.filter((thread) => thread.thread_id !== threadId),
         ])
       }
-      if (origin.accountId === target.accountId) {
-        const result = await invoke<{ moved?: number }>('mail.move', {
-          thread_id: threadId,
-          target_folder_id: target.folderId,
-        })
-        if (typeof result?.moved === 'number' && result.moved <= 0) {
-          throw new Error(t(KANBAN_MOVE_MESSAGES.noMatchingMessages))
-        }
-        rememberThreadTransfer({
-          action: 'move',
-          sourceAccountId: origin.accountId,
-          targetAccountId: target.accountId,
-          targetFolderId: target.folderId,
-        })
-        showToast(t(KANBAN_MOVE_MESSAGES.moved))
-      } else {
-        const copyRes = await invoke<{ copied?: number }>('mail.copy', {
-          thread_id: threadId,
-          target_account_id: target.accountId,
-          target_folder_id: target.folderId,
-        })
-        if (typeof copyRes?.copied === 'number' && copyRes.copied <= 0) {
-          throw new Error(t(KANBAN_MOVE_MESSAGES.copyFailed))
-        }
-        try {
-          const deleteRes = await invoke<{ deleted?: number }>('mail.delete', {
-            thread_id: threadId,
-            folder: origin.folderId,
-          })
-          if (typeof deleteRes?.deleted === 'number' && deleteRes.deleted <= 0) {
-            throw new Error(t(KANBAN_MOVE_MESSAGES.noMatchingMessages))
-          }
-          showToast(t(KANBAN_MOVE_MESSAGES.moved))
-        } catch (error) {
-          showToast(
-            t(KANBAN_MOVE_MESSAGES.copiedNotRemovedReason, {
-              error: mailTransferError(error, t('mail.toast.deleteFailed')),
-            }),
-            'error',
-          )
-        }
+      const result = await invoke<{ moved?: number }>('mail.move', {
+        thread_id: threadId,
+        target_account_id: target.accountId,
+        target_folder_id: target.folderId,
+      })
+      if (typeof result?.moved === 'number' && result.moved <= 0) {
+        throw new Error(t(KANBAN_MOVE_MESSAGES.noMatchingMessages))
       }
+      rememberThreadTransfer({
+        action: 'move',
+        sourceAccountId: origin.accountId,
+        targetAccountId: target.accountId,
+        targetFolderId: target.folderId,
+      })
+      showToast(t(KANBAN_MOVE_MESSAGES.moved))
       await reloadAll()
     } catch (error) {
       kanban$.threads[sourceKey].set(sourceBefore)
       kanban$.threads[targetKey].set(targetBefore)
       showToast(mailTransferError(error, t(KANBAN_MOVE_MESSAGES.failed)), 'error')
-      await loadKanbanColumn(source, false, queryForColumn(source))
+      await reloadAll()
     } finally {
       kanban$.movingThread.set('')
     }

@@ -45,7 +45,7 @@ describe('recent thread transfers', () => {
       parseRecentThreadTransfers(
         JSON.stringify([null, {}, transfer(''), { ...transfer('Work'), targetAccountId: 'other' }, transfer('Work')]),
       ),
-    ).toEqual([transfer('Work')])
+    ).toEqual([{ ...transfer('Work'), targetAccountId: 'other' }, transfer('Work')])
   })
 
   it('bounds persisted history', () => {
