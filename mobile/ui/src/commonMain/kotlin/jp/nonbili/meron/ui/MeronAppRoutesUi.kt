@@ -1,5 +1,6 @@
 package jp.nonbili.meron.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,9 +50,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -589,6 +592,13 @@ internal fun MailRouteContent(
                 ).forEach(mailListStates::remove)
                 mailListStates.getOrPut(mailListKey) { MailListPosition() }
             }
+        // Use the retained position so mailbox switches and returning from a
+        // conversation restore the tint without waiting for another swipe.
+        val listScrolled by remember(mailListPosition) { derivedStateOf { mailListPosition.listState.canScrollBackward } }
+        val appBarColors = TopAppBarDefaults.topAppBarColors()
+        val appBarColor by animateColorAsState(
+            targetValue = if (listScrolled) appBarColors.scrolledContainerColor else appBarColors.containerColor,
+        )
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -666,6 +676,7 @@ internal fun MailRouteContent(
             Scaffold(
                 topBar = {
                     TopAppBar(
+                        colors = appBarColors.copy(containerColor = appBarColor),
                         title = {
                             if (mailSelectionActive) {
                                 MailSelectionTitle(selectedMailThreads.size, height = 44.dp)
