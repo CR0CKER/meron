@@ -63,6 +63,19 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.4.7" date="2026-10-22">
+      <description>
+        <ul>
+          <li>Add a local calendar of events, accepted invitations and due tasks</li>
+          <li>Show calendar invite cards with Accept/Maybe/Decline</li>
+          <li>Support saved search columns on the board, editable in place</li>
+          <li>Add search options form and search operators like from:, to:, subject:, is:unread</li>
+          <li>Save and copy inline images from the message menu and the gallery</li>
+          <li>Add recent thread move and copy shortcuts</li>
+          <li>Support cross-account thread moves</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.6" date="2026-10-17">
       <description>
         <ul>
