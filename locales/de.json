@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Design in die Zwischenablage kopiert",
   "threads.actions.archiveThread": "Thread archivieren",
   "threads.actions.copyTo": "Kopieren nach...",
+  "threads.actions.copyToRecent": "Nach „{folder}“ kopieren",
+  "threads.actions.moveToRecent": "Nach „{folder}“ verschieben",
   "threads.actions.deleteForever": "Endgültig löschen",
   "threads.actions.discardDraft": "Entwurf verwerfen",
   "threads.actions.emptyJunk": "Spam leeren",

@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Tema copiado para a área de transferência",
   "threads.actions.archiveThread": "Arquivar conversa",
   "threads.actions.copyTo": "Copiar para...",
+  "threads.actions.copyToRecent": "Copiar para “{folder}”",
+  "threads.actions.moveToRecent": "Mover para “{folder}”",
   "threads.actions.deleteForever": "Excluir definitivamente",
   "threads.actions.discardDraft": "Descartar rascunho",
   "threads.actions.emptyJunk": "Esvaziar spam",

@@ -6,6 +6,7 @@ import { t } from '../../lib/i18n'
 import { mailTransferError } from '../../lib/mailTransferErrors'
 import { moveFeed } from '../../states/feeds'
 import { showToast } from '../../states/ui'
+import { rememberThreadTransfer } from '../../states/recentThreadTransfers'
 import { kanbanColumnKey, kanban$, reorderKanbanColumn, type KanbanColumn } from '../../states/kanban'
 import type { Account, Message } from '../../types'
 import {
@@ -196,7 +197,19 @@ export function useKanbanDnd(boardId: string, accounts: Account[]) {
         ])
       }
       if (origin.accountId === target.accountId) {
-        await invoke('mail.move', { thread_id: threadId, target_folder_id: target.folderId })
+        const result = await invoke<{ moved?: number }>('mail.move', {
+          thread_id: threadId,
+          target_folder_id: target.folderId,
+        })
+        if (typeof result?.moved === 'number' && result.moved <= 0) {
+          throw new Error(t(KANBAN_MOVE_MESSAGES.noMatchingMessages))
+        }
+        rememberThreadTransfer({
+          action: 'move',
+          sourceAccountId: origin.accountId,
+          targetAccountId: target.accountId,
+          targetFolderId: target.folderId,
+        })
         showToast(t(KANBAN_MOVE_MESSAGES.moved))
       } else {
         const copyRes = await invoke<{ copied?: number }>('mail.copy', {

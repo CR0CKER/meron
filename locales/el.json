@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Το θέμα αντιγράφηκε στο πρόχειρο",
   "threads.actions.archiveThread": "Αρχειοθέτηση νήματος",
   "threads.actions.copyTo": "Αντιγραφή σε...",
+  "threads.actions.copyToRecent": "Αντιγραφή στο «{folder}»",
+  "threads.actions.moveToRecent": "Μετακίνηση στο «{folder}»",
   "threads.actions.deleteForever": "Οριστική διαγραφή",
   "threads.actions.discardDraft": "Απόρριψη προσχεδίου",
   "threads.actions.emptyJunk": "Άδειασμα ανεπιθύμητων",

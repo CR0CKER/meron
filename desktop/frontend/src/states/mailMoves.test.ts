@@ -12,6 +12,7 @@ import {
   moveThreadToFolder,
 } from './mailMoves'
 import { ui$ } from './ui'
+import { recentThreadTransfers$ } from './recentThreadTransfers'
 
 const THREAD = 'acc#INBOX#t.dG9waWM'
 
@@ -46,6 +47,7 @@ describe('undo after moving a thread', () => {
     previousGo = (window as any).go
     calls = []
     responses = {}
+    recentThreadTransfers$.set([])
     ui$.selectedAccount.set('acc')
     ui$.selectedFolder.set('INBOX')
     ui$.selectedThread.set('')
@@ -71,6 +73,7 @@ describe('undo after moving a thread', () => {
   })
 
   afterEach(() => {
+    recentThreadTransfers$.set([])
     for (const id of [THREAD, 'a', 'b', 'missing']) releaseRemovedThread(id)
     ;(window as any).go = previousGo
     kanban$.activeBoardId.set('')
@@ -87,6 +90,51 @@ describe('undo after moving a thread', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     return calls.find((call) => call.command === 'mail.move')?.payload
   }
+
+  it('remembers transfers for threads outside the loaded list using their encoded account', async () => {
+    mail$.threads.set([])
+    responses['mail.move'] = { moved: 1 }
+    await moveThreadToFolder(THREAD, 'Work')
+    expect(recentThreadTransfers$.get()[0]).toEqual({
+      action: 'move',
+      sourceAccountId: 'acc',
+      targetAccountId: 'acc',
+      targetFolderId: 'Work',
+    })
+    responses['mail.copy'] = { copied: 1 }
+    await copyThreadToFolder(THREAD, 'other', 'Receipts')
+    expect(recentThreadTransfers$.get()[0]).toEqual({
+      action: 'copy',
+      sourceAccountId: 'acc',
+      targetAccountId: 'other',
+      targetFolderId: 'Receipts',
+    })
+  })
+
+  it('records successful transfers but not failed transfers or undo destinations', async () => {
+    responses['mail.move'] = { moved: 1, target_uids: [5] }
+    await moveThreadToFolder(THREAD, 'Work')
+    expect(recentThreadTransfers$.get()).toEqual([
+      { action: 'move', sourceAccountId: 'acc', targetAccountId: 'acc', targetFolderId: 'Work' },
+    ])
+    await runUndo()
+    expect(recentThreadTransfers$.get()).toHaveLength(1)
+
+    mail$.threads.set([thread()])
+    responses['mail.copy'] = { copied: 1 }
+    await copyThreadToFolder(THREAD, 'other', 'Receipts')
+    expect(recentThreadTransfers$.get()[0]).toEqual({
+      action: 'copy',
+      sourceAccountId: 'acc',
+      targetAccountId: 'other',
+      targetFolderId: 'Receipts',
+    })
+    responses['mail.copy'] = new Error('Rejected')
+    await copyThreadToFolder(THREAD, 'other', 'Failed')
+    responses['mail.move'] = { moved: 0 }
+    await moveThreadToFolder(THREAD, 'Failed')
+    expect(recentThreadTransfers$.get()).toHaveLength(2)
+  })
 
   it('moves the reported Trash copies back out of Trash', async () => {
     responses['mail.delete'] = { deleted: 1, trash: 'Trash', thread_id: 'acc#Trash#t.dG9waWM', target_uids: [42, 43] }

@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "主题已复制到剪贴板",
   "threads.actions.archiveThread": "归档会话",
   "threads.actions.copyTo": "复制到...",
+  "threads.actions.copyToRecent": "复制到“{folder}”",
+  "threads.actions.moveToRecent": "移动到“{folder}”",
   "threads.actions.deleteForever": "永久删除",
   "threads.actions.discardDraft": "放弃草稿",
   "threads.actions.emptyJunk": "清空垃圾邮件",

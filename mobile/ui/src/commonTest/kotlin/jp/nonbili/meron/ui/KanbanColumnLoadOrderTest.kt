@@ -4,6 +4,7 @@ import jp.nonbili.meron.shared.AccountSummary
 import jp.nonbili.meron.shared.CloseableHandle
 import jp.nonbili.meron.shared.CoreEvent
 import jp.nonbili.meron.shared.CoreEventStream
+import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.MeronCore
 import jp.nonbili.meron.shared.MobileCommand
 import jp.nonbili.meron.shared.ThreadSummary
@@ -29,6 +30,85 @@ import kotlin.test.assertSame
  * counted and badged; only the newest request may write.
  */
 class KanbanColumnLoadOrderTest {
+    @Test
+    fun missingRecentDestinationsDoNotReloadAnAlreadyLoadedAccount() =
+        runBlocking {
+            val core = GatedCore()
+            val state = state(core, this)
+            val thread = ThreadSummary(id = "a#Work#t1", accountId = "a", folder = "Work", subject = "Subject", sender = "Sender")
+            state.recentThreadTransfers = listOf(RecentThreadTransfer("copy", "a", "a", "Deleted"))
+            state.loadRecentTransferFolders(thread)
+            assertEquals(1, core.folderListCalls)
+            repeat(3) { state.loadRecentTransferFolders(thread) }
+            assertEquals(1, core.folderListCalls)
+            state.foldersByAccount = mapOf("a" to emptyList())
+            state.loadRecentTransferFolders(thread)
+            assertEquals(1, core.folderListCalls)
+        }
+
+    @Test
+    fun recentFoldersLoadWithoutOpeningTheCopyPicker() =
+        runBlocking {
+            val state = state(GatedCore(), this)
+            val thread = ThreadSummary(id = "a#Work#t1", accountId = "a", folder = "Work", subject = "Subject", sender = "Sender")
+            state.recentThreadTransfers = listOf(RecentThreadTransfer("copy", "a", "a", "INBOX"))
+            assertEquals(emptyList(), state.recentTransferItems(thread))
+            state.loadRecentTransferFolders(thread)
+            assertEquals(listOf("INBOX"), state.recentTransferItems(thread).map { it.folder.name })
+            state.foldersByAccount = mapOf("a" to listOf(FolderSummary("a", "work"), FolderSummary("a", "INBOX")))
+            state.recentThreadTransfers = listOf(RecentThreadTransfer("move", "a", "a", "work"), RecentThreadTransfer("copy", "a", "a", "inbox"))
+            assertEquals(listOf("work", "INBOX"), state.recentTransferItems(thread).map { it.folder.name })
+            assertEquals(listOf("work"), state.recentTransferItems(thread.copy(folder = "inbox")).map { it.folder.name })
+        }
+
+    @Test
+    fun kanbanDragRecordsItsDestinationAndRejectsZeroMoves() =
+        runBlocking {
+            for (zero in listOf(false, true)) {
+                val core = GatedCore().apply { zeroMove = zero }
+                core.gate.complete(Unit)
+                val state = state(core, this)
+                val thread = ThreadSummary(id = "a#INBOX#t1", accountId = "a", folder = "INBOX", subject = "Subject", sender = "Sender")
+                state.moveThreadToColumn(thread, KanbanColumnSpec("a", "Work"))
+                waitUntil { core.actionCalls > 0 }
+                delay(50)
+                assertEquals(if (zero) emptyList() else listOf(RecentThreadTransfer("move", "a", "a", "Work")), state.recentThreadTransfers)
+            }
+        }
+
+    @Test
+    fun successfulMovesPromoteRecentDestinationsWithoutDuplicates() =
+        runBlocking {
+            val core = GatedCore()
+            val state = state(core, this)
+            val first = RecentThreadTransfer("move", "a", "a", "Work")
+            state.rememberThreadTransfer(first)
+            state.rememberThreadTransfer(first.copy(action = "copy", targetFolderId = "Receipts"))
+            state.rememberThreadTransfer(first)
+            assertEquals(listOf(first, first.copy(action = "copy", targetFolderId = "Receipts")), state.recentThreadTransfers)
+            assertEquals(state.recentThreadTransfers, loadRecentThreadTransfers(state.prefs))
+        }
+
+    @Test
+    fun recentShortcutsExcludeCurrentMissingAndOtherAccountDestinationsAndStopAtTwo() =
+        runBlocking {
+            val state = state(GatedCore(), this)
+            state.coreAccounts = listOf(AccountSummary(id = "a", email = "a@example.com"))
+            state.foldersByAccount = mapOf("a" to listOf("INBOX", "Work", "Receipts", "Older").map { FolderSummary("a", it) })
+            state.recentThreadTransfers =
+                listOf(
+                    RecentThreadTransfer("copy", "b", "a", "Work"),
+                    RecentThreadTransfer("move", "a", "a", "INBOX"),
+                    RecentThreadTransfer("move", "a", "a", "Deleted"),
+                    RecentThreadTransfer("move", "a", "a", "Work"),
+                    RecentThreadTransfer("copy", "a", "a", "Receipts"),
+                    RecentThreadTransfer("move", "a", "a", "Older"),
+                )
+            val thread = ThreadSummary(id = "a#INBOX#t1", accountId = "a", folder = "INBOX", subject = "Subject", sender = "Sender")
+            assertEquals(listOf("Work", "Receipts"), state.recentTransferItems(thread).map { it.destination })
+            assertEquals(emptyList(), state.recentTransferItems(null))
+        }
+
     @Test
     fun staleColumnLoadLandingLastDoesNotOverwriteTheNewerRows() =
         runBlocking {
@@ -403,6 +483,8 @@ class KanbanColumnLoadOrderTest {
         private val emptyAfterActions: Boolean = false,
         private val listedFolder: String = "INBOX",
     ) : MeronCore {
+        var zeroMove = false
+        var folderListCalls = 0
         val actionGate = CompletableDeferred<Unit>()
         val actionGates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
@@ -427,6 +509,7 @@ class KanbanColumnLoadOrderTest {
         ): String =
             when (command) {
                 MobileCommand.FolderList -> {
+                    folderListCalls++
                     """{"folders":[{"account_id":"a","name":"INBOX","role":"inbox"}]}"""
                 }
 
@@ -459,6 +542,10 @@ class KanbanColumnLoadOrderTest {
                     }
                     actionsCompleted = true
                     when {
+                        zeroMove && command == MobileCommand.Move -> {
+                            """{"ok":true,"moved":0}"""
+                        }
+
                         actionFails -> {
                             """{"error":{"message":"Action rejected"}}"""
                         }

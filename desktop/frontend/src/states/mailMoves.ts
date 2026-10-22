@@ -1,4 +1,5 @@
 import type { Message } from '../types'
+import { rememberThreadTransfer } from './recentThreadTransfers'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
 import { mailTransferError } from '../lib/mailTransferErrors'
@@ -86,6 +87,11 @@ type MovedCopiesResult = { target_uids?: number[] }
 
 function movedCopyIds(res: MovedCopiesResult): string[] | undefined {
   return res.target_uids?.length ? res.target_uids.map(String) : undefined
+}
+
+function threadAccountId(threadId: string): string {
+  const separator = threadId.indexOf('#')
+  return separator > 0 ? threadId.slice(0, separator) : ''
 }
 
 function threadIdInFolder(threadId: string, accountId: string | undefined, folderId: string | undefined): string {
@@ -251,6 +257,7 @@ export async function moveThreadToFolder(
   if (!threadId || !targetFolderId) return
   const sourceThread = findLocalThread(threadId)
   const sourceFolder = sourceThread?.folder_id ?? ''
+  const sourceAccountId = sourceThread?.account_id || threadAccountId(threadId)
   if (sourceFolder === targetFolderId) return
   const targetThreadId = threadIdInFolder(threadId, sourceThread?.account_id, targetFolderId)
 
@@ -271,13 +278,23 @@ export async function moveThreadToFolder(
     await refreshThreadLocation(sourceThread?.account_id, false)
     if (threadStillListed(threadId)) {
       showToast(t('mail.toast.moveFailedInSameFolder'), 'error')
-    } else if (options.undo !== false && sourceFolder && copyIds) {
-      showUndoToast(t('mail.toast.threadMoved'), () => {
-        releaseRemovedThread(threadId)
-        void moveThreadToFolder(targetThreadId, sourceFolder, { undo: false, messageIds: copyIds })
-      })
     } else {
-      showToast(t('mail.toast.threadMoved'))
+      if (options.undo !== false && sourceAccountId) {
+        rememberThreadTransfer({
+          action: 'move',
+          sourceAccountId,
+          targetAccountId: sourceAccountId,
+          targetFolderId,
+        })
+      }
+      if (options.undo !== false && sourceFolder && copyIds) {
+        showUndoToast(t('mail.toast.threadMoved'), () => {
+          releaseRemovedThread(threadId)
+          void moveThreadToFolder(targetThreadId, sourceFolder, { undo: false, messageIds: copyIds })
+        })
+      } else {
+        showToast(t('mail.toast.threadMoved'))
+      }
     }
   } catch (error) {
     rollback()
@@ -288,6 +305,7 @@ export async function moveThreadToFolder(
 export async function copyThreadToFolder(threadId: string, targetAccountId: string, targetFolderId: string) {
   if (!threadId || !targetAccountId || !targetFolderId) return
   const sourceThread = findLocalThread(threadId)
+  const sourceAccountId = sourceThread?.account_id || threadAccountId(threadId)
   try {
     const res = await invoke('mail.copy', {
       thread_id: threadId,
@@ -295,6 +313,14 @@ export async function copyThreadToFolder(threadId: string, targetAccountId: stri
       target_folder_id: targetFolderId,
     })
     assertCopyAffected(res)
+    if (sourceAccountId) {
+      rememberThreadTransfer({
+        action: 'copy',
+        sourceAccountId,
+        targetAccountId,
+        targetFolderId,
+      })
+    }
     await refreshThreadLocation(sourceThread?.account_id, true)
     if (targetAccountId !== sourceThread?.account_id) {
       void loadFolders(targetAccountId, false)
@@ -351,6 +377,12 @@ export async function bulkMoveSelectedToFolder(items: BulkSelectionItem[], targe
       removal.complete()
       rollbacks.pop()
       completed++
+      rememberThreadTransfer({
+        action: 'move',
+        sourceAccountId: item.accountId,
+        targetAccountId: item.accountId,
+        targetFolderId,
+      })
       applyMutationFolderUnreads(res as MutationResult)
     }
     await refreshThreadLocation(targets[0]?.accountId, false)
@@ -384,6 +416,7 @@ export async function bulkCopySelectedToFolder(
       })
       assertCopyAffected(res)
       completed++
+      rememberThreadTransfer({ action: 'copy', sourceAccountId: item.accountId, targetAccountId, targetFolderId })
     }
     await refreshThreadLocation(targets[0]?.accountId, true)
     if (targetAccountId !== targets[0]?.accountId) void loadFolders(targetAccountId, false)

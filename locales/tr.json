@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Tema panoya kopyalandı",
   "threads.actions.archiveThread": "İleti dizisini arşivle",
   "threads.actions.copyTo": "Kopyala...",
+  "threads.actions.copyToRecent": "“{folder}” klasörüne kopyala",
+  "threads.actions.moveToRecent": "“{folder}” klasörüne taşı",
   "threads.actions.deleteForever": "Kalıcı olarak sil",
   "threads.actions.discardDraft": "Taslağı sil",
   "threads.actions.emptyJunk": "Gereksizleri boşalt",

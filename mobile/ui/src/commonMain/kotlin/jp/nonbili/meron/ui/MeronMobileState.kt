@@ -70,6 +70,7 @@ internal class MeronMobileState(
     }
 
     val snackbarHost = SnackbarHostState()
+    var recentThreadTransfers by mutableStateOf(loadRecentThreadTransfers(prefs))
 
     /** Error for actions that need the native core when it failed to load;
      *  includes the host's load diagnostics (ABIs, missing split APK, ...) so a

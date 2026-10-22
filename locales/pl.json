@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Motyw skopiowany do schowka",
   "threads.actions.archiveThread": "Archiwizuj wątek",
   "threads.actions.copyTo": "Kopiuj do...",
+  "threads.actions.copyToRecent": "Kopiuj do „{folder}”",
+  "threads.actions.moveToRecent": "Przenieś do „{folder}”",
   "threads.actions.deleteForever": "Usuń na zawsze",
   "threads.actions.discardDraft": "Odrzuć wersję roboczą",
   "threads.actions.emptyJunk": "Opróżnij spam",

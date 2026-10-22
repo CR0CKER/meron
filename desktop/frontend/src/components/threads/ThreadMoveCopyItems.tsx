@@ -6,6 +6,7 @@ import { accounts$, isSendableAccount } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
 import { ensureAccountFolders } from '../../states/mailFolders'
 import { copyThreadToFolder, moveThreadToFolder } from '../../states/mailMoves'
+import { recentThreadTransfers$ } from '../../states/recentThreadTransfers'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { FolderMenuTree } from '../menu/FolderMenuTree'
 import { MenuItem } from '../menu/MenuItem'
@@ -70,6 +71,7 @@ export function ThreadMoveCopyItems({
   const { t } = useTranslation()
   const foldersByAccount = useValue(mail$.foldersByAccount)
   const accounts = useValue(accounts$)
+  const recentTransfers = useValue(recentThreadTransfers$)
   const mailAccounts = accounts.filter(isSendableAccount)
   const [moveOpen, setMoveOpen] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
@@ -112,6 +114,20 @@ export function ThreadMoveCopyItems({
     void loadCopyTargetFolders()
   }, [accounts, copyOpen])
 
+  useEffect(() => {
+    const targetAccounts = new Set(
+      recentTransfers.filter((entry) => entry.sourceAccountId === accountId).map((entry) => entry.targetAccountId),
+    )
+    for (const targetAccountId of targetAccounts) {
+      if (
+        targetAccountId !== accountId &&
+        accounts.some((account) => account.id === targetAccountId && isSendableAccount(account))
+      ) {
+        void ensureAccountFolders(targetAccountId)
+      }
+    }
+  }, [accountId, accounts, recentTransfers])
+
   const accountFolders = foldersByAccount[accountId] ?? []
   const canMove = accountFolders.some((folder) => folder.id !== folderId)
   const copyAccountGroups = mailAccounts.map((account) => ({
@@ -120,6 +136,37 @@ export function ThreadMoveCopyItems({
     // The thread's own folder stays in the tree as a parent, just not pickable.
     excluded: account.id === accountId ? [folderId] : [],
   }))
+  const recentItems = recentTransfers
+    .flatMap((entry) => {
+      if (entry.sourceAccountId !== accountId) return []
+      if (
+        entry.targetAccountId === accountId &&
+        (entry.targetFolderId === folderId ||
+          (entry.targetFolderId.toUpperCase() === 'INBOX' && folderId.toUpperCase() === 'INBOX'))
+      )
+        return []
+      const account = mailAccounts.find((account) => account.id === entry.targetAccountId)
+      const folder = foldersByAccount[entry.targetAccountId]?.find((folder) => folder.id === entry.targetFolderId)
+      if (!account || !folder) return []
+      return [{ entry, account, folder }]
+    })
+    .slice(0, 2)
+
+  const moveTo = (targetFolderId: string) => {
+    close()
+    if (onMove) {
+      onMove(threadId, accountId, targetFolderId)
+      return
+    }
+    void moveThreadToFolder(threadId, targetFolderId).then(() => onMoved?.(accountId, targetFolderId))
+  }
+
+  const copyTo = (targetAccountId: string, targetFolderId: string) => {
+    close()
+    void copyThreadToFolder(threadId, targetAccountId, targetFolderId).then(() =>
+      onCopied?.(targetAccountId, targetFolderId),
+    )
+  }
 
   return (
     <>
@@ -150,13 +197,7 @@ export function ThreadMoveCopyItems({
                 folders={accountFolders}
                 excludedFolderIds={[folderId]}
                 onPick={(folder) => {
-                  const targetFolderId = folder.id
-                  close()
-                  if (onMove) {
-                    onMove(threadId, accountId, targetFolderId)
-                    return
-                  }
-                  void moveThreadToFolder(threadId, targetFolderId).then(() => onMoved?.(accountId, targetFolderId))
+                  moveTo(folder.id)
                 }}
               />
             </FloatingContextMenu>
@@ -204,12 +245,7 @@ export function ThreadMoveCopyItems({
                     folders={folders}
                     excludedFolderIds={excluded}
                     onPick={(folder) => {
-                      const targetAccountId = account.id
-                      const targetFolderId = folder.id
-                      close()
-                      void copyThreadToFolder(threadId, targetAccountId, targetFolderId).then(() =>
-                        onCopied?.(targetAccountId, targetFolderId),
-                      )
+                      copyTo(account.id, folder.id)
                     }}
                   />
                 </div>
@@ -218,6 +254,35 @@ export function ThreadMoveCopyItems({
           )}
         </div>
       )}
+      {recentItems.length > 0 && <div className="my-1 border-t border-border" />}
+      {recentItems.map(({ entry, account, folder }) => {
+        const destination =
+          entry.targetAccountId === accountId
+            ? folder.name
+            : `${account.display_name || account.email || account.id} / ${folder.name}`
+        const label = t(entry.action === 'move' ? 'threads.actions.moveToRecent' : 'threads.actions.copyToRecent', {
+          folder: destination,
+          defaultValue: entry.action === 'move' ? 'Move to “{folder}”' : 'Copy to “{folder}”',
+        })
+        const Icon = entry.action === 'move' ? FolderInput : Copy
+        return (
+          <MenuItem
+            key={`${entry.action}:${entry.targetAccountId}:${entry.targetFolderId}`}
+            icon={<Icon size={iconSize} className="shrink-0 text-secondary" />}
+            label={
+              <span className="min-w-0 max-w-[280px] truncate" title={label}>
+                {label}
+              </span>
+            }
+            className={itemClassName}
+            onClick={() =>
+              entry.action === 'move'
+                ? moveTo(entry.targetFolderId)
+                : copyTo(entry.targetAccountId, entry.targetFolderId)
+            }
+          />
+        )
+      })}
     </>
   )
 }

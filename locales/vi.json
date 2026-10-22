@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "Đã sao chép chủ đề vào bộ nhớ tạm",
   "threads.actions.archiveThread": "Lưu trữ luồng",
   "threads.actions.copyTo": "Sao chép tới...",
+  "threads.actions.copyToRecent": "Sao chép tới “{folder}”",
+  "threads.actions.moveToRecent": "Di chuyển tới “{folder}”",
   "threads.actions.deleteForever": "Xóa vĩnh viễn",
   "threads.actions.discardDraft": "Hủy bỏ bản nháp",
   "threads.actions.emptyJunk": "Dọn thư rác",

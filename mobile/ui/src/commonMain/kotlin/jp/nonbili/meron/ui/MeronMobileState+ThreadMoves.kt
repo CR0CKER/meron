@@ -93,7 +93,7 @@ internal fun MeronMobileState.moveThreadToFolder(
         status = trs("mobile.status.rssMoveBetweenAccounts")
         return
     }
-    if (targetFolderId.equals(thread.folder, ignoreCase = true)) {
+    if (kanbanFolderIdsEqual(targetFolderId, thread.folder)) {
         status = trs("mobile.status.alreadyInFolder", mapOf("folder" to targetFolderId.replaceFirstChar { it.uppercase() }))
         return
     }
@@ -117,12 +117,15 @@ internal fun MeronMobileState.moveThreadToFolder(
     status = trs("mobile.status.moving")
     scope.launch {
         runCatching {
-            requireCoreOk(
-                withContext(ioDispatcher) {
-                    MobileMailCommandClient(core).move(
-                        MoveThreadParams(threadId = thread.id, targetFolderId = targetFolderId),
-                    )
-                },
+            requireTransferAffected(
+                requireCoreOk(
+                    withContext(ioDispatcher) {
+                        MobileMailCommandClient(core).move(
+                            MoveThreadParams(threadId = thread.id, targetFolderId = targetFolderId),
+                        )
+                    },
+                ),
+                "moved",
             )
         }.onSuccess { response ->
             removal.complete()
@@ -132,6 +135,7 @@ internal fun MeronMobileState.moveThreadToFolder(
                 messages = emptyList()
             }
             status = trs("mobile.status.moveComplete")
+            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, thread.accountId, targetFolderId))
             onMoved()
         }.onFailure {
             removal.rollback()
@@ -167,15 +171,21 @@ internal fun MeronMobileState.copyThreadToFolder(
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
-                MobileMailCommandClient(core).copy(
-                    CopyThreadParams(
-                        threadId = thread.id,
-                        targetAccountId = targetAccountId,
-                        targetFolderId = target.name,
+                requireTransferAffected(
+                    requireCoreOk(
+                        MobileMailCommandClient(core).copy(
+                            CopyThreadParams(
+                                threadId = thread.id,
+                                targetAccountId = targetAccountId,
+                                targetFolderId = target.name,
+                            ),
+                        ),
                     ),
+                    "copied",
                 )
             }
         }.onSuccess {
+            rememberThreadTransfer(RecentThreadTransfer("copy", thread.accountId, targetAccountId, target.name))
             status = trs("mobile.status.copyComplete")
         }.onFailure {
             showTransferFailure("mail.toast.copyFailed", it)
@@ -224,7 +234,7 @@ internal fun MeronMobileState.createFolderAndMoveThread(
                 }
                 val response =
                     withManagedGoogleAuth(client, thread.accountId) {
-                        requireCoreOk(client.move(MoveThreadParams(threadId = thread.id, targetFolderId = created)))
+                        requireTransferAffected(requireCoreOk(client.move(MoveThreadParams(threadId = thread.id, targetFolderId = created))), "moved")
                     }
                 folders to response
             }
@@ -232,6 +242,8 @@ internal fun MeronMobileState.createFolderAndMoveThread(
             removal.complete()
             releaseMovedThread(response)
             foldersByAccount = foldersByAccount + (account.id to reconcileFolderUnread(folders, folderReadVersion))
+            val destination = folders.folderCreatedAs(trimmed)?.name ?: trimmed
+            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, thread.accountId, destination))
             removeThreadEverywhere(thread.id)
             if (selectedCoreThread?.id == thread.id) {
                 selectedCoreThread = null
@@ -297,13 +309,17 @@ internal fun MeronMobileState.moveThreadToColumn(
     scope.launch {
         runCatching {
             withContext(ioDispatcher) {
-                requireCoreOk(
-                    MobileMailCommandClient(core).move(
-                        MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId),
+                requireTransferAffected(
+                    requireCoreOk(
+                        MobileMailCommandClient(core).move(
+                            MoveThreadParams(threadId = thread.id, targetFolderId = target.folderId),
+                        ),
                     ),
+                    "moved",
                 )
             }
         }.onSuccess { response ->
+            rememberThreadTransfer(RecentThreadTransfer("move", thread.accountId, thread.accountId, target.folderId))
             removal.complete()
             releaseMovedThread(response)
             removeThreadEverywhere(thread.id)

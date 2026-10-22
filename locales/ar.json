@@ -1196,6 +1196,8 @@
   "theme.shareCopied": "تم نسخ السمة إلى الحافظة",
   "threads.actions.archiveThread": "أرشفة سلسلة الرسائل",
   "threads.actions.copyTo": "نسخ إلى...",
+  "threads.actions.copyToRecent": "نسخ إلى «{folder}»",
+  "threads.actions.moveToRecent": "نقل إلى «{folder}»",
   "threads.actions.deleteForever": "حذف نهائيًا",
   "threads.actions.discardDraft": "تجاهل المسودة",
   "threads.actions.emptyJunk": "إفراغ البريد غير المرغوب",

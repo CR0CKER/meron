@@ -163,6 +163,8 @@ internal fun ThreadScreen(
     onMoveToFolder: (FolderSummary) -> Unit,
     onCreateFolderAndMove: (String) -> Unit,
     onCopyToFolder: (FolderSummary) -> Unit,
+    recentTransfers: List<RecentThreadTransferItem> = emptyList(),
+    loadRecentTransferFolders: suspend () -> Unit = {},
     quickReplyBody: String,
     canLoadOlder: Boolean,
     loadingOlder: Boolean,
@@ -240,6 +242,9 @@ internal fun ThreadScreen(
     var printing by remember(thread?.id) { mutableStateOf(false) }
     val printScope = rememberCoroutineScope()
     var overflowOpen by remember(thread?.id) { mutableStateOf(false) }
+    LaunchedEffect(overflowOpen, thread?.accountId) {
+        if (overflowOpen) loadRecentTransferFolders()
+    }
     val closeSearch = {
         threadSearch = ""
         searchOpen = false
@@ -852,6 +857,10 @@ internal fun ThreadScreen(
                                                 copyDialogOpen = true
                                             },
                                         )
+                                        RecentThreadTransferMenuItems(recentTransfers) { item ->
+                                            overflowOpen = false
+                                            if (item.transfer.action == "move") onMoveToFolder(item.folder) else onCopyToFolder(item.folder)
+                                        }
                                         DropdownMenuItem(
                                             text = { Text(deleteLabel, color = MaterialTheme.colorScheme.error) },
                                             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },

@@ -993,6 +993,8 @@ private fun MeronMobileScreenContent(
                             }
                         }
                     },
+                    recentTransfers = recentTransferItems(selectedCoreThread),
+                    loadRecentTransferFolders = { loadRecentTransferFolders(selectedCoreThread) },
                     onCreateFolderAndMove = { name ->
                         selectedCoreThread?.let { thread ->
                             createFolderAndMoveThread(thread, name) {
