@@ -1,5 +1,5 @@
 import { useValue } from '@legendapp/state/react'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, Repeat, X } from 'lucide-react'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Minimize2, Plus, Repeat, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { firstDayOfWeek, monthGrid, occursOn, sameDay } from '../../lib/calendarGrid'
 import { useEscapeKey } from '../../lib/useEscapeKey'
@@ -10,6 +10,7 @@ import {
   calendar$,
   closeCalendar,
   goToToday,
+  openCalendarPanel,
   loadCalendar,
   openCalendarItem,
   shiftMonth,
@@ -30,7 +31,6 @@ export function CalendarView() {
   const month = new Date(useValue(calendar$.month))
   const items = useValue(calendar$.items)
   const editor = useValue(calendar$.editor)
-  const tasksEnabled = useValue(settings$.tasksEnabled)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
 
   const weekStart = useMemo(() => firstDayOfWeek(), [])
@@ -40,28 +40,7 @@ export function CalendarView() {
   const title = new Intl.DateTimeFormat([], { month: 'long', year: 'numeric' }).format(month)
   const weekdays = days.slice(0, 7).map((day) => new Intl.DateTimeFormat([], { weekday: 'short' }).format(day))
 
-  useEffect(() => {
-    void loadCalendar()
-    // Another surface changed the calendar (an invitation answered, the other
-    // window): re-read rather than replay the change.
-    const eventsOn = (window as any).runtime?.EventsOn
-    // Tasks too: a due task done, moved or deleted in the panel beside it.
-    const offs =
-      typeof eventsOn === 'function'
-        ? ['calendar.changed', 'tasks.changed'].map((name) => eventsOn(name, () => void loadCalendar()))
-        : []
-    return () => {
-      for (const off of offs) if (typeof off === 'function') off()
-    }
-  }, [])
-
-  // Due tasks come and go with the Tasks setting; the first load is above.
-  const tasksShown = useRef(tasksEnabled)
-  useEffect(() => {
-    if (tasksShown.current === tasksEnabled) return
-    tasksShown.current = tasksEnabled
-    void loadCalendar()
-  }, [tasksEnabled])
+  useCalendarFeed()
 
   useEscapeKey(() => setExpandedDay(null), expandedDay !== null && !editor)
 
@@ -85,6 +64,15 @@ export function CalendarView() {
         >
           {t('calendar.newEvent')}
         </Button>
+        {/* Back to the panel it was expanded from; there is no panel on a
+            narrow window, where the button would only close the calendar. */}
+        <IconButton
+          label={t('calendar.openInSidePanel')}
+          icon={Minimize2}
+          size="sm"
+          className="max-[900px]:hidden"
+          onClick={openCalendarPanel}
+        />
         <IconButton label={t('buttons.close')} icon={X} size="sm" onClick={closeCalendar} />
       </header>
 
@@ -157,7 +145,35 @@ export function CalendarView() {
   )
 }
 
-function sameMonth(a: Date, b: Date): boolean {
+/** Keep the loaded items current while a calendar is on screen. */
+export function useCalendarFeed() {
+  const tasksEnabled = useValue(settings$.tasksEnabled)
+
+  useEffect(() => {
+    void loadCalendar()
+    // Another surface changed the calendar (an invitation answered, the other
+    // window): re-read rather than replay the change.
+    const eventsOn = (window as any).runtime?.EventsOn
+    // Tasks too: a due task done, moved or deleted in the panel beside it.
+    const offs =
+      typeof eventsOn === 'function'
+        ? ['calendar.changed', 'tasks.changed'].map((name) => eventsOn(name, () => void loadCalendar()))
+        : []
+    return () => {
+      for (const off of offs) if (typeof off === 'function') off()
+    }
+  }, [])
+
+  // Due tasks come and go with the Tasks setting; the first load is above.
+  const tasksShown = useRef(tasksEnabled)
+  useEffect(() => {
+    if (tasksShown.current === tasksEnabled) return
+    tasksShown.current = tasksEnabled
+    void loadCalendar()
+  }, [tasksEnabled])
+}
+
+export function sameMonth(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
 }
 

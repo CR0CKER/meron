@@ -7,8 +7,10 @@ import type { Invite, InviteResponse, Message } from '../types'
 import { openThreadTabById } from './compose'
 import { compose$ } from './composeState'
 import { mail$ } from './mailState'
+import { persistedField } from '../lib/sessionPref'
+import { isNarrowWindow } from '../lib/useNarrowWindow'
 import { settings$ } from './settings'
-import { openTasksPanel } from './tasks'
+import { closeTasksPanel, openTasksPanel } from './tasks'
 import { showToast, showUndoToast, ui$ } from './ui'
 
 export type CalendarRepeat = '' | 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -56,9 +58,14 @@ export type EventInput = {
 
 export type EventEditor = { mode: 'new'; day: number } | { mode: 'edit'; item: CalendarItem }
 
+/** How many days the panel's agenda lists, from the day picked onwards. */
+export const AGENDA_DAYS = 7
+
 export const calendar$ = observable({
   /** Any instant in the month on show, epoch milliseconds. */
   month: Date.now(),
+  /** The day the panel's agenda starts on, local midnight in epoch milliseconds. */
+  day: startOfDay(new Date()).getTime(),
   items: [] as CalendarItem[],
   loading: false,
   editor: null as EventEditor | null,
@@ -66,7 +73,33 @@ export const calendar$ = observable({
 
 let loadSeq = 0
 
-/** Show the calendar in the main pane, in place of mail or a board. */
+function startOfDay(at: Date): Date {
+  return new Date(at.getFullYear(), at.getMonth(), at.getDate())
+}
+
+/** Whether either calendar is on screen, so a change elsewhere re-reads it. */
+function calendarShowing(): boolean {
+  return ui$.calendarOpen.peek() || ui$.calendarPanelOpen.peek()
+}
+
+// A panel left open is part of how the app was arranged, as with Tasks.
+const panelOpenSession = persistedField(ui$.calendarPanelOpen, 'session_calendar_panel', (raw) =>
+  typeof raw === 'boolean' ? raw : undefined,
+)
+
+/** Prefs keys this module owns; boot requests them in its single prefsGet. */
+export const CALENDAR_SESSION_KEYS = [panelOpenSession.key]
+
+export function restoreCalendarSession(prefs: Record<string, unknown>) {
+  if (prefs.calendar_enabled === false) return
+  panelOpenSession.restore(prefs)
+  if (ui$.calendarPanelOpen.peek()) openCalendarPanel()
+}
+
+/** Show the calendar in the main pane, in place of mail or a board: the rail's
+ * calendar item. An open panel stays open, hidden while the full view shows the
+ * same days, and is back beside mail or the board once the full view gives way
+ * to them. */
 export function openCalendar() {
   ui$.calendarOpen.set(true)
   void loadCalendar()
@@ -77,6 +110,37 @@ export function closeCalendar() {
   calendar$.editor.set(null)
 }
 
+/** Show the calendar beside mail, in the slot Tasks would otherwise hold. From
+ * the full view, collapse back into it. */
+export function openCalendarPanel() {
+  closeTasksPanel()
+  closeCalendar()
+  ui$.calendarPanelOpen.set(true)
+  void loadCalendar()
+}
+
+export function closeCalendarPanel() {
+  ui$.calendarPanelOpen.set(false)
+  calendar$.editor.set(null)
+}
+
+// The two share the right-hand slot: Tasks opened (from its button, or a due
+// task pressed in the agenda) takes it over.
+ui$.tasksPanelOpen.onChange(({ value }) => {
+  if (value && ui$.calendarPanelOpen.peek()) closeCalendarPanel()
+})
+
+// The event editor belongs to the calendar it was opened from. However that
+// calendar goes — a board or an account opened over the full view, the setting
+// switched off — the editor goes with it, rather than lingering unseen and
+// keeping mail's shortcuts at bay (AppHotkeys treats an open editor as modal).
+ui$.calendarOpen.onChange(({ value }) => {
+  if (!value) calendar$.editor.set(null)
+})
+ui$.calendarPanelOpen.onChange(({ value }) => {
+  if (!value) calendar$.editor.set(null)
+})
+
 // A composer or reader tab opened while the calendar is showing (the rail's
 // compose button, a shortcut, "Open mail") lives in the mail pane the calendar
 // replaces, so make way for it.
@@ -84,18 +148,39 @@ compose$.activeTab.onChange(({ value }) => {
   if (value && ui$.calendarOpen.peek()) closeCalendar()
 })
 
-export function toggleCalendar() {
-  if (ui$.calendarOpen.peek()) closeCalendar()
-  else openCalendar()
+/** Whether the panel is on screen: open, not under the full view, and on a
+ * window wide enough to show it (it hides below 900px, like Tasks). */
+export function calendarPanelShowing(panelOpen: boolean, fullOpen: boolean, narrow: boolean): boolean {
+  return panelOpen && !fullOpen && !narrow
 }
 
-/** Re-read the month on show. A read that finishes after a newer one started
- * is dropped, so paging quickly lands on the month the user stopped at. */
+/** What the calendar panel button does: show the panel (collapsing the full
+ * view into it), or hide it. A window too narrow for the panel gets the full
+ * view instead. */
+export function toggleCalendarPanel() {
+  if (isNarrowWindow()) {
+    if (ui$.calendarOpen.peek()) closeCalendar()
+    else openCalendar()
+  } else if (calendarPanelShowing(ui$.calendarPanelOpen.peek(), ui$.calendarOpen.peek(), false)) {
+    closeCalendarPanel()
+  } else {
+    openCalendarPanel()
+  }
+}
+
+/** Re-read the month on show, and the panel's agenda where it runs past it. A
+ * read that finishes after a newer one started is dropped, so paging quickly
+ * lands on the month the user stopped at. */
 export async function loadCalendar() {
   const seq = ++loadSeq
   // The grid CalendarView draws, week start included, or its first days go unasked.
   const days = monthGrid(new Date(calendar$.month.peek()), firstDayOfWeek())
-  const { from, to } = gridRange(days)
+  const day = new Date(calendar$.day.peek())
+  const agenda = [day, new Date(day.getFullYear(), day.getMonth(), day.getDate() + AGENDA_DAYS - 1)]
+  const grid = gridRange(days)
+  const week = gridRange(agenda)
+  const from = Math.min(grid.from, week.from)
+  const to = Math.max(grid.to, week.to)
   calendar$.loading.set(true)
   try {
     const res = await invoke<{ events?: CalendarItem[] }>('calendar.events', {
@@ -111,14 +196,32 @@ export async function loadCalendar() {
   }
 }
 
+/** Page the month. The panel's agenda follows: to today in the current month,
+ * to the first otherwise. */
 export function shiftMonth(delta: number) {
   const month = new Date(calendar$.month.peek())
-  calendar$.month.set(new Date(month.getFullYear(), month.getMonth() + delta, 1).getTime())
+  const next = new Date(month.getFullYear(), month.getMonth() + delta, 1)
+  const today = new Date()
+  const current = next.getFullYear() === today.getFullYear() && next.getMonth() === today.getMonth()
+  calendar$.month.set(next.getTime())
+  calendar$.day.set(startOfDay(current ? today : next).getTime())
   void loadCalendar()
 }
 
 export function goToToday() {
   calendar$.month.set(Date.now())
+  calendar$.day.set(startOfDay(new Date()).getTime())
+  void loadCalendar()
+}
+
+/** Start the panel's agenda on `day`, paging the month to it when it is one of
+ * the neighbouring months' days the grid shows. */
+export function selectDay(day: Date) {
+  calendar$.day.set(startOfDay(day).getTime())
+  const month = new Date(calendar$.month.peek())
+  if (day.getFullYear() !== month.getFullYear() || day.getMonth() !== month.getMonth()) {
+    calendar$.month.set(new Date(day.getFullYear(), day.getMonth(), 1).getTime())
+  }
   void loadCalendar()
 }
 
@@ -175,8 +278,9 @@ export function openCalendarItem(item: CalendarItem) {
 
 export async function openEventMail(threadId: string) {
   if (!threadId) return
-  // The conversation opens in the mail pane, which the calendar replaces;
-  // without a tab of its own it would not otherwise make way.
+  // The conversation opens in the mail pane, which the full calendar replaces;
+  // without a tab of its own it would not otherwise make way. The panel sits
+  // beside it and stays.
   closeCalendar()
   await openThreadTabById(threadId, t('tasks.mailNotFound'))
 }
@@ -231,7 +335,7 @@ export async function removeInviteFromCalendar(message: Message) {
     // still be taken out.
     updateInvite(message, { event_id: '' })
   }
-  if (ui$.calendarOpen.peek()) void loadCalendar()
+  if (calendarShowing()) void loadCalendar()
 }
 
 /** Put an answered invitation back in the calendar — after its event was
@@ -251,7 +355,7 @@ export async function addInviteToCalendar(message: Message) {
     return
   }
   updateInvite(message, { event_id: eventId })
-  if (ui$.calendarOpen.peek()) void loadCalendar()
+  if (calendarShowing()) void loadCalendar()
 }
 
 /** Answer an invitation: the core sends the organizer an iMIP reply, records
@@ -279,5 +383,5 @@ export async function respondToInvite(message: Message, response: InviteResponse
     showToast(errorMessage(error, t('invite.respondFailed')), 'error')
     return
   }
-  if (ui$.calendarOpen.peek()) void loadCalendar()
+  if (calendarShowing()) void loadCalendar()
 }

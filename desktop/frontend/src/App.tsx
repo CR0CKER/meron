@@ -1,4 +1,5 @@
 import { useValue } from '@legendapp/state/react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from './lib/i18n'
 import { ui$ } from './states/ui'
 import { mail$ } from './states/mail'
@@ -12,9 +13,10 @@ import { SideNav } from './components/sidenav/SideNav'
 import { ThreadList } from './components/threads/ThreadList'
 import { KanbanView } from './components/kanban/KanbanView'
 import { KanbanConversationPane } from './components/kanban/KanbanConversationPane'
+import { CalendarPanel } from './components/calendar/CalendarPanel'
 import { CalendarView } from './components/calendar/CalendarView'
 import { TasksPanel } from './components/tasks/TasksPanel'
-import { TasksSlide } from './components/tasks/TasksSlide'
+import { SidePanelSlide } from './components/sidepanel/SidePanelSlide'
 import { MessagePane } from './components/chat/MessagePane'
 import { AboutDialog } from './components/dialog/AboutDialog'
 import { ChangelogDialog } from './components/dialog/ChangelogDialog'
@@ -44,6 +46,16 @@ export default function App() {
   const activeBoardId = useValue(kanban$.activeBoardId)
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
   const calendarOpen = useValue(ui$.calendarOpen)
+  const calendarPanelOpen = useValue(ui$.calendarPanelOpen)
+  // Hidden, not closed, under the full calendar: it would show the same days.
+  // It goes and comes back with the main pane rather than sliding, which
+  // would read as the panel being closed and reopened.
+  const calendarPanelShown = calendarPanelOpen && !calendarOpen
+  const lastCalendarOpen = useRef(calendarOpen)
+  const mainPaneSwitched = lastCalendarOpen.current !== calendarOpen
+  useEffect(() => {
+    lastCalendarOpen.current = calendarOpen
+  }, [calendarOpen])
   const activeTaskList = useValue(ui$.activeTaskList)
   const composeTabs = useValue(compose$.tabs)
   const activeComposeTab = useValue(compose$.activeTab)
@@ -119,15 +131,21 @@ export default function App() {
             </ErrorBoundary>
           )}
 
-          {/* Tasks is a panel, not a view: it sits to the right of whatever is
-          open so a list can be worked against the thread list beside it. */}
-          <TasksSlide open={tasksPanelOpen && !!activeTaskList}>
-            {activeTaskList ? (
+          {/* Tasks and the calendar panel share one slot to the right of
+          whatever is open, so a list or the week ahead can be worked against
+          the thread list beside it. Switching between them swaps the content
+          in place; only opening or closing the slot slides. */}
+          <SidePanelSlide open={calendarPanelShown || (tasksPanelOpen && !!activeTaskList)} animate={!mainPaneSwitched}>
+            {calendarPanelShown ? (
+              <ErrorBoundary label="calendar">
+                <CalendarPanel />
+              </ErrorBoundary>
+            ) : tasksPanelOpen && activeTaskList ? (
               <ErrorBoundary label="tasks">
                 <TasksPanel listId={activeTaskList} />
               </ErrorBoundary>
             ) : null}
-          </TasksSlide>
+          </SidePanelSlide>
         </div>
 
         <AppHotkeys />

@@ -18,6 +18,7 @@ import {
 
 import { useTranslation } from '../../lib/i18n'
 import { IconButton } from '../button/IconButton'
+import { SIDE_PANEL_WIDTH } from '../sidepanel/SidePanelSlide'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { ui$ } from '../../states/ui'
@@ -38,13 +39,6 @@ import {
 import { TaskEditor } from './TaskEditor'
 import { TaskRow } from './TaskRow'
 import { useTaskDragSensors } from './taskDrag'
-
-/**
- * Fixed, like the panel it is modelled on. The thread list and conversation
- * already own the resizable widths in this window; a third draggable edge buys
- * little and costs the layout a lot.
- */
-export const TASKS_PANEL_WIDTH = 340
 
 type MenuAnchor = { x: number; y: number }
 
@@ -99,7 +93,7 @@ export function TasksPanel({ listId }: { listId: string }) {
       // Hidden on a narrow window: at that width the thread list and
       // conversation already compete, and a third column would win nothing.
       className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-chats max-[900px]:hidden"
-      style={{ width: TASKS_PANEL_WIDTH }}
+      style={{ width: SIDE_PANEL_WIDTH }}
     >
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1.5">
         {renaming ? (

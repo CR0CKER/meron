@@ -164,6 +164,8 @@ export type Settings = {
   hiddenSideNavAccounts: string[]
   /** Whether the synthetic unified inbox appears in the desktop side navigation. */
   showUnifiedInboxInSideNav: boolean
+  /** Whether the full calendar has an item in the desktop side navigation. */
+  showCalendarInSideNav: boolean
   /**
    * Whether the optional Tasks surface is available. Off by default: an upgrade
    * shouldn't grow a rail entry nobody asked for. The tasks themselves live in
@@ -228,6 +230,7 @@ const DB_KEY = {
   kanbanMinimizedColumns: 'kanban_minimized_columns',
   hiddenSideNavAccounts: 'hidden_sidenav_accounts',
   showUnifiedInboxInSideNav: 'show_unified_inbox_in_sidenav',
+  showCalendarInSideNav: 'show_calendar_in_sidenav',
   tasksEnabled: 'tasks_enabled',
   calendarEnabled: 'calendar_enabled',
   closeToTray: 'close_to_tray',
@@ -441,6 +444,7 @@ export const settings$ = observable<Settings>({
   kanbanMinimizedColumns: {},
   hiddenSideNavAccounts: [],
   showUnifiedInboxInSideNav: true,
+  showCalendarInSideNav: true,
   tasksEnabled: true,
   calendarEnabled: true,
   closeToTray: true,
@@ -857,9 +861,16 @@ export function setUnifiedInboxSideNavVisible(visible: boolean) {
   settings$.showUnifiedInboxInSideNav.set(visible)
 }
 
+export function setCalendarSideNavVisible(visible: boolean) {
+  settings$.showCalendarInSideNav.set(visible)
+}
+
 export function setCalendarEnabled(enabled: boolean) {
   settings$.calendarEnabled.set(enabled)
-  if (!enabled) ui$.calendarOpen.set(false)
+  if (!enabled) {
+    ui$.calendarOpen.set(false)
+    ui$.calendarPanelOpen.set(false)
+  }
 }
 
 export function setTasksEnabled(enabled: boolean) {
@@ -990,6 +1001,10 @@ export function hydrateSettings(prefs: Record<string, unknown>) {
 
     if (typeof prefs[DB_KEY.showUnifiedInboxInSideNav] === 'boolean') {
       settings$.showUnifiedInboxInSideNav.set(prefs[DB_KEY.showUnifiedInboxInSideNav] as boolean)
+    }
+
+    if (typeof prefs[DB_KEY.showCalendarInSideNav] === 'boolean') {
+      settings$.showCalendarInSideNav.set(prefs[DB_KEY.showCalendarInSideNav] as boolean)
     }
 
     if (typeof prefs[DB_KEY.tasksEnabled] === 'boolean') {

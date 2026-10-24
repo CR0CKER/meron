@@ -4,6 +4,7 @@ import { hydrateSettings, hydrateTrayStyle, SETTINGS_DB_KEYS, WRITE_SESSION } fr
 import { restoreUiSession, UI_SESSION_KEYS, ui$ } from './states/ui'
 import { ensureDefaultKanbanBoard, restoreKanbanSession, KANBAN_SESSION_KEYS } from './states/kanban'
 import { restoreTasksSession, TASKS_SESSION_KEYS } from './states/tasks'
+import { CALENDAR_SESSION_KEYS, restoreCalendarSession } from './states/calendar'
 import { accounts$ } from './states/accounts'
 import { openMailtoCompose, pruneComposerMedia } from './states/compose'
 
@@ -18,7 +19,13 @@ export async function boot() {
     invoke<SystemCheck>('system.check'),
     invokeRetryingTimeout<{ accounts: Account[] }>('account.list'),
     invokeRetryingTimeout<{ prefs: Record<string, unknown> }>('app.prefsGet', {
-      keys: [...SETTINGS_DB_KEYS, ...UI_SESSION_KEYS, ...KANBAN_SESSION_KEYS, ...TASKS_SESSION_KEYS],
+      keys: [
+        ...SETTINGS_DB_KEYS,
+        ...UI_SESSION_KEYS,
+        ...KANBAN_SESSION_KEYS,
+        ...TASKS_SESSION_KEYS,
+        ...CALENDAR_SESSION_KEYS,
+      ],
       // Reading our prefs is also how this window claims write ordering from
       // whatever session ran before it (see `activate_pref_session` in core).
       session: WRITE_SESSION,
@@ -33,6 +40,7 @@ export async function boot() {
   restoreUiSession(prefs, accountResult.accounts)
   restoreKanbanSession(prefs)
   await restoreTasksSession(prefs)
+  restoreCalendarSession(prefs)
   ensureDefaultKanbanBoard()
 
   const pendingMailto = await invoke<unknown>('mailto.consumePending').catch(() => [])

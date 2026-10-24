@@ -98,7 +98,7 @@ describe('TitleBar', () => {
     expect(labels(screen.getAllByRole('button'))).toEqual([
       'Close',
       'Search options',
-      'Calendar',
+      'Calendar panel',
       'Tasks',
       'More',
       'Minimize',

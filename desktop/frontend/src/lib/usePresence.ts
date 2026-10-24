@@ -15,14 +15,15 @@ function prefersReducedMotion() {
  *
  * The phase is derived during render from the last `open` seen, so the render
  * that flips `open` already carries the new phase, and StrictMode's doubled
- * mount effects cannot replay an animation.
+ * mount effects cannot replay an animation. A change made with `animate` false
+ * settles at once, for an element that should just be there (or not).
  */
-export function usePresence(open: boolean, ms: number): PresencePhase {
+export function usePresence(open: boolean, ms: number, animate = true): PresencePhase {
   const [state, setState] = useState(() => ({ open, phase: (open ? 'open' : 'closed') as PresencePhase }))
 
   let phase = state.phase
   if (state.open !== open) {
-    phase = prefersReducedMotion() ? (open ? 'open' : 'closed') : open ? 'entering' : 'exiting'
+    phase = !animate || prefersReducedMotion() ? (open ? 'open' : 'closed') : open ? 'entering' : 'exiting'
     setState({ open, phase })
   }
 

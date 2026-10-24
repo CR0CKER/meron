@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { DragEvent } from 'react'
-import { CalendarDays, Mail, SquareCheckBig, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
+import { CalendarClock, CalendarDays, Mail, SquareCheckBig, MoreHorizontal, EyeOff, SquarePen } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { formatShortcut, isMac, RAIL_SHORTCUT_IDS } from '../../lib/shortcuts'
@@ -14,8 +14,9 @@ import { moveFeed, RSS_FEED_DRAG_TYPE } from '../../states/feeds'
 import { kanban$, openMailAccount, reorderKanbanBoards, selectKanbanBoard } from '../../states/kanban'
 import { mail$ } from '../../states/mail'
 import { inboxUnread } from '../../states/mailFolders'
-import { settings$, setUnifiedInboxSideNavVisible } from '../../states/settings'
-import { toggleCalendar } from '../../states/calendar'
+import { settings$, setCalendarSideNavVisible, setUnifiedInboxSideNavVisible } from '../../states/settings'
+import { calendarPanelShowing, openCalendar, toggleCalendarPanel } from '../../states/calendar'
+import { useNarrowWindow } from '../../lib/useNarrowWindow'
 import { toggleTasksPanel } from '../../states/tasks'
 import { ui$ } from '../../states/ui'
 import { QuickSettingsMenu } from './QuickSettingsMenu'
@@ -40,6 +41,12 @@ export function SideNav() {
   const tasksPanelOpen = useValue(ui$.tasksPanelOpen)
   const calendarEnabled = useValue(settings$.calendarEnabled)
   const calendarOpen = useValue(ui$.calendarOpen)
+  const showCalendar = useValue(settings$.showCalendarInSideNav) && calendarEnabled
+  const calendarPanelOpen = useValue(ui$.calendarPanelOpen)
+  const narrow = useNarrowWindow()
+  // The utility button toggles the panel, or the full view on a narrow window
+  // where the panel cannot show.
+  const calendarButtonPressed = narrow ? calendarOpen : calendarPanelShowing(calendarPanelOpen, calendarOpen, narrow)
   const boards = useValue(settings$.kanbanBoards)
   const hiddenSideNavAccounts = useValue(settings$.hiddenSideNavAccounts)
   const showUnifiedInbox = useValue(settings$.showUnifiedInboxInSideNav)
@@ -58,6 +65,7 @@ export function SideNav() {
   const menuBoard = boardMenu ? boards.find((board) => board.id === boardMenu.id) : null
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [unifiedMenu, setUnifiedMenu] = useState<{ x: number; y: number } | null>(null)
+  const [calendarMenu, setCalendarMenu] = useState<{ x: number; y: number } | null>(null)
   // Bottom "more" menu holding the view switcher and theme settings.
   const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null)
 
@@ -268,7 +276,42 @@ export function SideNav() {
         )}
       </div>
 
-      {utilities && (showUnifiedInbox || hasBoards || hasAccounts) && <div className={`mb-[9px] ${railDivider}`} />}
+      {/* The full calendar: a view, like the unified inbox and the boards, so a
+        destination in the rail, but not mail, so pinned under their scrolling
+        list rather than in it — always in the same place, never scrolled away.
+        It has no number shortcut; those count the items above. The panel
+        toggle among the utilities (or in the title bar) has its own icon. */}
+      {showCalendar && (
+        <>
+          {(showUnifiedInbox || hasBoards || hasAccounts) && <div className={`mb-[9px] ${railDivider}`} />}
+          <div className="relative flex w-full justify-center group">
+            {railIndicator(calendarOpen)}
+            <button
+              type="button"
+              className={`flex h-10 w-10 items-center justify-center cursor-pointer ${railTileShape(calendarOpen)} ${
+                calendarOpen
+                  ? 'bg-accent text-accent-label'
+                  : 'bg-sidenav-ink/10 text-sidenav-ink/60 group-hover:bg-sidenav-ink/20 group-hover:text-sidenav-ink'
+              }`}
+              onClick={openCalendar}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setCalendarMenu({ x: event.clientX, y: event.clientY })
+              }}
+              title={t('calendar.title')}
+              aria-label={t('calendar.title')}
+              aria-current={calendarOpen ? 'page' : undefined}
+            >
+              <CalendarDays size={19} />
+            </button>
+          </div>
+        </>
+      )}
+
+      {utilities && (showUnifiedInbox || hasBoards || hasAccounts || showCalendar) && (
+        <div className={`${showCalendar ? 'my-[9px]' : 'mb-[9px]'} ${railDivider}`} />
+      )}
 
       {/* Utilities */}
       {utilities && (
@@ -277,16 +320,16 @@ export function SideNav() {
             <button
               type="button"
               className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors cursor-pointer ${
-                calendarOpen
+                calendarButtonPressed
                   ? 'bg-sidenav-ink/20 text-sidenav-ink'
                   : 'bg-sidenav-ink/10 text-sidenav-ink/60 hover:bg-sidenav-ink/20 hover:text-sidenav-ink'
               }`}
-              onClick={toggleCalendar}
-              title={t('calendar.title')}
-              aria-label={t('calendar.title')}
-              aria-pressed={calendarOpen}
+              onClick={toggleCalendarPanel}
+              title={t('calendar.panel')}
+              aria-label={t('calendar.panel')}
+              aria-pressed={calendarButtonPressed}
             >
-              <CalendarDays size={18} />
+              <CalendarClock size={18} />
             </button>
           )}
           {tasksEnabled && (
@@ -335,6 +378,19 @@ export function SideNav() {
             onClick={() => {
               setUnifiedInboxSideNavVisible(false)
               setUnifiedMenu(null)
+            }}
+          />
+        </RailContextMenu>
+      )}
+
+      {calendarMenu && (
+        <RailContextMenu x={calendarMenu.x} y={calendarMenu.y} onClose={() => setCalendarMenu(null)}>
+          <RailMenuItem
+            icon={<EyeOff size={13} className="text-secondary" />}
+            label={t('sidenav.actions.hideFromSideNav')}
+            onClick={() => {
+              setCalendarSideNavVisible(false)
+              setCalendarMenu(null)
             }}
           />
         </RailContextMenu>

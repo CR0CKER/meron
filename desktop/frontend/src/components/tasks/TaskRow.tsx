@@ -149,7 +149,7 @@ export function TaskRow({
         {/* Delete floats over the end of the title instead of reserving a column for it. */}
         {expanded ? null : (
           <div
-            className="pointer-events-none absolute right-2 top-1 rounded-full bg-chats opacity-0 shadow-sm transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+            className="pointer-events-none absolute right-2 top-1 rounded-full bg-chats opacity-0 shadow-sm focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
             data-no-drag
           >
             <IconButton label={t('tasks.deleteTask')} icon={Trash2} size="sm" variant="danger" onClick={onDelete} />

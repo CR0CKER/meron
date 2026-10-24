@@ -52,6 +52,7 @@ import {
   KANBAN_COLUMN_MIN_WIDTH,
   sendShortcutLabel,
   setUnifiedInboxSideNavVisible,
+  setCalendarSideNavVisible,
   setCalendarEnabled,
   setTasksEnabled,
   type ConversationLayout,
@@ -389,6 +390,7 @@ function GeneralSection() {
   const showRealAvatars = useValue(settings$.showRealAvatars)
   const showUnreadAccountBadge = useValue(settings$.showUnreadAccountBadge)
   const showUnifiedInbox = useValue(settings$.showUnifiedInboxInSideNav)
+  const showCalendarInSideNav = useValue(settings$.showCalendarInSideNav)
   const tasksEnabled = useValue(settings$.tasksEnabled)
   const calendarEnabled = useValue(settings$.calendarEnabled)
   const kanbanColumnWidth = useValue(settings$.kanbanColumnWidth)
@@ -436,6 +438,14 @@ function GeneralSection() {
           checked={showUnifiedInbox}
           onChange={() => setUnifiedInboxSideNavVisible(!showUnifiedInbox)}
         />
+        {calendarEnabled && (
+          <ToggleRow
+            icon={<CalendarDays size={15} />}
+            title={t('settings.sideNav.showCalendar')}
+            checked={showCalendarInSideNav}
+            onChange={() => setCalendarSideNavVisible(!showCalendarInSideNav)}
+          />
+        )}
         <ToggleRow
           icon={<Inbox size={15} />}
           title={t('settings.appearance.showUnreadAccountBadge')}

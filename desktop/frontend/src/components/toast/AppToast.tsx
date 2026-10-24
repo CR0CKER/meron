@@ -2,7 +2,7 @@ import { AlertCircle, Check, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { ui$, runToastUndo, dismissToast } from '../../states/ui'
 import { t } from '../../lib/i18n'
-import { TASKS_PANEL_WIDTH } from '../tasks/TasksPanel'
+import { SIDE_PANEL_WIDTH } from '../sidepanel/SidePanelSlide'
 
 // The floating status toast, with an optional Undo action. Reads its state
 // directly from ui$ and renders nothing when there's no active toast.
@@ -34,8 +34,8 @@ export function AppToast() {
       style={
         overTasks
           ? ({
-              '--tasks-toast-right': `${TASKS_PANEL_WIDTH / 2}px`,
-              '--tasks-toast-width': `${TASKS_PANEL_WIDTH - 24}px`,
+              '--tasks-toast-right': `${SIDE_PANEL_WIDTH / 2}px`,
+              '--tasks-toast-width': `${SIDE_PANEL_WIDTH - 24}px`,
             } as React.CSSProperties)
           : undefined
       }

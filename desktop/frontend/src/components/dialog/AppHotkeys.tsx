@@ -31,6 +31,7 @@ import {
 import { archiveThread, deleteThread, bulkArchiveSelected, bulkDeleteSelected } from '../../states/mailMoves'
 import { openComposeTab, openReplyInFullEditor, closeMessageTab, toggleConversationMode } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
+import { calendar$ } from '../../states/calendar'
 import { handleEditUndoKeyDown } from '../../lib/editUndo'
 import {
   isBareKeystroke,
@@ -50,19 +51,25 @@ function threadSearchVisible(): boolean {
   return !kanban$.activeBoardId.peek() || !!kanbanPaneThreadId()
 }
 
+// The full calendar replaces mail; the event editor (from either calendar,
+// the panel included) is a modal over it.
+function mailCovered(): boolean {
+  return ui$.calendarOpen.peek() || !!calendar$.editor.peek()
+}
+
 // Bare shortcuts are thread-list/conversation actions. They apply in the kanban
 // view too — the selected card lives in ui$.selectedThread, same as a chat-list
 // row — as long as nothing modal is in the way.
 function bareShortcutsActive(): boolean {
-  return !modalOpen()
+  return !modalOpen() && !calendar$.editor.peek()
 }
 
 function kanbanArrowNavigationActive(): boolean {
-  return !!kanban$.activeBoardId.peek() && !modalOpen() && !ui$.calendarOpen.peek()
+  return !!kanban$.activeBoardId.peek() && !modalOpen() && !mailCovered()
 }
 
 function chatArrowNavigationActive(): boolean {
-  return !kanban$.activeBoardId.peek() && !modalOpen() && !ui$.calendarOpen.peek()
+  return !kanban$.activeBoardId.peek() && !modalOpen() && !mailCovered()
 }
 
 // Shortcuts that act on the mail on screen. The calendar takes the place of
@@ -138,8 +145,7 @@ function deleteKeyFocusAllowed(): boolean {
 // Active in both the chat and kanban views (selection lives in
 // ui$.selectedThread either way), unlike the other bare shortcuts.
 function handleDeleteKey(key: string, target: EventTarget | null): boolean {
-  if (key !== 'Delete' || isTyping(target) || modalOpen() || ui$.calendarOpen.peek() || !deleteKeyFocusAllowed())
-    return false
+  if (key !== 'Delete' || isTyping(target) || modalOpen() || mailCovered() || !deleteKeyFocusAllowed()) return false
   const threadId = activeThreadId()
   const bulkItems = selectedBulkItems()
   if (bulkItems.length > 0) {
@@ -162,7 +168,7 @@ function handleChatArrowNavigation(key: string, target: EventTarget | null): boo
 
 function handleRailShortcut(action: ShortcutId): boolean {
   const slot = RAIL_SHORTCUT_IDS.indexOf(action as RailShortcutId)
-  if (slot === -1 || modalOpen()) return false
+  if (slot === -1 || modalOpen() || calendar$.editor.peek()) return false
 
   let target = slot
   if (settings$.showUnifiedInboxInSideNav.peek()) {
@@ -259,7 +265,7 @@ export function AppHotkeys() {
         if (isTyping(event.target) || !bareShortcutsActive()) return
       }
 
-      if (MAIL_VIEW_ACTIONS.has(action) && ui$.calendarOpen.peek()) return
+      if (MAIL_VIEW_ACTIONS.has(action) && mailCovered()) return
 
       const selected = () => activeThreadId()
       const bulkSelected = () => selectedBulkItems()

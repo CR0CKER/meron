@@ -34,6 +34,18 @@ describe('usePresence', () => {
     expect(renderHook(() => usePresence(false, 200)).result.current).toBe('closed')
   })
 
+  it('settles at once on a change made without animating', () => {
+    const view = renderHook(({ open, animate }) => usePresence(open, 200, animate), {
+      initialProps: { open: false, animate: false },
+    })
+    view.rerender({ open: true, animate: false })
+    expect(view.result.current).toBe('open')
+    view.rerender({ open: false, animate: false })
+    expect(view.result.current).toBe('closed')
+    view.rerender({ open: true, animate: true })
+    expect(view.result.current).toBe('entering')
+  })
+
   it('does not animate at mount under StrictMode', () => {
     const closed = renderHook(() => usePresence(false, 200), { wrapper: StrictMode })
     expect(closed.result.current).toBe('closed')

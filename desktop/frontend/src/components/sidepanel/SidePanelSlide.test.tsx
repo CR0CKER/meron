@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { act, cleanup, render } from '@testing-library/react'
 import { PANE_ANIMATION_MS } from '../kanban/KanbanConversationPane'
-import { TasksSlide } from './TasksSlide'
+import { SidePanelSlide } from './SidePanelSlide'
 
 const slide = (open: boolean) => (
-  <TasksSlide open={open}>
+  <SidePanelSlide open={open}>
     <p>tasks</p>
-  </TasksSlide>
+  </SidePanelSlide>
 )
 
 const originalMatchMedia = (globalThis as any).matchMedia
 let reducedMotion = false
 
-describe('TasksSlide', () => {
+describe('SidePanelSlide', () => {
   beforeEach(() => {
     jest.useFakeTimers()
     reducedMotion = false
@@ -66,7 +66,7 @@ describe('TasksSlide', () => {
   it('slides the last list out when its content goes away with it', () => {
     const view = render(slide(true))
 
-    view.rerender(<TasksSlide open={false}>{null}</TasksSlide>)
+    view.rerender(<SidePanelSlide open={false}>{null}</SidePanelSlide>)
     expect(root(view)?.dataset.panePhase).toBe('exiting')
     expect(view.queryByText('tasks')).not.toBeNull()
 
