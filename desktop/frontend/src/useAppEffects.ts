@@ -74,6 +74,8 @@ export function useAppEffects() {
       trayQuit: t('tray.quitMeron'),
       newMessage: t('notify.newMessage'),
       newMessageCount: translationTemplate('notify.newMessageCount'),
+      calendar: t('calendar.title'),
+      tasks: t('tasks.title'),
       noSubject: t('notify.noSubject'),
       unknownSender: t('notify.unknownSender'),
     }).catch(() => {})

@@ -880,6 +880,7 @@ data class TaskSummary(
     val account: String = "",
     val threadId: String = "",
     val messageId: String = "",
+    val dueHasTime: Boolean = false,
 )
 
 /** Lists plus the id to open when the caller has no preference of its own. */
@@ -925,6 +926,7 @@ private fun parseTaskObject(item: String): TaskSummary? {
         title = item.findJsonStringProperty("title").orEmpty(),
         notes = item.findJsonStringProperty("notes").orEmpty(),
         dueAt = item.findJsonLongProperty("due_at") ?: 0,
+        dueHasTime = item.findJsonBooleanProperty("due_has_time") ?: false,
         completedAt = item.findJsonLongProperty("completed_at") ?: 0,
         done = item.findJsonBooleanProperty("done") ?: false,
         account = item.findJsonStringProperty("account").orEmpty(),

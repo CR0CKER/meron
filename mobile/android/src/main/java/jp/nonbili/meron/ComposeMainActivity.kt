@@ -298,6 +298,7 @@ class ComposeMainActivity : ComponentActivity() {
         incomingOAuthCallbackUrl = intent.toOAuthCallbackUrl()
         incomingNotificationThreadTarget = intent.toNotificationThreadTarget()
         AndroidNotificationService.ensureChannels(this)
+        AndroidReminders.refresh(this)
         // The log sink and crash handler are installed process-wide in
         // MeronApplication, before any component (including background sync)
         // starts, so nothing to install here.
@@ -390,6 +391,7 @@ class ComposeMainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            AndroidReminders.refresh(this)
             jp.nonbili.meron.ui.NotificationPermissionSignal
                 .signal()
         }
@@ -400,6 +402,8 @@ class ComposeMainActivity : ComponentActivity() {
     // isn't. Off the main thread since foreground opens the DB and spawns IDLE.
     override fun onStart() {
         super.onStart()
+        // System settings may have changed permission or muted the channel.
+        AndroidReminders.refresh(this)
         activityStarted = true
         // The background worker syncs while the activity is stopped, and its
         // core events never reach this composition. Announce the return so the

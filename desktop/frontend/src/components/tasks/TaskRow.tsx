@@ -40,7 +40,7 @@ export function TaskRow({
     disabled: !sortable,
   })
   const [focusDueDate, setFocusDueDate] = useState(false)
-  const overdue = taskIsOverdue(task.due_at) && !task.done
+  const overdue = taskIsOverdue(task.due_at, Date.now(), task.due_has_time) && !task.done
   const hasMessage = Boolean(task.thread_id && onOpenMessage)
   // The collapsed row lays these out itself; the editor takes them as a cluster.
   const actions = (
@@ -126,7 +126,7 @@ export function TaskRow({
                     }`}
                   >
                     <CalendarDays size={12} aria-hidden="true" />
-                    {formatDueDate(task.due_at)}
+                    {formatDueDate(task.due_at, task.due_has_time)}
                   </button>
                 ) : null}
                 {hasMessage ? (

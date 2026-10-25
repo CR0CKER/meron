@@ -134,8 +134,9 @@ internal suspend fun MeronMobileState.updateTask(
     title: String? = null,
     notes: String? = null,
     dueAt: Long? = null,
+    dueHasTime: Boolean? = null,
 ) {
-    onCore { requireCoreOk(it.updateTask(TaskUpdateParams(taskId, title, notes, dueAt))) }
+    onCore { requireCoreOk(it.updateTask(TaskUpdateParams(taskId, title, notes, dueAt, dueHasTime = dueHasTime))) }
     loadTasks()
 }
 

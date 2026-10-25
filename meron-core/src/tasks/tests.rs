@@ -310,3 +310,34 @@ fn restoring_junk_is_ignored_rather_than_an_error() {
     .unwrap();
     assert_eq!(result["restored"], 0);
 }
+
+#[test]
+fn time_flag_failure_rolls_back_the_entire_task_mutation() {
+    let conn = test_conn();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_time BEFORE UPDATE OF json ON tasks
+        WHEN json_extract(NEW.json, '$.due_has_time') = 1
+        BEGIN SELECT RAISE(ABORT, 'time flag rejected'); END;",
+    )
+    .unwrap();
+    let params = json!({ "due_has_time": true });
+    let created = mutate_with_due_time(&conn, &params, |conn| {
+        create_task(conn, "", "Deadline", "", 1_792_900_000, "", "", "")
+    });
+    assert!(created.is_err());
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    let created = create_task(&conn, "", "Original", "", 1_792_900_000, "", "", "").unwrap();
+    let id = created["task"]["id"].as_str().unwrap();
+    let updated = mutate_with_due_time(&conn, &params, |conn| {
+        update_task(conn, id, Some("Changed"), None, Some(1_792_910_000), None)
+    });
+    assert!(updated.is_err());
+    let task = store::task(&conn, id).unwrap().unwrap();
+    assert_eq!(task.title, "Original");
+    assert_eq!(task.due_at, 1_792_900_000);
+    assert!(!task.due_has_time);
+}

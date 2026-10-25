@@ -137,6 +137,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.startMCP()
 	a.setupNotificationListener()
+	go a.runReminders()
 	a.setupResumeListener()
 	a.setupFileDrop(ctx)
 	a.setupAppearanceListener()

@@ -252,7 +252,7 @@ private fun TaskRow(
     onOpenMessage: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val overdue = taskIsOverdue(task.dueAt) && !task.done
+    val overdue = taskIsOverdue(task.dueAt, hasTime = task.dueHasTime) && !task.done
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
 
     Row(
@@ -295,7 +295,7 @@ private fun TaskRow(
                 ) {
                     Icon(Icons.Filled.Event, contentDescription = null, Modifier.size(14.dp), tint = dueColor)
                     Text(
-                        formatTaskDueDate(task.dueAt),
+                        formatTaskDueDate(task.dueAt, hasTime = task.dueHasTime),
                         style = MaterialTheme.typography.labelMedium,
                         color = dueColor,
                     )

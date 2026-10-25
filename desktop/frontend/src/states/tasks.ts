@@ -17,6 +17,7 @@ export type Task = {
   title: string
   notes: string
   /** Epoch seconds, 0 when the task has no due date. */
+  due_has_time?: boolean
   due_at: number
   completed_at: number
   done: boolean
@@ -199,11 +200,12 @@ export async function setTaskDone(taskId: string, done: boolean) {
 
 export async function updateTask(
   taskId: string,
-  patch: { title?: string; notes?: string; dueAt?: number; listId?: string },
+  patch: { title?: string; notes?: string; dueAt?: number; dueHasTime?: boolean; listId?: string },
 ) {
   const payload: Record<string, unknown> = { task_id: taskId }
   if (patch.title !== undefined) payload.title = patch.title
   if (patch.notes !== undefined) payload.notes = patch.notes
+  if (patch.dueHasTime !== undefined) payload.due_has_time = patch.dueHasTime
   if (patch.dueAt !== undefined) payload.due_at = patch.dueAt
   if (patch.listId !== undefined) payload.list_id = patch.listId
   await invoke('tasks.update', payload)

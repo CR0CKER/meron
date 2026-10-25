@@ -1669,6 +1669,7 @@ data class TaskCreateParams(
     val account: String = "",
     val threadId: String = "",
     val messageId: String = "",
+    val dueHasTime: Boolean = false,
 ) {
     fun toJson(): String =
         jsonObject(
@@ -1676,6 +1677,7 @@ data class TaskCreateParams(
             "title" to title.jsonString(),
             "notes" to notes.jsonString(),
             "due_at" to dueAt.toString(),
+            "due_has_time" to dueHasTime.takeIf { it }?.toString(),
             "account" to account.jsonString(),
             "thread_id" to threadId.jsonString(),
             "message_id" to messageId.jsonString(),
@@ -1689,6 +1691,7 @@ data class TaskUpdateParams(
     val notes: String? = null,
     val dueAt: Long? = null,
     val listId: String? = null,
+    val dueHasTime: Boolean? = null,
 ) {
     fun toJson(): String =
         jsonObject(
@@ -1696,6 +1699,7 @@ data class TaskUpdateParams(
             "title" to title?.jsonString(),
             "notes" to notes?.jsonString(),
             "due_at" to dueAt?.toString(),
+            "due_has_time" to dueHasTime?.toString(),
             "list_id" to listId?.jsonString(),
         )
 }

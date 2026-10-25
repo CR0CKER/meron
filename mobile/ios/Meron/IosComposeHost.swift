@@ -18,6 +18,9 @@ private final class IosCoreEventStream: CoreEventStream {
         RustCoreBridge.setEventHandler { eventJson in
             let event = MeronCoreKt.parseCoreEventEnvelope(eventJson: eventJson)
             listener(event)
+            if ["ready", "calendar.changed", "tasks.changed", "mail.synced"].contains(event.name) {
+                IosReminders.refresh()
+            }
             if ["ready", "mail.synced", "mail.newMessages"].contains(event.name) {
                 IosUnreadWidgets.refresh()
             }

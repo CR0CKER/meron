@@ -24,6 +24,7 @@ struct Meron: App {
         // + foreground IMAP IDLE. Paused on background, resumed on return.
         Self.engineLifecycle("engine.foreground")
         IosUnreadWidgets.refresh()
+        IosReminders.refresh()
     }
 
     /// Drive the core's foreground Engine lifecycle (warm pool + IDLE) from the
@@ -63,7 +64,11 @@ struct Meron: App {
                 // background, instead of waiting out the remaining poll tick.
                 AppForegroundSignal.shared.signal()
                 IosUnreadWidgets.refresh()
+                IosReminders.refresh()
                 Self.engineLifecycle("engine.foreground")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                IosReminders.refresh()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                 // Park the Engine: stop foreground IDLE and drop warm sockets the

@@ -148,6 +148,8 @@ pub struct BackupTask {
     #[serde(default)]
     pub due_at: i64,
     #[serde(default)]
+    pub due_has_time: bool,
+    #[serde(default)]
     pub completed_at: i64,
     #[serde(default)]
     pub sort_order: i64,
@@ -287,6 +289,7 @@ fn collect_task_lists(conn: &Connection) -> Result<Vec<BackupTaskList>> {
                 title: task.title,
                 notes: task.notes,
                 due_at: task.due_at,
+                due_has_time: task.due_has_time,
                 completed_at: task.completed_at,
                 sort_order: task.sort_order,
                 created_at: task.created_at,
@@ -712,7 +715,7 @@ fn restore_task_list(
         let added = conn.execute(
             "INSERT OR IGNORE INTO tasks(id, list_id, title, notes, due_at, completed_at, sort_order,
                                account, thread_id, message_id, json, created_at, updated_at)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '{}', ?11, ?12)",
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, json_object('reminder_after', ?12), ?11, ?12)",
             params![
                 task_id,
                 list_id,
@@ -732,6 +735,9 @@ fn restore_task_list(
                 now,
             ],
         )?;
+        if added > 0 {
+            store::set_task_due_time(conn, &task_id, task.due_has_time)?;
+        }
         restored += added as u32;
     }
     Ok(restored)

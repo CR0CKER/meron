@@ -16,6 +16,7 @@ var (
 )
 
 type nativeLabels struct {
+	calendar, tasks                                       string
 	trayShow, trayHide, trayHideTooltip, trayQuit         string
 	newMessage, newMessageCount, noSubject, unknownSender string
 }
@@ -23,6 +24,7 @@ type nativeLabels struct {
 var (
 	nativeLabelsMu sync.RWMutex
 	currentLabels  = nativeLabels{
+		calendar: "Calendar", tasks: "Tasks",
 		trayShow: "Show Meron", trayHide: "Hide to Tray",
 		trayHideTooltip: "Hide Meron to the system tray", trayQuit: "Quit Meron",
 		newMessage:      "New message",
@@ -45,6 +47,8 @@ func (a *App) setNativeLabels(payload map[string]any) (any, error) {
 		}
 	}
 	set(&currentLabels.trayShow, "trayShow")
+	set(&currentLabels.calendar, "calendar")
+	set(&currentLabels.tasks, "tasks")
 	set(&currentLabels.trayHide, "trayHide")
 	set(&currentLabels.trayHideTooltip, "trayHideTooltip")
 	set(&currentLabels.trayQuit, "trayQuit")
@@ -222,6 +226,10 @@ func (a *App) openThreadFromNotification(account, threadID string) {
 	}
 	a.logf("notification clicked: account=%s, threadID=%s", account, threadID)
 	a.showMainWindow()
+	// Reminder targets use the same native activation path to focus the app.
+	if account == reminderNotificationAccount {
+		return
+	}
 	wailsRuntime.EventsEmit(a.ctx, "notification-clicked", map[string]string{
 		"account":   account,
 		"threadId":  threadID,

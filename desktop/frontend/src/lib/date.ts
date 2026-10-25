@@ -24,14 +24,17 @@ export function formatThreadDate(epochSeconds: number): string {
 }
 
 /** A task's due date: month/day, with the year once it isn't this one. */
-export function formatDueDate(epochSeconds: number): string {
+export function formatDueDate(epochSeconds: number, hasTime = false): string {
   const date = fromEpochSeconds(epochSeconds)
   if (!date) return ''
   const options: Intl.DateTimeFormatOptions =
     date.getFullYear() === new Date().getFullYear()
       ? { month: 'short', day: 'numeric' }
       : { month: 'short', day: 'numeric', year: 'numeric' }
-  return date.toLocaleDateString([], options)
+  return (
+    date.toLocaleDateString([], options) +
+    (hasTime ? ` ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '')
+  )
 }
 
 /** `<input type="date">` wants a local-time YYYY-MM-DD, not an ISO instant. */
@@ -52,7 +55,8 @@ export function fromDateInputValue(value: string): number {
 }
 
 /** A date-only deadline becomes overdue on the following local day. */
-export function taskIsOverdue(dueAt: number, nowMillis = Date.now()): boolean {
+export function taskIsOverdue(dueAt: number, nowMillis = Date.now(), hasTime = false): boolean {
+  if (hasTime) return dueAt > 0 && dueAt * 1000 < nowMillis
   const today = new Date(nowMillis)
   today.setHours(0, 0, 0, 0)
   return dueAt > 0 && dueAt * 1000 < today.getTime()
@@ -88,4 +92,22 @@ export function formatEventRange(start: number, end: number, allDay: boolean): s
 function formatRange(format: Intl.DateTimeFormat, from: Date, to: Date): string {
   if (from.getTime() === to.getTime()) return format.format(from)
   return format.formatRange ? format.formatRange(from, to) : `${format.format(from)} – ${format.format(to)}`
+}
+
+/** Set local date and optional time together, letting Date apply DST rules. */
+export function taskDueAt(date: string, time: string): number {
+  const at = fromDateInputValue(date)
+  if (!at || !time) return at
+  const [hour, minute] = time.split(':').map(Number)
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59)
+    return at
+  const value = new Date(at * 1000)
+  value.setHours(hour, minute, 0, 0)
+  return Math.floor(value.getTime() / 1000)
+}
+
+export function taskDueTime(at: number, hasTime = false): string {
+  if (!at || !hasTime) return ''
+  const value = new Date(at * 1000)
+  return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
 }

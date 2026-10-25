@@ -164,3 +164,22 @@ it('keeps one resize observer while typing and remeasures when width changes', (
     globalThis.ResizeObserver = originalObserver
   }
 })
+
+it('saves an explicit midnight and preserves it when changing the due date', async () => {
+  const { taskDueAt } = await import('../../lib/date')
+  const timed = { ...task, due_at: taskDueAt('2026-06-10', '14:30'), due_has_time: true }
+  const view = render(<TaskEditor task={timed} lists={[]} />)
+  fireEvent.change(view.getByLabelText('Due time'), { target: { value: '00:00' } })
+  await waitFor(() =>
+    expect(
+      updates.some((patch) => patch.due_has_time === true && patch.due_at === taskDueAt('2026-06-10', '00:00')),
+    ).toBe(true),
+  )
+  view.rerender(<TaskEditor task={{ ...timed, due_at: taskDueAt('2026-06-10', '00:00') }} lists={[]} />)
+  fireEvent.change(view.getByLabelText('Due date'), { target: { value: '2026-06-11' } })
+  await waitFor(() =>
+    expect(
+      updates.some((patch) => patch.due_has_time === true && patch.due_at === taskDueAt('2026-06-11', '00:00')),
+    ).toBe(true),
+  )
+})

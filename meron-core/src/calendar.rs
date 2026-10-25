@@ -156,6 +156,87 @@ pub(crate) fn parse_ical(ics: &str) -> Option<ICalendar> {
     }
 }
 
+/// Ignore invitation descriptions, sequence numbers and attendee changes when
+/// deciding whether an existing reminder's schedule has changed.
+pub(crate) fn same_reminder_schedule(left: &str, right: &str) -> bool {
+    if left == right {
+        return true;
+    }
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct Schedule {
+        kind: ICalendarComponentType,
+        entries: Vec<ICalendarEntry>,
+        children: Vec<Schedule>,
+    }
+    fn component(calendar: &ICalendar, index: usize, depth: usize) -> Option<Schedule> {
+        let source = calendar.components.get(index)?;
+        if depth > 16
+            || !matches!(
+                source.component_type,
+                ICalendarComponentType::VCalendar
+                    | ICalendarComponentType::VEvent
+                    | ICalendarComponentType::VTimezone
+                    | ICalendarComponentType::Standard
+                    | ICalendarComponentType::Daylight
+            )
+        {
+            return None;
+        }
+        let mut entries: Vec<_> = source
+            .entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.name,
+                    ICalendarProperty::Uid
+                        | ICalendarProperty::Dtstart
+                        | ICalendarProperty::Rrule
+                        | ICalendarProperty::Rdate
+                        | ICalendarProperty::Exrule
+                        | ICalendarProperty::Exdate
+                        | ICalendarProperty::RecurrenceId
+                        | ICalendarProperty::Status
+                        | ICalendarProperty::Tzid
+                        | ICalendarProperty::Tzoffsetfrom
+                        | ICalendarProperty::Tzoffsetto
+                        | ICalendarProperty::Tzuntil
+                        | ICalendarProperty::TzidAliasOf
+                )
+            })
+            .cloned()
+            .collect();
+        for entry in &mut entries {
+            entry.params.sort();
+            entry.values.sort();
+        }
+        entries.sort();
+        let mut children: Vec<_> = source
+            .component_ids
+            .iter()
+            .filter_map(|id| component(calendar, *id as usize, depth + 1))
+            .collect();
+        children.sort();
+        Some(Schedule {
+            kind: source.component_type.clone(),
+            entries,
+            children,
+        })
+    }
+    let signature = |ics: &str| -> Option<Vec<Schedule>> {
+        let calendar = parse_ical(ics)?;
+        let mut roots: Vec<_> = calendar
+            .components
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.component_type == ICalendarComponentType::VCalendar)
+            .filter_map(|(index, _)| component(&calendar, index, 0))
+            .collect();
+        roots.sort();
+        Some(roots)
+    };
+    matches!((signature(left), signature(right)), (Some(left), Some(right)) if left == right)
+}
+
 pub(crate) fn text_of(component: &ICalendarComponent, prop: ICalendarProperty) -> String {
     component
         .property(&prop)

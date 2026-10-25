@@ -105,7 +105,18 @@ final class IosNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNoti
                 userInfo: iosNotificationThreadTargetUserInfo(target)
             )
         }
+        IosReminders.refresh()
         completionHandler()
+    }
+
+    func userNotificationCenter(
+        _: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let isReminder = notification.request.identifier.hasPrefix("meron-reminder:")
+        if isReminder { IosReminders.refresh() }
+        completionHandler(isReminder ? [.banner, .sound] : [])
     }
 }
 
@@ -113,6 +124,7 @@ enum IosNotificationService {
     static func requestAuthorization(completion: @escaping (Bool) -> Void) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
             DispatchQueue.main.async {
+                if granted { IosReminders.refresh() }
                 completion(granted)
             }
         }
@@ -349,6 +361,7 @@ enum IosBackgroundRefresh {
 
     private static func refreshNow() -> RefreshResult {
         _ = RustCoreBridge.initJson(dataDirectory: IosAppPaths.mobileDataDirectory(), dbKey: IosDbKey.get())
+        defer { IosReminders.refresh() }
         let accountList = invoke(id: 1, method: "account.list", params: [:])
         guard let accounts = accountList["result"] as? [String: Any],
               let accountRows = accounts["accounts"] as? [[String: Any]]
@@ -565,4 +578,182 @@ func iosRefreshSyncRequest(
                 "folders": true,
             ]
     )
+}
+
+/// Publish the next 64 local reminders to iOS, which delivers them even after
+/// the process is suspended. Reconcile only our requests, leaving mail intact.
+/// A serial queue plus generation check prevents an older plan winning a race
+/// with an edit made while the notification center is answering.
+enum IosReminders {
+    private static let queue = DispatchQueue(label: "jp.nonbili.meron.reminders")
+    private static var generation = 0
+    private static let prefix = "meron-reminder:"
+    private static let historyKey = "meron.reminders.scheduled"
+    private static let enabledKey = "meron.reminders.enabled"
+    private static var scheduled = UserDefaults.standard.dictionary(forKey: historyKey) as? [String: Double] ?? [:]
+    private static var lastFailureLogAt: TimeInterval = 0
+    private static var wantedIDs = Set<String>()
+
+    static func allowsScheduling(_ status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .authorized, .provisional, .ephemeral: return true
+        default: return false
+        }
+    }
+
+    struct Selection {
+        let requests: [[String: Any]]
+        let wanted: Set<String>
+        let history: [String: Double]
+    }
+
+    /// Preserve due requests already accepted by iOS, suppress replay, and
+    /// reserve their slots before adding new requests to the 64-request window.
+    static func selectRequests(
+        reminders: [[String: Any]],
+        history: [String: Double],
+        pending: Set<String>,
+        now: TimeInterval
+    ) -> Selection {
+        // Keep an extra day beyond core's look-back to cover fractional seconds
+        // and the delay between fetching a plan and reconciling native requests.
+        let history = history.filter { $0.value >= now - 2 * 86_400 }
+        var retained = Set<String>()
+        for reminder in reminders {
+            guard let key = reminder["key"] as? String,
+                  let at = (reminder["at"] as? NSNumber)?.doubleValue else { continue }
+            let id = prefix + key
+            if at <= now && history[key] != nil && pending.contains(id) {
+                retained.insert(id)
+            }
+        }
+        let requests = Array(reminders.filter {
+            guard let at = ($0["at"] as? NSNumber)?.doubleValue,
+                  let key = $0["key"] as? String else { return false }
+            return at > now || history[key] == nil
+        }.prefix(max(0, 64 - retained.count)))
+        let wanted = retained.union(requests.compactMap { ($0["key"] as? String).map { prefix + $0 } })
+        // A canceled request never becomes a delivery receipt. In particular,
+        // forgetting a future canceled trigger prevents its later acknowledgement
+        // from suppressing the replacement reminder for the same occurrence.
+        let keptHistory = history.filter { key, at in
+            wanted.contains(prefix + key) || (at <= now && !pending.contains(prefix + key))
+        }
+        return Selection(requests: requests, wanted: wanted, history: keptHistory)
+    }
+
+    static func refresh() {
+        queue.async {
+            generation += 1
+            let revision = generation
+            let center = UNUserNotificationCenter.current()
+            center.getNotificationSettings { settings in
+                queue.async {
+                    guard generation == revision else { return }
+                    let enabled = allowsScheduling(settings.authorizationStatus)
+                    let wasEnabled = UserDefaults.standard.bool(forKey: enabledKey)
+                    if !enabled {
+                        UserDefaults.standard.set(false, forKey: enabledKey)
+                        wantedIDs.removeAll()
+                        center.getPendingNotificationRequests { pending in
+                            queue.async {
+                                guard generation == revision else { return }
+                                center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(prefix) })
+                            }
+                        }
+                        return
+                    }
+                    if !wasEnabled {
+                        guard invoke("reminders.skipPast")?["ok"] as? Bool == true else { return }
+                        UserDefaults.standard.set(true, forKey: enabledKey)
+                    }
+                    reconcile(center: center, revision: revision)
+                }
+            }
+        }
+    }
+
+    private static func invoke(_ method: String, params: [String: Any] = [:]) -> [String: Any]? {
+        let request: [String: Any] = ["id": 94, "method": method, "params": params]
+        guard let data = try? JSONSerialization.data(withJSONObject: request),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        let raw = RustCoreBridge.invokeJson(json)
+        guard let response = raw.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: response) as? [String: Any] else { return nil }
+        return envelope["result"] as? [String: Any]
+    }
+
+    private static func logFailure() {
+        let now = Date().timeIntervalSince1970
+        if now - lastFailureLogAt >= 60 {
+            lastFailureLogAt = now
+            IosSyncDiagnosticLog.append("Unable to schedule reminders")
+        }
+    }
+
+    private static func reconcile(center: UNUserNotificationCenter, revision: Int) {
+        center.getPendingNotificationRequests { pending in
+            queue.async {
+                guard generation == revision else { return }
+                let now = Date().timeIntervalSince1970
+                let pendingIDs = Set(pending.map(\.identifier))
+                // Accepted requests no longer pending have already run. Persist
+                // their receipts in one batch so they cannot crowd catch-up
+                // items out of core's next plan or replay after a restart.
+                let finished = scheduled.compactMap { key, at in
+                    at <= now && !pendingIDs.contains(prefix + key) ? key : nil
+                }
+                if !finished.isEmpty {
+                    guard invoke("reminders.acknowledge", params: ["keys": finished])?["ok"] as? Bool == true else {
+                        logFailure()
+                        return
+                    }
+                    for key in finished { scheduled.removeValue(forKey: key) }
+                }
+                guard let result = invoke("reminders.list"),
+                      let reminders = result["reminders"] as? [[String: Any]] else {
+                    logFailure()
+                    return
+                }
+                let selection = selectRequests(reminders: reminders, history: scheduled, pending: pendingIDs, now: Date().timeIntervalSince1970)
+                scheduled = selection.history
+                wantedIDs = selection.wanted
+                UserDefaults.standard.set(scheduled, forKey: historyKey)
+                let stale = pendingIDs.filter { $0.hasPrefix(prefix) && !selection.wanted.contains($0) }
+                center.removePendingNotificationRequests(withIdentifiers: Array(stale))
+                for reminder in selection.requests {
+                    guard let key = reminder["key"] as? String,
+                          let at = reminder["at"] as? NSNumber else { continue }
+                    // The app may have been suspended since this plan was read.
+                    // Leave an already accepted due request to iOS instead of
+                    // replacing it with a fresh one-second alert.
+                    if at.doubleValue <= Date().timeIntervalSince1970 && scheduled[key] != nil { continue }
+                    let content = UNMutableNotificationContent()
+                    content.title = reminder["title"] as? String ?? ""
+                    let kind = reminder["kind"] as? String ?? "calendar"
+                    let label = kind == "tasks" ? String(localized: "tasks.title") : String(localized: "calendar.title")
+                    let location = reminder["body"] as? String ?? ""
+                    content.body = location.isEmpty ? label : label + " · " + location
+                    content.sound = .default
+                    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, at.doubleValue - Date().timeIntervalSince1970), repeats: false)
+                    center.add(UNNotificationRequest(identifier: prefix + key, content: content, trigger: trigger)) { error in
+                        queue.async {
+                            guard wantedIDs.contains(prefix + key) else {
+                                if error == nil { center.removePendingNotificationRequests(withIdentifiers: [prefix + key]) }
+                                return
+                            }
+                            if error == nil {
+                                if scheduled[key] != at.doubleValue {
+                                    scheduled[key] = at.doubleValue
+                                    UserDefaults.standard.set(scheduled, forKey: historyKey)
+                                }
+                            } else {
+                                logFailure()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

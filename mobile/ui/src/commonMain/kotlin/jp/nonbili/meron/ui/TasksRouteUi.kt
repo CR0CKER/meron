@@ -39,8 +39,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -240,9 +242,9 @@ internal fun TasksRouteContent(
             TaskEditDialog(
                 task = task,
                 onDismiss = { editing = null },
-                onSave = { title, notes, dueAt ->
+                onSave = { title, notes, dueAt, dueHasTime ->
                     editing = null
-                    scope.launch { updateTask(task.id, title = title, notes = notes, dueAt = dueAt) }
+                    scope.launch { updateTask(task.id, title = title, notes = notes, dueAt = dueAt, dueHasTime = dueHasTime) }
                 },
                 onOpenMessage = {
                     editing = null
@@ -262,13 +264,15 @@ internal fun TasksRouteContent(
 private fun TaskEditDialog(
     task: TaskSummary,
     onDismiss: () -> Unit,
-    onSave: (title: String, notes: String, dueAt: Long) -> Unit,
+    onSave: (title: String, notes: String, dueAt: Long, dueHasTime: Boolean) -> Unit,
     onOpenMessage: () -> Unit,
 ) {
     var title by remember(task.id) { mutableStateOf(task.title) }
     var notes by remember(task.id) { mutableStateOf(task.notes) }
     var dueAt by remember(task.id) { mutableStateOf(task.dueAt) }
     var pickingDate by remember { mutableStateOf(false) }
+    var pickingTime by remember { mutableStateOf(false) }
+    var dueHasTime by remember(task.id) { mutableStateOf(task.dueHasTime) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -299,8 +303,25 @@ private fun TaskEditDialog(
                         leadingIcon = { Icon(Icons.Filled.Event, contentDescription = null, Modifier.size(18.dp)) },
                     )
                     if (dueAt > 0) {
-                        IconButton(onClick = { dueAt = 0 }) {
+                        IconButton(onClick = {
+                            dueAt = 0
+                            dueHasTime = false
+                        }) {
                             Icon(Icons.Filled.Close, contentDescription = tr("tasks.clearDueDate"), Modifier.size(18.dp))
+                        }
+                    }
+                }
+                if (dueAt > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AssistChip(
+                            onClick = { pickingTime = true },
+                            label = { Text(if (dueHasTime) formatDate(dueAt * 1000, DateStyle.Time) else tr("tasks.dueTime")) },
+                        )
+                        if (dueHasTime) {
+                            IconButton(onClick = {
+                                dueHasTime = false
+                                dueAt = parseTaskDueInput(formatTaskDueInput(dueAt))
+                            }) { Icon(Icons.Filled.Close, contentDescription = tr("tasks.clearDueTime"), Modifier.size(18.dp)) }
                         }
                     }
                 }
@@ -314,20 +335,41 @@ private fun TaskEditDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(title, notes, dueAt) }, enabled = title.isNotBlank()) {
+            TextButton(onClick = { onSave(title, notes, dueAt, dueHasTime) }, enabled = title.isNotBlank()) {
                 Text(tr("buttons.save"))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("buttons.cancel")) } },
     )
 
+    if (pickingTime) {
+        val initial = localDateParts(dueAt * 1000)
+        val picker = rememberTimePickerState(initialHour = if (dueHasTime) initial.hour else 9, initialMinute = if (dueHasTime) initial.minute else 0)
+        AlertDialog(
+            onDismissRequest = { pickingTime = false },
+            title = { Text(tr("tasks.dueTime")) },
+            text = { TimePicker(state = picker) },
+            confirmButton = {
+                TextButton(onClick = {
+                    dueAt = epochSecondsForLocalDateTime(initial.year, initial.month, initial.day, picker.hour, picker.minute)
+                    dueHasTime = true
+                    pickingTime = false
+                }) { Text(tr("buttons.save")) }
+            },
+            dismissButton = { TextButton(onClick = { pickingTime = false }) { Text(tr("buttons.cancel")) } },
+        )
+    }
     if (pickingDate) {
         val pickerState = rememberDatePickerState(initialSelectedDateMillis = taskDueToPickerMillis(dueAt))
         DatePickerDialog(
             onDismissRequest = { pickingDate = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { dueAt = pickerMillisToTaskDue(it) }
+                    pickerState.selectedDateMillis?.let {
+                        val date = localDateParts(pickerMillisToTaskDue(it) * 1000)
+                        val time = localDateParts(dueAt * 1000)
+                        dueAt = epochSecondsForLocalDateTime(date.year, date.month, date.day, if (dueHasTime) time.hour else 0, if (dueHasTime) time.minute else 0)
+                    }
                     pickingDate = false
                 }) { Text(tr("buttons.save")) }
             },

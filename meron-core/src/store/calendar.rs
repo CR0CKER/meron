@@ -121,11 +121,14 @@ pub struct CalendarEvent {
     pub ics: String,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Local schedule-change metadata; excluded from backups and undo payloads.
+    #[serde(skip)]
+    pub reminder_after: i64,
 }
 
 const EVENT_COLUMNS: &str = "id, title, notes, location, start_at, end_at, all_day, recurring,
     rrule, tzid, account, thread_id, message_id, invite_uid, response, ics, created_at, updated_at,
-    recurrence_id";
+    recurrence_id, COALESCE(json_extract(json, '$.reminder_after'), created_at)";
 
 fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<CalendarEvent> {
     Ok(CalendarEvent {
@@ -148,6 +151,7 @@ fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<CalendarEvent> {
         created_at: row.get(16)?,
         updated_at: row.get(17)?,
         recurrence_id: row.get(18)?,
+        reminder_after: row.get(19)?,
     })
 }
 
@@ -243,11 +247,14 @@ pub fn events_between(conn: &Connection, from: i64, to: i64) -> Result<Vec<Calen
 /// survives a replace.
 pub fn save_event(conn: &Connection, event: &CalendarEvent) -> Result<CalendarEvent> {
     let now = now_unix();
+    let invite_schedule_changed = self::event(conn, &event.id)?.is_some_and(|previous| {
+        !crate::calendar::same_reminder_schedule(&previous.ics, &event.ics)
+    });
     conn.execute(
         "INSERT INTO events (id, title, notes, location, start_at, end_at, all_day, recurring,
            rrule, tzid, account, thread_id, message_id, invite_uid, response, ics, created_at, updated_at,
-           recurrence_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?17, ?18)
+           recurrence_id, json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?17, ?18, json_object('reminder_after', ?17))
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title, notes = excluded.notes, location = excluded.location,
            start_at = excluded.start_at, end_at = excluded.end_at, all_day = excluded.all_day,
@@ -255,7 +262,11 @@ pub fn save_event(conn: &Connection, event: &CalendarEvent) -> Result<CalendarEv
            account = excluded.account, thread_id = excluded.thread_id,
            message_id = excluded.message_id, invite_uid = excluded.invite_uid,
            response = excluded.response, ics = excluded.ics, updated_at = excluded.updated_at,
-           recurrence_id = excluded.recurrence_id",
+           recurrence_id = excluded.recurrence_id,
+           json = CASE WHEN events.start_at <> excluded.start_at OR events.all_day <> excluded.all_day
+                         OR events.rrule <> excluded.rrule OR events.tzid <> excluded.tzid OR ?19
+                  THEN json_set(events.json, '$.reminder_after', excluded.updated_at)
+                  ELSE events.json END",
         params![
             event.id,
             event.title,
@@ -275,6 +286,7 @@ pub fn save_event(conn: &Connection, event: &CalendarEvent) -> Result<CalendarEv
             event.ics,
             now,
             event.recurrence_id,
+            invite_schedule_changed,
         ],
     )?;
     Ok(self::event(conn, &event.id)?.unwrap_or_else(|| event.clone()))

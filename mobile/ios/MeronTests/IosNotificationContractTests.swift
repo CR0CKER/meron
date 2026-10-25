@@ -103,4 +103,55 @@ final class IosNotificationContractTests: XCTestCase {
 
         XCTAssertEqual(iosNotificationThreadId(target), "acct#INBOX#t.\(expectedEncoded)")
     }
+
+    func testRemindersRequireNotificationAuthorization() {
+        XCTAssertFalse(IosReminders.allowsScheduling(.notDetermined))
+        XCTAssertFalse(IosReminders.allowsScheduling(.denied))
+        XCTAssertTrue(IosReminders.allowsScheduling(.authorized))
+        XCTAssertTrue(IosReminders.allowsScheduling(.provisional))
+    }
+
+    func testReminderDoesNotReplayAtTheFractionalDayBoundary() {
+        let at = 100_000.0
+        let selection = IosReminders.selectRequests(
+            reminders: [["key": "task:one", "at": at]],
+            history: ["task:one": at],
+            pending: [],
+            now: at + 86_400.5
+        )
+        XCTAssertTrue(selection.requests.isEmpty)
+        XCTAssertEqual(selection.history["task:one"], at)
+    }
+
+    func testDuePendingRemindersKeepTheirSlotsWithoutExceedingTheLimit() {
+        let now = 100_000.0
+        var reminders: [[String: Any]] = [["key": "task:due", "at": now - 1]]
+        reminders += (1...64).map { index -> [String: Any] in
+            ["key": "task:future-\(index)", "at": now + Double(index)]
+        }
+        let selection = IosReminders.selectRequests(
+            reminders: reminders,
+            history: ["task:due": now - 1],
+            pending: ["meron-reminder:task:due"],
+            now: now
+        )
+        XCTAssertEqual(selection.requests.count, 63)
+        XCTAssertEqual(selection.wanted.count, 64)
+        XCTAssertTrue(selection.wanted.contains("meron-reminder:task:due"))
+    }
+
+
+    func testCanceledRequestsDoNotTurnIntoDeliveryReceipts() {
+        let now = 100_000.0
+        let selection = IosReminders.selectRequests(
+            reminders: [["key": "event:new", "at": now + 600]],
+            history: ["event:canceled-future": now + 60, "event:canceled-due": now - 1],
+            pending: ["meron-reminder:event:canceled-future", "meron-reminder:event:canceled-due"],
+            now: now
+        )
+        XCTAssertTrue(selection.history.isEmpty)
+        XCTAssertEqual(selection.requests.count, 1)
+        XCTAssertEqual(selection.wanted, ["meron-reminder:event:new"])
+    }
+
 }

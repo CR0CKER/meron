@@ -78,3 +78,26 @@ describe('formatEventRange', () => {
     expect(formatEventRange(0, 0, false)).toBe('')
   })
 })
+
+// An explicit midnight is a timed deadline; a date-only deadline lasts all day.
+describe('task due times', () => {
+  it('round-trips midnight and a chosen local time', async () => {
+    const { taskDueAt, taskDueTime } = await import('./date')
+    const midnight = taskDueAt('2026-06-10', '00:00')
+    expect(midnight).toBe(fromDateInputValue('2026-06-10'))
+    expect(taskDueTime(midnight, true)).toBe('00:00')
+    expect(taskDueTime(midnight, false)).toBe('')
+    const at = taskDueAt('2026-06-10', '14:35')
+    expect(taskDueTime(at, true)).toBe('14:35')
+    expect(taskDueAt('2026-06-10', '')).toBe(midnight)
+    expect(taskDueAt('', '14:35')).toBe(0)
+  })
+
+  it('marks a timed task overdue immediately after its deadline', async () => {
+    const { taskDueAt } = await import('./date')
+    const due = taskDueAt('2026-06-10', '14:35')
+    expect(taskIsOverdue(due, due * 1000, true)).toBe(false)
+    expect(taskIsOverdue(due, (due + 1) * 1000, true)).toBe(true)
+    expect(taskIsOverdue(due, (due + 1) * 1000, false)).toBe(false)
+  })
+})

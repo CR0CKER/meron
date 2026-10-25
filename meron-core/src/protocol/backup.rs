@@ -29,7 +29,7 @@ pub(crate) fn export_mobile_backup(data_dir: &str, params: &Value) -> Result<Val
 pub(crate) fn import_mobile_backup(data_dir: &str, params: &Value) -> Result<Value, String> {
     let text = req_str(params, "backup")?;
     let passphrase = opt_str(params, "passphrase");
-    with_mobile_db(data_dir, |conn| {
+    let result = with_mobile_db(data_dir, |conn| {
         let data = match crate::backup::parse(&text, Some(&passphrase)) {
             Ok(data) => data,
             Err(err) if crate::backup::needs_passphrase(&err.to_string()) => {
@@ -46,5 +46,10 @@ pub(crate) fn import_mobile_backup(data_dir: &str, params: &Value) -> Result<Val
         // from a process-global slot rather than the DB.
         crate::proxy::load_global(&conn).map_err(|err| format!("{err:#}"))?;
         Ok(summary.to_json())
-    })
+    })?;
+    if result.get("needs_passphrase").is_none() {
+        crate::ffi::emit_event("calendar.changed", json!({ "method": "backup.import" }));
+        crate::ffi::emit_event("tasks.changed", json!({ "method": "backup.import" }));
+    }
+    Ok(result)
 }

@@ -66,16 +66,18 @@ pub(crate) async fn dispatch(
             let account = req_str(p, "account").unwrap_or_default();
             let thread_id = req_str(p, "thread_id").unwrap_or_default();
             let message_id = req_str(p, "message_id").unwrap_or_default();
-            tasks::create_task(
-                &engine.db.lock().unwrap(),
-                &list_id,
-                &title,
-                &notes,
-                due_at,
-                &account,
-                &thread_id,
-                &message_id,
-            )?
+            tasks::mutate_with_due_time(&engine.db.lock().unwrap(), p, |conn| {
+                tasks::create_task(
+                    conn,
+                    &list_id,
+                    &title,
+                    &notes,
+                    due_at,
+                    &account,
+                    &thread_id,
+                    &message_id,
+                )
+            })?
         }
 
         // A patch: an absent field means "leave it alone", so the editor can
@@ -86,14 +88,9 @@ pub(crate) async fn dispatch(
             let notes = p.get("notes").and_then(Value::as_str);
             let due_at = p.get("due_at").and_then(Value::as_i64);
             let list_id = p.get("list_id").and_then(Value::as_str);
-            tasks::update_task(
-                &engine.db.lock().unwrap(),
-                &task_id,
-                title,
-                notes,
-                due_at,
-                list_id,
-            )?
+            tasks::mutate_with_due_time(&engine.db.lock().unwrap(), p, |conn| {
+                tasks::update_task(conn, &task_id, title, notes, due_at, list_id)
+            })?
         }
 
         "tasks.setDone" => {

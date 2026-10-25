@@ -6,7 +6,7 @@ import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
 
 import { useTranslation } from '../../lib/i18n'
-import { fromDateInputValue, toDateInputValue } from '../../lib/date'
+import { taskDueAt, taskDueTime, toDateInputValue } from '../../lib/date'
 import { tasks$, updateTask, type Task, type TaskList } from '../../states/tasks'
 
 function measureNotes(textarea: HTMLTextAreaElement) {
@@ -191,16 +191,35 @@ export function TaskEditor({
               type="date"
               aria-label={t('tasks.dueDate')}
               value={toDateInputValue(task.due_at)}
-              onChange={(event) => void updateTask(task.id, { dueAt: fromDateInputValue(event.target.value) })}
+              onChange={(event) =>
+                void updateTask(task.id, {
+                  dueAt: taskDueAt(event.target.value, taskDueTime(task.due_at, task.due_has_time)),
+                  dueHasTime: !!task.due_has_time && !!event.target.value,
+                })
+              }
               className="min-w-0 bg-transparent py-1.5 text-xs text-primary outline-none"
             />
+            {task.due_at > 0 ? (
+              <input
+                type="time"
+                aria-label={t('tasks.dueTime')}
+                value={taskDueTime(task.due_at, task.due_has_time)}
+                onChange={(event) =>
+                  void updateTask(task.id, {
+                    dueAt: taskDueAt(toDateInputValue(task.due_at), event.target.value),
+                    dueHasTime: !!event.target.value,
+                  })
+                }
+                className="min-w-0 bg-transparent py-1.5 text-xs text-primary outline-none"
+              />
+            ) : null}
             <IconButton
               label={t('tasks.clearDueDate')}
               icon={X}
               size="sm"
               onClick={() => {
                 setAddingDueDate(false)
-                if (task.due_at > 0) void updateTask(task.id, { dueAt: 0 })
+                if (task.due_at > 0) void updateTask(task.id, { dueAt: 0, dueHasTime: false })
               }}
             />
           </div>

@@ -63,6 +63,7 @@ fn task_json(task: &Task) -> Value {
         "title": task.title,
         "notes": task.notes,
         "due_at": task.due_at,
+        "due_has_time": task.due_has_time,
         "completed_at": task.completed_at,
         "done": task.completed_at > 0,
         "sort_order": task.sort_order,
@@ -274,4 +275,31 @@ fn fallback_title(title: &str, fallback: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// Apply the optional time flag to a task mutation's response as well as storage.
+pub fn apply_due_time(conn: &Connection, params: &Value, mut result: Value) -> Result<Value> {
+    if let (Some(has_time), Some(id)) = (
+        params.get("due_has_time").and_then(Value::as_bool),
+        result["task"]["id"].as_str(),
+    ) {
+        let has_time = has_time && result["task"]["due_at"].as_i64().unwrap_or(0) > 0;
+        store::set_task_due_time(conn, id, has_time)?;
+        result["task"]["due_has_time"] = json!(has_time);
+    }
+    Ok(result)
+}
+
+/// Save the date, optional time flag, and other edits as one visible state.
+/// Reminder readers on other connections see either the old task or the new
+/// task, and a failure saving the time flag rolls back the entire mutation.
+pub fn mutate_with_due_time(
+    conn: &Connection,
+    params: &Value,
+    mutation: impl FnOnce(&Connection) -> Result<Value>,
+) -> Result<Value> {
+    let tx = conn.unchecked_transaction()?;
+    let result = apply_due_time(&tx, params, mutation(&tx)?)?;
+    tx.commit()?;
+    Ok(result)
 }

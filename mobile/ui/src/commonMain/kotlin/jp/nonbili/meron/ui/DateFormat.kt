@@ -97,18 +97,20 @@ internal fun formatTaskDueDate(
     nowMillis: Long = currentTimeMillis(),
     sameLocalYear: (Long, Long) -> Boolean = ::isSameLocalYear,
     dateFormatter: (Long, DateStyle) -> String = ::formatDate,
+    hasTime: Boolean = false,
 ): String {
     if (epochSeconds <= 0) return ""
     val thenMillis = epochSeconds * 1000
     val style = if (sameLocalYear(thenMillis, nowMillis)) DateStyle.MonthDay else DateStyle.MonthDayYear
-    return dateFormatter(thenMillis, style)
+    return dateFormatter(thenMillis, style) + if (hasTime) " " + dateFormatter(thenMillis, DateStyle.Time) else ""
 }
 
 /** Whether a due date has already passed, so the row can call it out. */
 internal fun taskIsOverdue(
     dueAtSeconds: Long,
     nowMillis: Long = currentTimeMillis(),
-): Boolean = dueAtSeconds > 0 && dueAtSeconds * 1000 < nowMillis && !isSameLocalDate(dueAtSeconds * 1000, nowMillis)
+    hasTime: Boolean = false,
+): Boolean = dueAtSeconds > 0 && dueAtSeconds * 1000 < nowMillis && (hasTime || !isSameLocalDate(dueAtSeconds * 1000, nowMillis))
 
 /**
  * When a calendar event happens: its day (or days), and its times unless it

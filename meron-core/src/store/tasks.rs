@@ -35,6 +35,11 @@ pub struct Task {
     pub title: String,
     pub notes: String,
     pub due_at: i64,
+    /// Whether due_at includes a user-selected time (including midnight).
+    pub due_has_time: bool,
+    /// Last schedule change, independent of title/notes edits. Local metadata.
+    #[serde(skip)]
+    pub reminder_after: i64,
     pub completed_at: i64,
     pub sort_order: i64,
     /// Mail link, all three empty for a task the user typed from scratch.
@@ -150,10 +155,10 @@ pub fn restore_task_list(conn: &Connection, list: &TaskList) -> Result<()> {
 /// Put a task back exactly as it was — same id, same position in the list, same
 /// completion time — so an undo is indistinguishable from never having deleted.
 pub fn restore_task(conn: &Connection, task: &Task) -> Result<()> {
-    conn.execute(
+    let added = conn.execute(
         "INSERT OR IGNORE INTO tasks(id, list_id, title, notes, due_at, completed_at, sort_order,
                                      account, thread_id, message_id, json, created_at, updated_at)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '{}', ?11, ?12)",
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, json_object('reminder_after', ?12), ?11, ?12)",
         params![
             task.id,
             task.list_id,
@@ -169,6 +174,9 @@ pub fn restore_task(conn: &Connection, task: &Task) -> Result<()> {
             now_unix(),
         ],
     )?;
+    if added > 0 {
+        set_task_due_time(conn, &task.id, task.due_has_time)?;
+    }
     Ok(())
 }
 
@@ -214,6 +222,8 @@ fn read_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
         title: row.get(2)?,
         notes: row.get(3)?,
         due_at: row.get(4)?,
+        due_has_time: row.get::<_, i64>(12)? != 0,
+        reminder_after: row.get(13)?,
         completed_at: row.get(5)?,
         sort_order: row.get(6)?,
         account: row.get(7)?,
@@ -225,7 +235,7 @@ fn read_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
 }
 
 const TASK_COLUMNS: &str = "id, list_id, title, notes, due_at, completed_at, sort_order,
-     account, thread_id, message_id, created_at, updated_at";
+     account, thread_id, message_id, created_at, updated_at, COALESCE(json_extract(json, '$.due_has_time'), 0), COALESCE(json_extract(json, '$.reminder_after'), created_at)";
 
 /// Items in a list, completed ones last and most-recently-completed first —
 /// what Google Tasks shows under "Completed" and what a user scanning for what
@@ -346,6 +356,8 @@ pub fn insert_task(
         title: title.trim().to_string(),
         notes: notes.to_string(),
         due_at: due_at.max(0),
+        due_has_time: false,
+        reminder_after: now,
         completed_at: 0,
         sort_order: top,
         account: account.to_string(),
@@ -381,7 +393,11 @@ pub fn update_task(
     }
     if let Some(due_at) = due_at {
         conn.execute(
-            "UPDATE tasks SET due_at = ?2, updated_at = ?3 WHERE id = ?1",
+            "UPDATE tasks SET due_at = ?2, updated_at = ?3,
+                json = json_set(
+                    CASE WHEN ?2 = 0 THEN json_remove(json, '$.due_has_time') ELSE json END,
+                    '$.reminder_after', CASE WHEN due_at <> ?2 THEN ?3 ELSE COALESCE(json_extract(json, '$.reminder_after'), created_at) END
+                ) WHERE id = ?1",
             params![id, due_at.max(0), now],
         )?;
     }
@@ -452,4 +468,16 @@ pub fn clear_completed(conn: &Connection, list_id: &str) -> Result<u32> {
         params![list_id],
     )?;
     Ok(removed as u32)
+}
+
+/// The existing JSON extension column keeps older backups compatible.
+pub fn set_task_due_time(conn: &Connection, id: &str, has_time: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET json = json_set(json, '$.due_has_time', ?2, '$.reminder_after',
+            CASE WHEN COALESCE(json_extract(json, '$.due_has_time'), 0) <> ?2 THEN ?3
+                 ELSE COALESCE(json_extract(json, '$.reminder_after'), created_at) END
+         ) WHERE id = ?1",
+        params![id, has_time, now_unix()],
+    )?;
+    Ok(())
 }

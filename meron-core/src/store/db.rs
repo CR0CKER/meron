@@ -553,6 +553,9 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
         migrate_v19(&tx)?;
     }
 
+    if version < 20 {
+        migrate_v20(&tx)?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -1203,4 +1206,16 @@ mod tests {
         drop(open_at(&path).unwrap());
         assert!(!is_encrypted_database(&path), "plaintext file");
     }
+}
+
+/// Local notification delivery receipts; deliberately excluded from backups.
+fn migrate_v20(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS reminder_deliveries (
+            key TEXT PRIMARY KEY,
+            delivered_at INTEGER NOT NULL
+         );
+         PRAGMA user_version = 20;",
+    )?;
+    Ok(())
 }

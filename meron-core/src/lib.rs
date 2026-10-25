@@ -19,6 +19,7 @@ pub mod parse;
 pub mod protocol;
 pub mod proxy;
 pub mod quote;
+pub mod reminders;
 pub mod reply;
 pub mod rss;
 pub mod search_query;

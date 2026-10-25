@@ -32,6 +32,9 @@ pub(crate) async fn dispatch(
         "mcp.delete" => meron_core::mcp_mail::delete(engine, p.clone()).await,
         "mcp.organize" => meron_core::mcp_mail::organize(engine, p.clone()).await,
         "ping" => Ok(ping_response()),
+        "reminders.list" | "reminders.claim" | "reminders.skipPast" | "reminders.acknowledge" => {
+            meron_core::reminders::dispatch(&engine.db.lock().unwrap(), &req.method, p)
+        }
         "search.parse" | "search.build" => meron_core::search_query::handle_request(&req.method, p)
             .ok_or_else(|| anyhow::anyhow!("bad {} request", req.method)),
         "avatar.resolve" => {

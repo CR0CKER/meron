@@ -594,6 +594,8 @@ pub fn event_json(event: &CalendarEvent) -> Value {
         "thread_id": event.thread_id,
         "message_id": event.message_id,
         "response": event.response,
+        "created_at": event.created_at,
+        "reminder_after": event.reminder_after,
         "source": if event.invite_uid.is_empty() { "event" } else { "invite" },
     })
 }
@@ -648,7 +650,11 @@ pub fn events_payload(conn: &Connection, from: i64, to: i64, include_tasks: bool
         // either side and keep the ones whose day falls in the range.
         for task in store::tasks_due_between(conn, from - DAY, to + DAY)? {
             let day = local_day_as_utc(task.due_at);
-            if day < to && day + DAY > from {
+            if task.due_has_time {
+                if task.due_at >= from && task.due_at < to {
+                    items.push((task.due_at, task_json(&task, day)));
+                }
+            } else if day < to && day + DAY > from {
                 items.push((day, task_json(&task, day)));
             }
         }
@@ -669,9 +675,9 @@ fn task_json(task: &Task, day: i64) -> Value {
         "title": task.title,
         "notes": task.notes,
         "location": "",
-        "start": day,
-        "end": day + DAY,
-        "all_day": true,
+        "start": if task.due_has_time { task.due_at } else { day },
+        "end": if task.due_has_time { task.due_at } else { day + DAY },
+        "all_day": !task.due_has_time,
         "recurring": false,
         "repeat": "",
         "list_id": task.list_id,

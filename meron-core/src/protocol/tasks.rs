@@ -86,16 +86,18 @@ pub(crate) fn dispatch_mobile_tasks(
             let thread_id = opt_str(params, "thread_id");
             let message_id = opt_str(params, "message_id");
             with_mobile_db(data_dir, |conn| {
-                err_str(tasks::create_task(
-                    &conn,
-                    &list_id,
-                    &title,
-                    &notes,
-                    due_at,
-                    &account,
-                    &thread_id,
-                    &message_id,
-                ))
+                err_str(tasks::mutate_with_due_time(&conn, params, |conn| {
+                    tasks::create_task(
+                        conn,
+                        &list_id,
+                        &title,
+                        &notes,
+                        due_at,
+                        &account,
+                        &thread_id,
+                        &message_id,
+                    )
+                }))
             })
         }
 
@@ -109,9 +111,9 @@ pub(crate) fn dispatch_mobile_tasks(
             let due_at = params.get("due_at").and_then(Value::as_i64);
             let list_id = params.get("list_id").and_then(Value::as_str);
             with_mobile_db(data_dir, |conn| {
-                err_str(tasks::update_task(
-                    &conn, &task_id, title, notes, due_at, list_id,
-                ))
+                err_str(tasks::mutate_with_due_time(&conn, params, |conn| {
+                    tasks::update_task(conn, &task_id, title, notes, due_at, list_id)
+                }))
             })
         }
 

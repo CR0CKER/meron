@@ -13,6 +13,13 @@ class MeronApplication : Application() {
         // Native DNS discovery needs the application Context before any core
         // command can reach Hickory's Android system resolver.
         MeronCoreNative.initializeAndroidContext(this)
+        MeronCoreNative.addCoreEventListener { json ->
+            val name = org.json.JSONObject(json).optString("event")
+            if (name in listOf("ready", "calendar.changed", "tasks.changed", "mail.synced")) {
+                AndroidReminders.refresh(this)
+            }
+        }
+        AndroidReminders.refresh(this)
         AndroidCrashLog.install(this)
         AndroidSyncDiagnosticLog.installUiLogSink(this)
     }

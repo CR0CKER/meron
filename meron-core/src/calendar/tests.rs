@@ -253,3 +253,30 @@ fn message_refs_split_on_the_first_and_last_hash() {
     assert_eq!(parse_message_ref("acct#INBOX#t.abc"), None);
     assert_eq!(parse_message_ref("nohash"), None);
 }
+
+#[test]
+fn reminder_schedule_keeps_timezone_rules_with_their_timezone_ids() {
+    let zone = |id, offset| {
+        format!(
+            "BEGIN:VTIMEZONE\r\nTZID:{id}\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:{offset}\r\nTZOFFSETTO:{offset}\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+        )
+    };
+    let a = zone("A", "+0100");
+    let b = zone("B", "+0200");
+    let calendar = |zones| {
+        format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{zones}BEGIN:VEVENT\r\nUID:one\r\nDTSTART;TZID=A:20261026T100000\r\nSUMMARY:Original\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+    };
+    let original = calendar(format!("{a}{b}"));
+    assert!(same_reminder_schedule(
+        &original,
+        &calendar(format!("{b}{a}"))
+    ));
+    assert!(same_reminder_schedule(
+        &original,
+        &original.replace("SUMMARY:Original", "SUMMARY:Changed")
+    ));
+    let changed = calendar(format!("{}{}", zone("A", "+0200"), zone("B", "+0100")));
+    assert!(!same_reminder_schedule(&original, &changed));
+}

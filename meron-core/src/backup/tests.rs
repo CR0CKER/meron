@@ -803,6 +803,10 @@ fn backup_round_trips_task_lists() {
         "<boiler@example.com>",
     )
     .unwrap();
+    let timed_id = store::tasks_for_list(&source, &list, true).unwrap()[0]
+        .id
+        .clone();
+    store::set_task_due_time(&source, &timed_id, true).unwrap();
     let done =
         crate::tasks::create_task(&source, &groceries.id, "Milk", "", 0, "", "", "").unwrap();
     crate::tasks::set_done(&source, done["task"]["id"].as_str().unwrap(), true).unwrap();
@@ -827,6 +831,7 @@ fn backup_round_trips_task_lists() {
     assert_eq!(tasks[0].title, "Reply to the landlord");
     assert_eq!(tasks[0].notes, "about the boiler");
     assert_eq!(tasks[0].due_at, 1_700_000_000);
+    assert!(tasks[0].due_has_time);
     assert_eq!(tasks[0].thread_id, "acct1#thread#4");
     assert_eq!(tasks[0].message_id, "<boiler@example.com>");
 
