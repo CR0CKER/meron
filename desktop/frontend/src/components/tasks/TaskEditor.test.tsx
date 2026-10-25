@@ -183,3 +183,51 @@ it('saves an explicit midnight and preserves it when changing the due date', asy
     ).toBe(true),
   )
 })
+
+it('adds a time from the clock button and clears the time before the date', async () => {
+  const { taskDueAt } = await import('../../lib/date')
+  const dated = { ...task, due_at: taskDueAt('2026-06-10', '') }
+  const view = render(<TaskEditor task={dated} lists={[]} />)
+  expect(view.queryByLabelText('Due time', { selector: 'input' })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'Due time' }))
+  await waitFor(() =>
+    expect(
+      updates.some((patch) => patch.due_has_time === true && patch.due_at === taskDueAt('2026-06-10', '09:00')),
+    ).toBe(true),
+  )
+  view.rerender(
+    <TaskEditor task={{ ...dated, due_at: taskDueAt('2026-06-10', '09:00'), due_has_time: true }} lists={[]} />,
+  )
+  updates.length = 0
+  fireEvent.click(view.getByRole('button', { name: 'Clear due time' }))
+  await waitFor(() =>
+    expect(updates).toEqual([{ task_id: 'task', due_has_time: false, due_at: taskDueAt('2026-06-10', '') }]),
+  )
+})
+
+it('keeps a due time while the time field is only partly filled', async () => {
+  const { taskDueAt } = await import('../../lib/date')
+  const timed = { ...task, due_at: taskDueAt('2026-06-10', '14:30'), due_has_time: true }
+  const view = render(<TaskEditor task={timed} lists={[]} />)
+  const time = view.getByLabelText('Due time') as HTMLInputElement
+  fireEvent.change(time, { target: { value: '' } })
+  fireEvent.blur(time)
+  await act(async () => {})
+  expect(updates).toHaveLength(0)
+  expect(time.value).toBe('14:30')
+})
+
+it('saves a return to the stored time while another save is pending', async () => {
+  const { taskDueAt } = await import('../../lib/date')
+  const timed = { ...task, due_at: taskDueAt('2026-06-10', '14:30'), due_has_time: true }
+  const view = render(<TaskEditor task={timed} lists={[]} />)
+  const time = view.getByLabelText('Due time')
+  fireEvent.change(time, { target: { value: '15:30' } })
+  fireEvent.change(time, { target: { value: '14:30' } })
+  await waitFor(() =>
+    expect(updates.map((patch) => patch.due_at)).toEqual([
+      taskDueAt('2026-06-10', '15:30'),
+      taskDueAt('2026-06-10', '14:30'),
+    ]),
+  )
+})

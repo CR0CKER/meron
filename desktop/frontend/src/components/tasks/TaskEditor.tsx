@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { CalendarDays, X } from 'lucide-react'
+import { CalendarDays, Clock, X } from 'lucide-react'
 
 import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
@@ -39,6 +39,13 @@ export function TaskEditor({
   const rootRef = useRef<HTMLDivElement>(null)
   const dueRef = useRef<HTMLInputElement>(null)
   const [addingDueDate, setAddingDueDate] = useState(false)
+  // WebKitGTK's empty time field shows a made-up time and reports no edits, so
+  // the field only appears once a time is set, and keeps a draft while typing:
+  // a complete time saves at once, a half-cleared one reverts on blur.
+  const savedDueTime = taskDueTime(task.due_at, task.due_has_time)
+  const [dueTime, setDueTime] = useState(savedDueTime)
+  // The last time sent, so going back to the stored value mid-save still saves.
+  const requestedDueTime = useRef(savedDueTime)
 
   useLayoutEffect(() => {
     const textarea = notesRef.current
@@ -75,6 +82,21 @@ export function TaskEditor({
     setNotes(task.notes)
     setAddingDueDate(false)
   }, [task.id])
+
+  useEffect(() => {
+    requestedDueTime.current = savedDueTime
+    setDueTime(savedDueTime)
+  }, [savedDueTime])
+
+  function saveDueTime(value: string) {
+    if (value === requestedDueTime.current) return
+    requestedDueTime.current = value
+    setDueTime(value)
+    void updateTask(task.id, {
+      dueAt: taskDueAt(toDateInputValue(task.due_at), value),
+      dueHasTime: !!value,
+    })
+  }
 
   function finishEditing() {
     // Save the focused field before removing it from the row. Focus that has
@@ -199,25 +221,28 @@ export function TaskEditor({
               }
               className="min-w-0 bg-transparent py-1.5 text-xs text-primary outline-none"
             />
-            {task.due_at > 0 ? (
+            {savedDueTime ? (
               <input
                 type="time"
                 aria-label={t('tasks.dueTime')}
-                value={taskDueTime(task.due_at, task.due_has_time)}
-                onChange={(event) =>
-                  void updateTask(task.id, {
-                    dueAt: taskDueAt(toDateInputValue(task.due_at), event.target.value),
-                    dueHasTime: !!event.target.value,
-                  })
-                }
+                value={dueTime}
+                onChange={(event) => {
+                  setDueTime(event.target.value)
+                  if (event.target.value) saveDueTime(event.target.value)
+                }}
+                onBlur={() => setDueTime(savedDueTime)}
                 className="min-w-0 bg-transparent py-1.5 text-xs text-primary outline-none"
               />
+            ) : task.due_at > 0 ? (
+              <IconButton label={t('tasks.dueTime')} icon={Clock} size="sm" onClick={() => saveDueTime('09:00')} />
             ) : null}
+            {/* With a time set, the first clear drops just the time. */}
             <IconButton
-              label={t('tasks.clearDueDate')}
+              label={savedDueTime ? t('tasks.clearDueTime') : t('tasks.clearDueDate')}
               icon={X}
               size="sm"
               onClick={() => {
+                if (savedDueTime) return saveDueTime('')
                 setAddingDueDate(false)
                 if (task.due_at > 0) void updateTask(task.id, { dueAt: 0, dueHasTime: false })
               }}
