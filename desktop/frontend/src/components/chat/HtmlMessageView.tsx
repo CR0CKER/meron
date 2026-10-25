@@ -290,7 +290,13 @@ export function HtmlMessageView({
 
   if (viewMode === 'plain' || !html) {
     return (
-      <div ref={textRef} onScroll={saveScrollPosition} className="relative min-h-0 flex-1 overflow-y-auto bg-chat">
+      <div
+        ref={textRef}
+        data-message-scroller
+        tabIndex={-1}
+        onScroll={saveScrollPosition}
+        className="relative min-h-0 flex-1 overflow-y-auto bg-chat outline-none"
+      >
         {header}
         <div className="max-w-[760px] space-y-5 px-5 pb-10 pt-6">
           {attachmentImages.length > 0 && (
@@ -313,7 +319,13 @@ export function HtmlMessageView({
       style={{ backgroundColor: readerTheme.pageBg }}
       onMouseLeave={() => setHoveredLink(null)}
     >
-      <div ref={textRef} className="min-h-0 flex-1 overflow-y-auto" onScroll={handleFrameScroll}>
+      <div
+        ref={textRef}
+        data-message-scroller
+        tabIndex={-1}
+        className="min-h-0 flex-1 overflow-y-auto outline-none"
+        onScroll={handleFrameScroll}
+      >
         <div ref={contentRef} className="flex flex-col">
           {header}
           <HtmlFrame

@@ -59,6 +59,9 @@ export function ThreadListItem({
       className={clsx('group relative', draggable && 'cursor-grab active:cursor-grabbing', className)}
     >
       <button
+        data-thread-row
+        data-active={active || undefined}
+        data-bulk-selectable={bulkSelectable || undefined}
         className={clsx(
           // Rows are inset pills, told apart by spacing rather than divider
           // lines; unread weight and the count badge mark unread, not a tint.

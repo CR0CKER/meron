@@ -7,6 +7,7 @@ import { ui$ } from '../../states/ui'
 import {
   chordFromEvent,
   formatShortcut,
+  formatShortcutAliases,
   isMac,
   SHORTCUT_GROUPS,
   SHORTCUT_LABELS,
@@ -176,6 +177,16 @@ function ShortcutRow({
               onClick={onReset}
             />
           )}
+          {/* Fixed extra chords (Alt+↓ for the next thread) show beside the
+              rebindable one, so the sheet lists every way in. */}
+          {formatShortcutAliases(id).map((parts) => (
+            <span
+              key={parts.join('+')}
+              className="rounded border border-border px-1.5 py-0.5 text-[0.6875rem] font-medium text-secondary"
+            >
+              {parts.join(isMac ? '' : '+')}
+            </span>
+          ))}
           <button
             type="button"
             aria-label={t('shortcuts.rebind')}

@@ -66,4 +66,102 @@ describe('AppHotkeys', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(calls).toContain('mail.archive')
   })
+
+  it('steps threads with Alt+arrows from the message, but not from a text field', () => {
+    mail$.threads.set([
+      { id: 'acct#INBOX#7', thread_id: 'acct#INBOX#7', account_id: 'acct', folder_id: 'inbox' } as any,
+      { id: 'acct#INBOX#8', thread_id: 'acct#INBOX#8', account_id: 'acct', folder_id: 'inbox' } as any,
+    ])
+    const view = render(
+      <>
+        <AppHotkeys />
+        <textarea aria-label="reply" />
+        <div data-message-scroller tabIndex={-1}>
+          <p>body</p>
+        </div>
+      </>,
+    )
+    fireEvent.keyDown(view.getByLabelText('reply'), { key: 'ArrowDown', altKey: true })
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#7')
+
+    fireEvent.keyDown(view.getByText('body'), { key: 'ArrowDown', altKey: true })
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#8')
+  })
+
+  it('hands focus back to the selected thread row on Esc in the message', () => {
+    const view = render(
+      <>
+        <AppHotkeys />
+        <section data-thread-list>
+          <button data-thread-row>other</button>
+          <button data-thread-row data-active>
+            selected
+          </button>
+        </section>
+        <div data-message-scroller tabIndex={-1}>
+          <p>body</p>
+        </div>
+      </>,
+    )
+    // happy-dom lays nothing out; any rect counts the row as on screen.
+    view.getByText('selected').getClientRects = () => [{}] as unknown as DOMRectList
+    const notCanceled = fireEvent.keyDown(view.getByText('body'), { key: 'Escape' })
+    expect(notCanceled).toBe(false)
+    expect(document.activeElement).toBe(view.getByText('selected'))
+  })
+
+  it('keeps the arrow keys on the message after its focused card unmounts', () => {
+    mail$.threads.set([
+      { id: 'acct#INBOX#7', thread_id: 'acct#INBOX#7', account_id: 'acct', folder_id: 'inbox' } as any,
+      { id: 'acct#INBOX#8', thread_id: 'acct#INBOX#8', account_id: 'acct', folder_id: 'inbox' } as any,
+    ])
+    const view = render(
+      <>
+        <AppHotkeys />
+        <div data-message-scroller data-testid="scroller" tabIndex={-1}>
+          <button>card</button>
+        </div>
+      </>,
+    )
+    const scroller = view.getByTestId('scroller')
+    // happy-dom lays nothing out; any rect counts the scroller as on screen.
+    scroller.getClientRects = () => [{}] as unknown as DOMRectList
+    const scrolls: unknown[] = []
+    scroller.scrollBy = ((options: unknown) => void scrolls.push(options)) as typeof scroller.scrollBy
+
+    // Expanding a message swaps its card, dropping focus to <body>.
+    const card = view.getByText('card')
+    card.focus()
+    card.remove()
+    expect(document.activeElement).toBe(document.body)
+    expect(fireEvent.keyDown(document.body, { key: 'ArrowDown' })).toBe(false)
+    expect(scrolls).toHaveLength(1)
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#7')
+
+    // A click outside the message hands the arrows back to the list.
+    fireEvent.pointerDown(document.body)
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#8')
+  })
+
+  it('leaves the arrow keys to the message while focus is in it', () => {
+    mail$.threads.set([
+      { id: 'acct#INBOX#7', thread_id: 'acct#INBOX#7', account_id: 'acct', folder_id: 'inbox' } as any,
+      { id: 'acct#INBOX#8', thread_id: 'acct#INBOX#8', account_id: 'acct', folder_id: 'inbox' } as any,
+    ])
+    const view = render(
+      <>
+        <AppHotkeys />
+        <div data-message-scroller tabIndex={-1}>
+          <p>body</p>
+        </div>
+      </>,
+    )
+    const notCanceled = fireEvent.keyDown(view.getByText('body'), { key: 'ArrowDown' })
+    expect(notCanceled).toBe(true)
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#7')
+
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    expect(ui$.selectedThread.peek()).toBe('acct#INBOX#8')
+  })
 })

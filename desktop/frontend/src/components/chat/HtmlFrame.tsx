@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import type { CSSProperties, Ref } from 'react'
 import { clearMediaSession } from '../../lib/mediaSession'
-import { chordFromEvent, shortcutForChord } from '../../lib/shortcuts'
+import { chordFromEvent, isArrowKey, shortcutForChord, spaceActivatesTarget } from '../../lib/shortcuts'
 import { openExternal } from '../../lib/native'
 import { mediaKeyFromSrc } from './messageHelpers'
 import { trackInternalDrags } from '../../lib/useFileDrop'
@@ -291,19 +291,25 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
       doc.addEventListener('keydown', (event) => {
         // Forward the chords the app can act on: ⌘/Ctrl (or Alt) shortcuts such
         // as ⌘/Ctrl+F, which the parent's keydown listener never sees while
-        // focus is in the frame, plus bare Up/Down for list navigation and the
-        // single-key shortcuts (H, R, …), so they keep working after a click
-        // into the message.
-        const chord = chordFromEvent(event)
+        // focus is in the frame, plus bare Up/Down to scroll the message, Esc
+        // to go back to the thread list, and the single-key shortcuts (H, R, …),
+        // so they keep working after a click into the message.
+        const isBareEscape =
+          event.key === 'Escape' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        // Esc can't be bound, so chordFromEvent has no chord for it.
+        const chord = isBareEscape ? { key: 'Escape' } : chordFromEvent(event)
         if (!chord) return
         const isBareArrow =
           !chord.mod && !chord.alt && !chord.shift && (chord.key === 'ArrowDown' || chord.key === 'ArrowUp')
         const isBare = !chord.mod && !chord.alt
-        if (isBare && !isBareArrow && !shortcutForChord(chord)) return
+        if (isBare && !isBareArrow && !isBareEscape && !shortcutForChord(chord)) return
         // Only the unmodified keys must stand down for a field inside the
-        // message (they type, or move the caret); ⌘/Ctrl chords still belong
-        // to the app.
-        if (isBare && isEditableFrameTarget(event.target)) return
+        // message (they type, or move the caret), and arrow chords, which move
+        // the caret by word or paragraph; ⌘/Ctrl chords still belong to the app.
+        if ((isBare || isArrowKey(chord.key)) && isEditableFrameTarget(event.target)) return
+        // A control in the message keeps Space for itself. Checked here: the
+        // parent only sees the forwarded chord, not what had focus.
+        if (spaceActivatesTarget(event.key, event.target)) return
 
         const forwarded = new CustomEvent('meron.frameKeyDown', {
           cancelable: true,

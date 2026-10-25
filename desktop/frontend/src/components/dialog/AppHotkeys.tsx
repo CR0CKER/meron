@@ -33,11 +33,14 @@ import { openComposeTab, openReplyInFullEditor, closeMessageTab, toggleConversat
 import { compose$ } from '../../states/composeState'
 import { calendar$ } from '../../states/calendar'
 import { handleEditUndoKeyDown } from '../../lib/editUndo'
+import { inMessageScroller, pageOpenMessage, stepOpenMessage } from '../chat/messagePaging'
 import {
+  isArrowKey,
   isBareKeystroke,
   isMac,
   isTyping,
   matchShortcut,
+  spaceActivatesTarget,
   shortcutForChord,
   RAIL_SHORTCUT_IDS,
   type Chord,
@@ -78,6 +81,8 @@ function chatArrowNavigationActive(): boolean {
 const MAIL_VIEW_ACTIONS = new Set<ShortcutId>([
   'thread.next',
   'thread.prev',
+  'message.pageDown',
+  'message.pageUp',
   'thread.archive',
   'thread.star',
   'thread.unread',
@@ -105,10 +110,25 @@ function selectAdjacentThreadForView(delta: number) {
 }
 
 function handleKanbanArrowNavigation(key: string, target: EventTarget | null): boolean {
-  if ((key !== 'ArrowDown' && key !== 'ArrowUp') || isTyping(target) || !kanbanArrowNavigationActive()) {
+  if (
+    (key !== 'ArrowDown' && key !== 'ArrowUp') ||
+    isTyping(target) ||
+    focusInMessage(target) ||
+    !kanbanArrowNavigationActive()
+  ) {
     return false
   }
   selectAdjacentKanbanThread(key === 'ArrowDown' ? 1 : -1)
+  return true
+}
+
+// Esc in the message hands the keyboard back to the thread list, where the
+// plain arrow keys step threads again. Nothing to do when the list isn't on
+// screen (a narrow window showing only the conversation).
+function focusActiveThreadRow(): boolean {
+  const row = document.querySelector<HTMLElement>('[data-thread-list] [data-thread-row][data-active]')
+  if (!row || row.getClientRects().length === 0) return false
+  row.focus()
   return true
 }
 
@@ -125,6 +145,32 @@ function bodyFocused(): boolean {
 
 function clearThreadListDeleteScope(event: Event) {
   if (!inThreadList(event.target as Element | null)) threadListDeleteScope = false
+}
+
+// Whether the reader last clicked or focused into the message, where the plain
+// arrow keys scroll it rather than step the thread list. Tracked rather than
+// read off document.activeElement alone: focus falls to <body> whenever the
+// focused element unmounts — expanding or collapsing a message swaps its card
+// — and the arrows must not snap back to the list then.
+let keyboardInMessage = false
+
+function trackKeyboardRegion(event: Event) {
+  keyboardInMessage = inMessageScroller(event.target)
+}
+
+function focusInMessage(target: EventTarget | null): boolean {
+  return inMessageScroller(target) || (keyboardInMessage && bodyFocused())
+}
+
+// Arrow up/down in the message scroll it. While focus is inside, the browser
+// does that on its own; once focus has fallen to <body>, step it here.
+function handleMessageArrowStep(key: string): boolean {
+  if ((key !== 'ArrowDown' && key !== 'ArrowUp') || !keyboardInMessage || !bodyFocused()) return false
+  if (modalOpen() || mailCovered()) return false
+  if (stepOpenMessage(key === 'ArrowDown' ? 1 : -1)) return true
+  // The message has gone (the conversation closed): the list gets them back.
+  keyboardInMessage = false
+  return false
 }
 
 // Delete is destructive, so unlike the other bare shortcuts it requires focus
@@ -157,9 +203,15 @@ function handleDeleteKey(key: string, target: EventTarget | null): boolean {
   return true
 }
 
-// Arrow up/down steps through the chat thread list, just like j/k.
+// Arrow up/down steps through the chat thread list, just like j/k — unless
+// the reader is in the message, where they scroll it (handleMessageArrowStep).
 function handleChatArrowNavigation(key: string, target: EventTarget | null): boolean {
-  if ((key !== 'ArrowDown' && key !== 'ArrowUp') || isTyping(target) || !chatArrowNavigationActive()) {
+  if (
+    (key !== 'ArrowDown' && key !== 'ArrowUp') ||
+    isTyping(target) ||
+    focusInMessage(target) ||
+    !chatArrowNavigationActive()
+  ) {
     return false
   }
   selectAdjacentThread(key === 'ArrowDown' ? 1 : -1)
@@ -196,7 +248,7 @@ function handleRailShortcut(action: ShortcutId): boolean {
 /**
  * Mounts the global keyboard shortcuts. Renders nothing. ⌘/Ctrl-modified
  * shortcuts work everywhere (even while typing); bare single-key shortcuts
- * (j/k/e/s/u/#/i/r) fire in the chat and kanban views when not typing and no
+ * (j/k/e/s/u/#/i/r, Space) fire in the chat and kanban views when not typing and no
  * modal is open. Per-palette navigation (arrows/enter/esc) lives inside
  * CommandPalette.
  */
@@ -224,6 +276,19 @@ export function AppHotkeys() {
         return
       }
 
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        focusInMessage(event.target) &&
+        !isTyping(event.target) &&
+        !modalOpen() &&
+        !mailCovered() &&
+        focusActiveThreadRow()
+      ) {
+        event.preventDefault()
+        return
+      }
+
       const action = matchShortcut(event)
 
       // Undo/redo inside plain text fields, which the Linux webview leaves
@@ -240,7 +305,8 @@ export function AppHotkeys() {
         !event.ctrlKey &&
         !event.altKey &&
         !event.shiftKey &&
-        (handleKanbanArrowNavigation(event.key, event.target) ||
+        (handleMessageArrowStep(event.key) ||
+          handleKanbanArrowNavigation(event.key, event.target) ||
           handleChatArrowNavigation(event.key, event.target) ||
           handleDeleteKey(event.key, event.target))
       ) {
@@ -260,8 +326,9 @@ export function AppHotkeys() {
       if (ui$.paletteOpen.peek() && action !== 'palette.open') return
 
       // Gate single-key shortcuts: never steal a keystroke from a text field,
-      // and only act in the chat view with no modal open.
-      if (isBareKeystroke(event)) {
+      // and only act in the chat view with no modal open. Arrow chords too:
+      // Alt/Option+arrow moves the caret by word or paragraph.
+      if (isBareKeystroke(event) || isArrowKey(event.key)) {
         if (isTyping(event.target) || !bareShortcutsActive()) return
       }
 
@@ -339,6 +406,12 @@ export function AppHotkeys() {
           event.preventDefault()
           selectAdjacentThreadForView(-1)
           break
+        case 'message.pageDown':
+        case 'message.pageUp':
+          if (spaceActivatesTarget(event.key, event.target)) return
+          if (!pageOpenMessage(action === 'message.pageDown' ? 1 : -1)) return
+          event.preventDefault()
+          break
         case 'thread.archive':
           if (bulkSelected().length > 0) {
             event.preventDefault()
@@ -406,6 +479,19 @@ export function AppHotkeys() {
     const onFrameKeyDown = (event: Event) => {
       const chord = (event as CustomEvent<Chord | undefined>).detail
       if (!chord?.key) return
+      // Keys only come from a frame with focus in it, which is in the message,
+      // whether or not the parent saw that focus arrive.
+      keyboardInMessage = true
+
+      // Esc from inside the message: back to the list, as from the pane around
+      // the frame. On a board that closes the conversation pane.
+      if (chord.key === 'Escape') {
+        if (modalOpen() || mailCovered()) return
+        if (kanban$.activeBoardId.peek() && kanban$.paneThreadId.peek()) closeCurrentConversation()
+        else if (!focusActiveThreadRow()) return
+        event.preventDefault()
+        return
+      }
 
       // A shortcut rebound onto the arrow key wins over list navigation, same
       // precedence as in the main handler. Replaying it as a real keydown runs
@@ -426,7 +512,18 @@ export function AppHotkeys() {
         return
       }
 
-      if (!chord.mod && !chord.alt && !chord.shift && handleKanbanArrowNavigation(chord.key, null)) {
+      // Focus is in the message, so the arrows scroll it, as they do in the
+      // pane around the frame. The frame is sized to its content and can't
+      // scroll itself.
+      if (
+        !chord.mod &&
+        !chord.alt &&
+        !chord.shift &&
+        (chord.key === 'ArrowDown' || chord.key === 'ArrowUp') &&
+        !modalOpen() &&
+        !mailCovered() &&
+        stepOpenMessage(chord.key === 'ArrowDown' ? 1 : -1)
+      ) {
         event.preventDefault()
       }
     }
@@ -434,11 +531,15 @@ export function AppHotkeys() {
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('focusin', clearThreadListDeleteScope)
     window.addEventListener('pointerdown', clearThreadListDeleteScope)
+    window.addEventListener('focusin', trackKeyboardRegion)
+    window.addEventListener('pointerdown', trackKeyboardRegion)
     window.addEventListener('meron.frameKeyDown', onFrameKeyDown)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('focusin', clearThreadListDeleteScope)
       window.removeEventListener('pointerdown', clearThreadListDeleteScope)
+      window.removeEventListener('focusin', trackKeyboardRegion)
+      window.removeEventListener('pointerdown', trackKeyboardRegion)
       window.removeEventListener('meron.frameKeyDown', onFrameKeyDown)
     }
   }, [])

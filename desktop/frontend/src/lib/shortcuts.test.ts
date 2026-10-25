@@ -3,6 +3,7 @@ import {
   chordFromEvent,
   DEFAULT_SHORTCUTS,
   formatShortcut,
+  formatShortcutAliases,
   isBareKeystroke,
   isMac,
   isShortcutCustomized,
@@ -14,6 +15,7 @@ import {
   shortcutConflict,
   shortcutForChord,
   SHORTCUT_IDS,
+  spaceActivatesTarget,
 } from './shortcuts'
 
 const keydown = (key: string, mods: Partial<KeyboardEvent> = {}): KeyboardEvent =>
@@ -63,6 +65,51 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keydown('h'))).toBe('thread.viewMode')
     expect(shortcutConflict('thread.viewMode', DEFAULT_SHORTCUTS['thread.viewMode'])).toBeNull()
     expect(SHORTCUT_GROUPS.find((group) => group.title === 'Threads')?.ids).toContain('thread.viewMode')
+  })
+})
+
+describe('message paging', () => {
+  it('pages the open message with Space and Shift+Space, keys no other default uses', () => {
+    expect(matchShortcut(keydown(' '))).toBe('message.pageDown')
+    expect(matchShortcut(keydown(' ', { shiftKey: true }))).toBe('message.pageUp')
+    expect(shortcutConflict('message.pageDown', DEFAULT_SHORTCUTS['message.pageDown'])).toBeNull()
+    expect(shortcutConflict('message.pageUp', DEFAULT_SHORTCUTS['message.pageUp'])).toBeNull()
+    expect(formatShortcut('message.pageUp')).toEqual([shiftLabel, 'Space'])
+  })
+})
+
+describe('spaceActivatesTarget', () => {
+  const el = (html: string) => {
+    const host = document.createElement('div')
+    host.innerHTML = html
+    return host.firstElementChild!
+  }
+
+  it('leaves Space to a focused control, but not to a plain thread row', () => {
+    expect(spaceActivatesTarget(' ', el('<button>ok</button>'))).toBe(true)
+    expect(spaceActivatesTarget(' ', el('<button data-thread-row>row</button>'))).toBe(false)
+    expect(spaceActivatesTarget(' ', el('<p>text</p>'))).toBe(false)
+    expect(spaceActivatesTarget('Enter', el('<button>ok</button>'))).toBe(false)
+  })
+
+  it('leaves Space to a thread row while bulk selection toggles it', () => {
+    expect(spaceActivatesTarget(' ', el('<button data-thread-row data-bulk-selectable>row</button>'))).toBe(true)
+  })
+})
+
+describe('thread stepping aliases', () => {
+  afterEach(() => setShortcutOverrides({}))
+
+  it('steps threads with Alt+↓ / Alt+↑ as well as J / K', () => {
+    expect(matchShortcut(keydown('ArrowDown', { altKey: true }))).toBe('thread.next')
+    expect(matchShortcut(keydown('ArrowUp', { altKey: true }))).toBe('thread.prev')
+    expect(formatShortcutAliases('thread.next')).toEqual([[isMac ? '⌥' : 'Alt', '↓']])
+  })
+
+  it('gives the alias up to a binding that claims its chord', () => {
+    setShortcutOverrides({ 'thread.archive': { alt: true, key: 'ArrowDown' } })
+    expect(matchShortcut(keydown('ArrowDown', { altKey: true }))).toBe('thread.archive')
+    expect(formatShortcutAliases('thread.next')).toEqual([])
   })
 })
 

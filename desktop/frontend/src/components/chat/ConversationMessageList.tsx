@@ -12,6 +12,7 @@ import { LinkHoverPreview } from './LinkHoverPreview'
 import { MessageBubble } from './MessageBubble'
 import { MessageRow } from './MessageRow'
 import { formatDateDivider, mediaFilename } from './messageHelpers'
+import { MESSAGE_PAGE_EVENT } from './messagePaging'
 import { ConversationScrollContext } from './useConversationScroll'
 
 const AUTO_LOAD_EARLIER_THRESHOLD_PX = 400
@@ -193,6 +194,16 @@ export function ConversationMessageList({
     if (container && container.scrollTop <= AUTO_LOAD_EARLIER_THRESHOLD_PX) loadEarlier()
   }, [loadEarlier, onScroll, scrollRef])
 
+  // Space / Shift+Space (and arrows from inside a message frame) scroll the view
+  // from the global hotkeys, with focus anywhere, so the keydown capture below
+  // never sees them.
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    container.addEventListener(MESSAGE_PAGE_EVENT, onUserScrollIntent)
+    return () => container.removeEventListener(MESSAGE_PAGE_EVENT, onUserScrollIntent)
+  }, [onUserScrollIntent, scrollRef])
+
   // Also fill a short viewport automatically: when ten messages do not create
   // enough overflow there may be no scroll event to trigger the threshold.
   useEffect(() => {
@@ -219,6 +230,10 @@ export function ConversationMessageList({
     >
       <div
         ref={scrollRef}
+        data-message-scroller
+        // Focusable, so a click into the conversation takes focus off the
+        // thread list and the arrow keys scroll here instead of stepping it.
+        tabIndex={-1}
         onScroll={handleScroll}
         onWheel={onUserScrollIntent}
         onTouchMove={onUserScrollIntent}
@@ -243,7 +258,7 @@ export function ConversationMessageList({
         // composer floating over the list (MessagePane), so the newest message
         // clears it — by the same gap, less the pt-1 the composer's footer
         // already puts above its box; the rest of the list runs on behind it.
-        className="message-scroll flex-1 overflow-y-auto px-3 pt-3 pb-[calc(0.5rem+var(--me-composer-overlap,0px))] space-y-4 z-10 relative"
+        className="message-scroll flex-1 overflow-y-auto outline-none px-3 pt-3 pb-[calc(0.5rem+var(--me-composer-overlap,0px))] space-y-4 z-10 relative"
       >
         {showThreadLoading && (
           <div className="flex h-full items-center justify-center">

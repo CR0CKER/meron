@@ -33,6 +33,8 @@ export type ShortcutId =
   | 'tab.close'
   | 'thread.next'
   | 'thread.prev'
+  | 'message.pageDown'
+  | 'message.pageUp'
   | 'thread.archive'
   | 'thread.star'
   | 'thread.unread'
@@ -57,6 +59,19 @@ export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el) return false
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+}
+
+/** Space presses a focused button and toggles a focused checkbox; paging the
+ * message must not take that away. A thread row is the exception: pressing it
+ * again only reselects the thread whose message would be paged — unless bulk
+ * selection is on, where pressing it toggles the row. */
+export function spaceActivatesTarget(key: string, target: EventTarget | null): boolean {
+  if (key !== ' ') return false
+  const control = (target as Element | null)?.closest?.(
+    'button, a[href], select, summary, [role="button"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"]',
+  )
+  if (!control) return false
+  return !control.hasAttribute('data-thread-row') || control.hasAttribute('data-bulk-selectable')
 }
 
 export type Chord = {
@@ -98,6 +113,10 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, Chord> = {
   // Gmail-style single-key thread shortcuts (only when not typing).
   'thread.next': { key: 'j' },
   'thread.prev': { key: 'k' },
+  // Page through the open message, as Space does in a browser. The arrow keys
+  // stay on the thread list.
+  'message.pageDown': { key: ' ' },
+  'message.pageUp': { shift: true, key: ' ' },
   'thread.archive': { key: 'e' },
   'thread.star': { key: 's' },
   'thread.unread': { key: 'u' },
@@ -215,6 +234,8 @@ export const SHORTCUT_LABELS: Record<ShortcutId, string> = {
   'tab.close': 'Close tab',
   'thread.next': 'Next thread',
   'thread.prev': 'Previous thread',
+  'message.pageDown': 'Scroll message down',
+  'message.pageUp': 'Scroll message up',
   'thread.archive': 'Archive thread',
   'thread.star': 'Toggle star',
   'thread.unread': 'Mark unread',
@@ -238,6 +259,8 @@ export const SHORTCUT_GROUPS: { title: string; ids: ShortcutId[] }[] = [
     ids: [
       'thread.next',
       'thread.prev',
+      'message.pageDown',
+      'message.pageUp',
       'thread.archive',
       'thread.star',
       'thread.unread',
@@ -290,13 +313,35 @@ export function shortcutForChord(chord: Chord): ShortcutId | null {
 
 // Fixed secondary chords, matched only when no bound shortcut claims the
 // keystroke — so a user rebinding onto one still wins. ⌘/Ctrl+Shift+K opens
-// the palette too, for muscle memory from apps that use it.
-const SHORTCUT_ALIASES: [ShortcutId, Chord][] = [['palette.open', { mod: true, shift: true, key: 'k' }]]
+// the palette too, for muscle memory from apps that use it. Alt+↑/↓ step
+// threads for those who don't know J/K, and keep working while the plain arrows
+// scroll a focused message.
+const SHORTCUT_ALIASES: [ShortcutId, Chord][] = [
+  ['palette.open', { mod: true, shift: true, key: 'k' }],
+  ['thread.next', { alt: true, key: 'ArrowDown' }],
+  ['thread.prev', { alt: true, key: 'ArrowUp' }],
+]
+
+/** Arrow keys move the caret in a text field, so shortcuts on them stand down
+ * while typing, even with Alt held, like the single-key ones. */
+export function isArrowKey(key: string): boolean {
+  return key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight'
+}
 
 /** Render a shortcut as display parts, e.g. ["⌘", "K"] or ["Ctrl", "Shift", "R"]. */
 export function formatShortcut(id: ShortcutId): string[] {
   return formatChord(shortcutChord(id))
 }
+
+/** A shortcut's fixed secondary chords, as display parts. Leaves out any a user
+ * binding has taken over, since those no longer reach this shortcut. */
+export function formatShortcutAliases(id: ShortcutId): string[][] {
+  return SHORTCUT_ALIASES.filter(([aliasId, chord]) => aliasId === id && shortcutForChord(chord) === id).map(
+    ([, chord]) => formatChord(chord),
+  )
+}
+
+const ARROW_GLYPHS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
 
 function formatChord(chord: Chord): string[] {
   const parts: string[] = []
@@ -308,6 +353,7 @@ function formatChord(chord: Chord): string[] {
   }
   // Space's KeyboardEvent.key is " ", which would render as an empty badge.
   if (chord.key === ' ') parts.push('Space')
+  else if (ARROW_GLYPHS[chord.key]) parts.push(ARROW_GLYPHS[chord.key])
   else parts.push(chord.key.length === 1 ? chord.key.toUpperCase() : chord.key)
   return parts
 }
