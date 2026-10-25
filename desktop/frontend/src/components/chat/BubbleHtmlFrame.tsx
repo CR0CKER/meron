@@ -21,6 +21,7 @@ import { frameMetrics, measureFrameHeight } from './frameHeight'
 import { useMessageFrameFont } from './useMessageFrameFont'
 import { installFrameQuoteFold, isInFoldedQuote } from './quoteFold'
 import { useBubbleTheme } from './useFrameTheme'
+import { fitMediaBox } from './mediaSize'
 import type { FrameSurface } from './frameTheme'
 import { settings$ } from '../../states/settings'
 
@@ -389,11 +390,13 @@ export function BubbleHtmlFrame({
       observer.observe(doc.documentElement)
       if (doc.body) observer.observe(doc.body)
 
-      for (const video of doc.querySelectorAll<HTMLVideoElement>('video[width][height]')) {
+      for (const video of doc.querySelectorAll<HTMLVideoElement>('video')) {
         reserveImageBox(video)
+        cleanupFns.push(fitMediaBox(video, '320px'))
       }
       for (const image of doc.querySelectorAll<HTMLImageElement>('img')) {
         reserveImageBox(image)
+        cleanupFns.push(fitMediaBox(image, '320px'))
         const onError = () => {
           // A blocked remote picture is an intentional placeholder, not a
           // failed attachment. Keep the sender's layout until it is revealed.

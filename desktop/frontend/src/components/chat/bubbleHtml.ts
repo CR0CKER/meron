@@ -73,6 +73,7 @@ export function releaseFailedImageBox(image: HTMLImageElement) {
   image.style.setProperty('height', 'auto', 'important')
   image.style.setProperty('min-width', '0', 'important')
   image.style.setProperty('min-height', '0', 'important')
+  image.style.setProperty('max-width', '100%', 'important')
   image.removeAttribute('width')
   image.removeAttribute('height')
 }

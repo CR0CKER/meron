@@ -1,6 +1,7 @@
 import { BUBBLE_HTML_BASE_PX, type MessageFrameFont } from '../../lib/fonts'
 import { copyText } from '../../lib/native'
 import { usesNativeScrollbars } from '../../lib/nativeScrollbars'
+import { fitMediaBox } from './mediaSize'
 import {
   DEFAULT_READER_THEME,
   LIGHT_ON_DARK_TEXT,
@@ -409,7 +410,7 @@ export function applyReaderLayout(
   // larger picture) and is only capped to the reader's width and the window's
   // height, its height following to keep its shape, as in the bubbles.
   for (const media of doc.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img,video')) {
-    media.style.setProperty('max-width', '100%', 'important')
+    fitMediaBox(media, mediaMaxHeight)
     media.style.setProperty('height', 'auto', 'important')
     media.style.setProperty('max-height', mediaMaxHeight, 'important')
   }

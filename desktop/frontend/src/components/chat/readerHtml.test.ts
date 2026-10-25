@@ -547,7 +547,7 @@ describe('reader media', () => {
     const img = doc.querySelector('img')!
     expect(img.getAttribute('width')).toBe('20')
     expect(img.style.getPropertyValue('width')).toBe('')
-    expect(img.style.getPropertyValue('max-width')).toBe('100%')
+    expect(img.style.getPropertyValue('max-width')).toContain('min(100%, calc(')
     expect(img.style.getPropertyValue('height')).toBe('auto')
   })
 })
