@@ -264,7 +264,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   return (
     <section
       data-thread-list
-      className={`relative flex w-full shrink-0 flex-col bg-chats min-[769px]:w-[var(--thread-list-width)] ${
+      className={`relative flex w-full shrink-0 flex-col bg-chats min-[769px]:w-[var(--thread-list-width)] min-[769px]:border-r min-[769px]:border-border/60 ${
         mobilePane === 'threads' ? 'max-[768px]:flex' : 'max-[768px]:hidden'
       }`}
       onKeyDownCapture={(event) => {
@@ -272,6 +272,10 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
       }}
       style={width ? ({ '--thread-list-width': `${width}px` } as CSSProperties) : undefined}
     >
+      {/* The edge shadow KanbanConversationPane casts onto the board, drawn
+      here rather than as the message pane's box-shadow: WebKitGTK paints the
+      scrolling list over a later sibling's shadow. */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-20 hidden w-1.5 bg-linear-to-l from-black/[0.045] to-transparent min-[769px]:block" />
       {onResizeStart && (
         <div
           className="absolute right-0 top-0 z-30 hidden h-full w-2 translate-x-1 cursor-col-resize min-[769px]:block"

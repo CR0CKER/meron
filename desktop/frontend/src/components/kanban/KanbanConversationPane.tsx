@@ -40,7 +40,7 @@ export function KanbanConversationPane({
   }, [mounted])
   if (phase === 'closed') return null
 
-  const animation = phase === 'entering' ? ' animate-pane-open' : phase === 'exiting' ? ' animate-pane-close' : ''
+  const animation = phase === 'entering' ? 'animate-pane-open' : phase === 'exiting' ? 'animate-pane-close' : ''
   const preferredWidth = `max(320px, ${widthPercent}vw)`
   const width = boardWidth === null ? preferredWidth : `min(${preferredWidth}, ${boardWidth}px)`
 
@@ -48,7 +48,7 @@ export function KanbanConversationPane({
     <div
       ref={paneRef}
       data-pane-phase={phase}
-      className={`relative flex shrink-0 overflow-hidden border-l border-border bg-chat shadow-[-8px_0_16px_-12px_rgba(0,0,0,0.3)]${animation}`}
+      className={`relative flex shrink-0 overflow-hidden border-l border-border/60 bg-chat shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] ${animation}`}
       style={{ width, maxWidth: '100%' }}
     >
       {phase !== 'exiting' && (
