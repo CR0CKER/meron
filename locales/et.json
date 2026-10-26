@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Teema kopeeriti lõikelauale",
   "threads.actions.archiveThread": "Arhiveeri lõim",
   "threads.actions.copyTo": "Kopeeri...",
-  "threads.actions.copyToRecent": "Kopeeri kausta „{folder}“",
-  "threads.actions.moveToRecent": "Teisalda kausta „{folder}“",
   "threads.actions.deleteForever": "Kustuta jäädavalt",
   "threads.actions.discardDraft": "Hülga mustand",
   "threads.actions.emptyJunk": "Tühjenda rämpspost",

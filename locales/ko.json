@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "테마를 클립보드에 복사했습니다",
   "threads.actions.archiveThread": "스레드 보관",
   "threads.actions.copyTo": "복사...",
-  "threads.actions.copyToRecent": "“{folder}”(으)로 복사",
-  "threads.actions.moveToRecent": "“{folder}”(으)로 이동",
   "threads.actions.deleteForever": "영구 삭제",
   "threads.actions.discardDraft": "임시 저장 삭제",
   "threads.actions.emptyJunk": "스팸 비우기",

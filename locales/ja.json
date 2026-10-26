@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "テーマをクリップボードにコピーしました",
   "threads.actions.archiveThread": "スレッドをアーカイブ",
   "threads.actions.copyTo": "コピー先...",
-  "threads.actions.copyToRecent": "「{folder}」にコピー",
-  "threads.actions.moveToRecent": "「{folder}」に移動",
   "threads.actions.deleteForever": "完全に削除",
   "threads.actions.discardDraft": "下書きを破棄",
   "threads.actions.emptyJunk": "迷惑メールを空にする",

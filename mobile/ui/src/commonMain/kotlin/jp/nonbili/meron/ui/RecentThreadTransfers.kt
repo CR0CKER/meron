@@ -1,18 +1,5 @@
 package jp.nonbili.meron.ui
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.MobileMailCommandClient
 import jp.nonbili.meron.shared.ThreadSummary
@@ -28,6 +15,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 private const val RECENT_TRANSFERS_PREF = "recent_thread_transfers"
 private const val RECENT_TRANSFERS_LIMIT = 100
+private const val RECENT_DESTINATIONS_LIMIT = 3
 private val transferJson = Json { ignoreUnknownKeys = true }
 
 @Serializable
@@ -92,8 +80,11 @@ internal fun MeronMobileState.recentTransferItems(thread: ThreadSummary?): List<
             val folder = foldersByAccount[entry.targetAccountId]?.firstOrNull { kanbanFolderIdsEqual(it.name, entry.targetFolderId) } ?: return@mapNotNull null
             val destination = if (entry.targetAccountId == thread.accountId) folder.displayName else "${account.displayName.ifBlank { account.email }} / ${folder.displayName}"
             RecentThreadTransferItem(entry, folder, destination)
-        }.take(2)
+        }
 }
+
+/** The few recent targets a move or copy destination picker offers first. */
+internal fun List<RecentThreadTransferItem>.forAction(action: String): List<RecentThreadTransferItem> = filter { it.transfer.action == action }.take(RECENT_DESTINATIONS_LIMIT)
 
 /** Load only accounts referenced by this source account's history, without a status toast. */
 internal suspend fun MeronMobileState.loadRecentTransferFolders(thread: ThreadSummary?) {
@@ -109,42 +100,5 @@ internal suspend fun MeronMobileState.loadRecentTransferFolders(thread: ThreadSu
                 foldersByAccount = foldersByAccount + (account.id to reconcileFolderUnread(folders, version))
             }
         }.onFailure { Log.w("Mail", "load recent transfer folders failed", it) }
-    }
-}
-
-internal fun MeronMobileState.runRecentSelectionTransfer(
-    thread: ThreadSummary,
-    item: RecentThreadTransferItem,
-) {
-    mailSelectionMenuOpen = false
-    if (item.transfer.action == "move") moveThreadToFolder(thread, item.folder.name, item.transfer.targetAccountId) else copyThreadToFolder(thread, item.folder)
-    selectedMailThreadIds = emptySet()
-}
-
-@Composable
-internal fun MeronMobileState.RecentSelectionTransferMenuItems(thread: ThreadSummary) {
-    LaunchedEffect(thread.accountId, recentThreadTransfers, coreAccounts) { loadRecentTransferFolders(thread) }
-    RecentThreadTransferMenuItems(recentTransferItems(thread)) { runRecentSelectionTransfer(thread, it) }
-}
-
-@Composable
-internal fun RecentThreadTransferMenuItems(
-    items: List<RecentThreadTransferItem>,
-    onPick: (RecentThreadTransferItem) -> Unit,
-) {
-    if (items.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 4.dp))
-    items.forEach { item ->
-        val move = item.transfer.action == "move"
-        DropdownMenuItem(
-            text = {
-                Text(
-                    tr(if (move) "threads.actions.moveToRecent" else "threads.actions.copyToRecent", mapOf("folder" to item.destination)),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            leadingIcon = { Icon(if (move) Icons.Outlined.FolderOpen else Icons.Filled.ContentCopy, contentDescription = null) },
-            onClick = { onPick(item) },
-        )
     }
 }

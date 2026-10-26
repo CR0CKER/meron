@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Temat kopierades till urklipp",
   "threads.actions.archiveThread": "Arkivera tråd",
   "threads.actions.copyTo": "Kopiera till...",
-  "threads.actions.copyToRecent": "Kopiera till ”{folder}”",
-  "threads.actions.moveToRecent": "Flytta till ”{folder}”",
   "threads.actions.deleteForever": "Ta bort permanent",
   "threads.actions.discardDraft": "Släng utkast",
   "threads.actions.emptyJunk": "Töm skräppost",

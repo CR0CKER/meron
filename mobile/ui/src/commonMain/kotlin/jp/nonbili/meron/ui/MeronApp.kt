@@ -1575,6 +1575,7 @@ private fun MeronMobileScreenContent(
                     coreAccounts
                         .filterNot { accountSummaryIsRss(it) }
                         .flatMap { account -> foldersByAccount[account.id].orEmpty() },
+                recentTransfers = recentTransferItems(thread),
                 onMove = { folder ->
                     selectedMailMoveThread = null
                     moveThreadToFolder(thread, folder.name, folder.accountId.ifBlank { thread.accountId }) {
@@ -1599,6 +1600,7 @@ private fun MeronMobileScreenContent(
                     coreAccounts
                         .filterNot { accountSummaryIsRss(it) }
                         .flatMap { account -> foldersByAccount[account.id].orEmpty() },
+                recentTransfers = recentTransferItems(thread),
                 onCopy = { folder ->
                     selectedMailCopyThread = null
                     copyThreadToFolder(thread, folder)

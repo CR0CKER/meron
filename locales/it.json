@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Tema copiato negli appunti",
   "threads.actions.archiveThread": "Archivia thread",
   "threads.actions.copyTo": "Copia in...",
-  "threads.actions.copyToRecent": "Copia in “{folder}”",
-  "threads.actions.moveToRecent": "Sposta in “{folder}”",
   "threads.actions.deleteForever": "Elimina definitivamente",
   "threads.actions.discardDraft": "Scarta bozza",
   "threads.actions.emptyJunk": "Svuota indesiderata",

@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "主題已複製到剪貼簿",
   "threads.actions.archiveThread": "封存對話串",
   "threads.actions.copyTo": "複製至...",
-  "threads.actions.copyToRecent": "複製至「{folder}」",
-  "threads.actions.moveToRecent": "移動至「{folder}」",
   "threads.actions.deleteForever": "永久刪除",
   "threads.actions.discardDraft": "捨棄草稿",
   "threads.actions.emptyJunk": "清空垃圾郵件",

@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Tema copiado al portapapeles",
   "threads.actions.archiveThread": "Archivar hilo",
   "threads.actions.copyTo": "Copiar a...",
-  "threads.actions.copyToRecent": "Copiar a «{folder}»",
-  "threads.actions.moveToRecent": "Mover a «{folder}»",
   "threads.actions.deleteForever": "Eliminar permanentemente",
   "threads.actions.discardDraft": "Descartar borrador",
   "threads.actions.emptyJunk": "Vaciar correo no deseado",

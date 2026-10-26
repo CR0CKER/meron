@@ -129,9 +129,14 @@ class KanbanColumnLoadOrderTest {
                     RecentThreadTransfer("move", "a", "a", "Work"),
                     RecentThreadTransfer("copy", "a", "a", "Receipts"),
                     RecentThreadTransfer("move", "a", "a", "Older"),
+                    RecentThreadTransfer("move", "a", "a", "Receipts"),
+                    RecentThreadTransfer("move", "a", "a", "INBOX"),
                 )
             val thread = ThreadSummary(id = "a#INBOX#t1", accountId = "a", folder = "INBOX", subject = "Subject", sender = "Sender")
-            assertEquals(listOf("Work", "Receipts"), state.recentTransferItems(thread).map { it.destination })
+            val items = state.recentTransferItems(thread)
+            assertEquals(listOf("Work", "Receipts", "Older", "Receipts"), items.map { it.destination })
+            assertEquals(listOf("Work", "Older", "Receipts"), items.forAction("move").map { it.destination })
+            assertEquals(listOf("Receipts"), items.forAction("copy").map { it.destination })
             assertEquals(emptyList(), state.recentTransferItems(null))
         }
 

@@ -368,7 +368,6 @@ internal fun KanbanRouteContent(
                                                     }
                                                 },
                                             )
-                                            RecentSelectionTransferMenuItems(singleSelectedMailThread)
                                         }
                                     }
                                 }
@@ -863,7 +862,6 @@ internal fun MailRouteContent(
                                                     }
                                                 },
                                             )
-                                            RecentSelectionTransferMenuItems(singleSelectedMailThread)
                                         }
                                     }
                                 }

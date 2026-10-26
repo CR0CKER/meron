@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Thème copié dans le presse-papiers",
   "threads.actions.archiveThread": "Archiver le fil",
   "threads.actions.copyTo": "Copier vers...",
-  "threads.actions.copyToRecent": "Copier vers « {folder} »",
-  "threads.actions.moveToRecent": "Déplacer vers « {folder} »",
   "threads.actions.deleteForever": "Supprimer définitivement",
   "threads.actions.discardDraft": "Ignorer le brouillon",
   "threads.actions.emptyJunk": "Vider les indésirables",

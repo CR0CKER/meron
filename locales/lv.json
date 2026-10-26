@@ -1204,8 +1204,6 @@
   "theme.shareCopied": "Motīvs nokopēts starpliktuvē",
   "threads.actions.archiveThread": "Arhivēt pavedienu",
   "threads.actions.copyTo": "Kopēt uz...",
-  "threads.actions.copyToRecent": "Kopēt uz “{folder}”",
-  "threads.actions.moveToRecent": "Pārvietot uz “{folder}”",
   "threads.actions.deleteForever": "Dzēst uz visiem laikiem",
   "threads.actions.discardDraft": "Atmest melnrakstu",
   "threads.actions.emptyJunk": "Iztukšot mēstules",

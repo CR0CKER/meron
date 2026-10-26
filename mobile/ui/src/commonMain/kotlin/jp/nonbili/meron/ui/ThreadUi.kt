@@ -863,10 +863,6 @@ internal fun ThreadScreen(
                                                 copyDialogOpen = true
                                             },
                                         )
-                                        RecentThreadTransferMenuItems(recentTransfers) { item ->
-                                            overflowOpen = false
-                                            if (item.transfer.action == "move") onMoveToFolder(item.folder) else onCopyToFolder(item.folder)
-                                        }
                                         DropdownMenuItem(
                                             text = { Text(deleteLabel, color = MaterialTheme.colorScheme.error) },
                                             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
@@ -907,6 +903,7 @@ internal fun ThreadScreen(
                     thread = thread,
                     folders = targetMoveFolders,
                     accounts = transferAccounts,
+                    recentTransfers = recentTransfers,
                     onMove = { folder ->
                         moveDialogOpen = false
                         onMoveToFolder(folder)
@@ -923,6 +920,7 @@ internal fun ThreadScreen(
                     thread = thread,
                     folders = targetCopyFolders,
                     accounts = transferAccounts,
+                    recentTransfers = recentTransfers,
                     onCopy = { folder ->
                         copyDialogOpen = false
                         onCopyToFolder(folder)
