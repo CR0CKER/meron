@@ -1285,6 +1285,71 @@ fn mobile_protocol_folder_delete_refuses_special_use_anywhere_in_the_subtree() {
 }
 
 #[test]
+fn mobile_protocol_folder_rename_refuses_bad_targets_before_the_server() {
+    let data_dir = unique_data_dir("folder-rename-gate");
+    seed_mobile_account(&data_dir, "me@example.com");
+    let conn = store::open_at(data_dir.join("meron.db")).unwrap();
+    store::upsert_folders(
+        &conn,
+        "me@example.com",
+        &[
+            Folder {
+                name: "INBOX".to_string(),
+                delimiter: Some("/".to_string()),
+                special_use: Some("inbox".to_string()),
+                ..Default::default()
+            },
+            Folder {
+                name: "Work".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+            Folder {
+                name: "Work/Reports".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+            Folder {
+                name: "Receipts".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+        ],
+    )
+    .unwrap();
+    drop(conn);
+    let rename = |id: u32, folder: &str, name: &str| {
+        invoke_mobile_protocol_json(
+            &json!({
+                "id": id,
+                "method": "mail.folderRename",
+                "params": { "account_id": "me@example.com", "folder_id": folder, "name": name },
+            })
+            .to_string(),
+            Some(data_dir.to_str().unwrap()),
+        )
+    };
+    let error = |value: &Value| {
+        value["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    assert!(error(&rename(90, "INBOX", "Elsewhere")).contains("special folder"));
+    assert!(error(&rename(91, "Work", " ")).contains("Folder name is required"));
+    assert!(error(&rename(92, "Work", "Work/Reports/Old")).contains("inside itself"));
+    assert!(error(&rename(93, "Work", "Receipts")).contains("already exists"));
+    // Unchanged is answered locally, with nothing renamed.
+    let unchanged = rename(94, "Work", "Work");
+    assert_eq!(unchanged["result"]["renamed"], json!([]));
+    // An ordinary folder passes the gates and gets as far as the creds check.
+    assert!(error(&rename(95, "Work", "Jobs")).contains("account needs reconnect"));
+
+    let _ = std::fs::remove_dir_all(data_dir);
+}
+
+#[test]
 fn mobile_protocol_move_requires_usable_account_secret() {
     let data_dir = unique_data_dir("move-needs-secret");
     seed_mobile_account(&data_dir, "me@example.com");

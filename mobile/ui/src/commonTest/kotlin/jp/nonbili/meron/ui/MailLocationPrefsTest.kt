@@ -23,6 +23,21 @@ class MailLocationPrefsTest {
     }
 
     @Test
+    fun aFolderRenameFollowsTheRememberedFolderOfAnotherAccount() {
+        val prefs = MemoryAppPreferences()
+        saveLastMailLocation(prefs, "acct-1", "Work/Reports")
+        saveLastMailLocation(prefs, "acct-2", "Archive")
+
+        renameMailFolderForAccount(prefs, "acct-1", mapOf("Work" to "Jobs", "Work/Reports" to "Jobs/Reports"))
+        renameMailFolderForAccount(prefs, "acct-2", mapOf("Work" to "Jobs"))
+
+        assertEquals("Jobs/Reports", loadMailFolderForAccount(prefs, "acct-1"))
+        assertEquals("Archive", loadMailFolderForAccount(prefs, "acct-2"))
+        // The last-opened account stays as it was.
+        assertEquals("acct-2", loadLastMailAccountId(prefs))
+    }
+
+    @Test
     fun blankSavedValuesFallBackToUnifiedInbox() {
         val prefs = MemoryAppPreferences()
 

@@ -189,6 +189,36 @@ class KanbanBoardPersistenceTest {
         assertEquals(listOf(inbox, inbox.copy(query = "overdue"), other), state.kanbanBoards.single().columns)
     }
 
+    @Test
+    fun renamingAFolderRepointsItsColumnsInTheirSlots() {
+        val inbox = KanbanColumnSpec("a", "INBOX")
+        val reports = KanbanColumnSpec("a", "Work/Reports")
+        val saved = reports.copy(query = "invoice")
+        val otherAccount = KanbanColumnSpec("b", "Work/Reports")
+        val state = boardState(listOf(inbox, reports, saved, otherAccount))
+        state.kanbanSearchScope = kanbanColumnKey(saved)
+
+        state.renameKanbanColumnsForFolder("a", mapOf("Work" to "Jobs", "Work/Reports" to "Jobs/Reports"))
+
+        val renamed = reports.copy(folderId = "Jobs/Reports")
+        assertEquals(
+            listOf(inbox, renamed, renamed.copy(query = "invoice"), otherAccount),
+            state.kanbanBoards.single().columns,
+        )
+        assertEquals(kanbanColumnKey(renamed.copy(query = "invoice")), state.kanbanSearchScope)
+    }
+
+    @Test
+    fun renamingOntoAShownFolderKeepsThatColumnAlone() {
+        val work = KanbanColumnSpec("a", "Work")
+        val jobs = KanbanColumnSpec("a", "Jobs")
+        val state = boardState(listOf(work, jobs))
+
+        state.renameKanbanColumnsForFolder("a", mapOf("Work" to "Jobs"))
+
+        assertEquals(listOf(jobs), state.kanbanBoards.single().columns)
+    }
+
     private fun boardState(columns: List<KanbanColumnSpec>): MeronMobileState {
         val prefs = FakePreferences()
         saveKanbanBoards(prefs, listOf(KanbanBoardSpec(id = "kb-1", name = "Board", columns = columns)))

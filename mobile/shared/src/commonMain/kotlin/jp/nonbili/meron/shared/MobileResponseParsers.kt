@@ -222,6 +222,22 @@ fun parseFolderDeleteResponse(responseJson: String): FolderDeleteResult {
     )
 }
 
+/** Every folder a rename moved, old name to new, the folder's subtree included. */
+fun parseFolderRenameResponse(responseJson: String): Map<String, String> =
+    responseJson
+        .findJsonArrayProperty("renamed")
+        ?.jsonArrayElements()
+        ?.mapNotNull { pair ->
+            val names =
+                pair.jsonArrayElements().mapNotNull { item ->
+                    item.takeIf { it.startsWith('"') }?.readJsonString(0)?.value
+                }
+            val from = names.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val to = names.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            from to to
+        }?.toMap()
+        .orEmpty()
+
 fun parseContactSuggestResponse(responseJson: String): List<ContactSuggestion> {
     val contactsJson = responseJson.findJsonArrayProperty("contacts") ?: return emptyList()
     return contactsJson.jsonArrayElements().mapNotNull { item ->

@@ -17,8 +17,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderDelete
 import androidx.compose.material.icons.filled.MarkEmailRead
@@ -529,6 +531,10 @@ internal fun KanbanRouteContent(
                                 column = column,
                             )
                     },
+                    onRenameColumnFolder = ::promptRenameFolder,
+                    onNewColumnFolder = { column, account ->
+                        promptNewFolder(account, NewFolderPlacement.SwitchColumn(activeKanbanBoardId, column))
+                    },
                     onRemoveColumn = ::removeKanbanColumn,
                     onMoveColumn = ::moveKanbanColumn,
                     onSearchColumn = { column ->
@@ -910,6 +916,15 @@ internal fun MailRouteContent(
                                     } else {
                                         notifiableFolder(coreFolders, selectedCoreAccountId, selectedCoreFolder)
                                     }
+                                // Any single mail account can gain a folder; feeds and
+                                // the unified inbox cannot.
+                                val newFolderAccount =
+                                    selectedAccount?.takeIf {
+                                        !selectedAccountIsRss && selectedCoreAccountId != UNIFIED_ACCOUNT_ID
+                                    }
+                                // Renaming follows the delete rule, and moves the
+                                // subfolders along too.
+                                val showFolderActions = newFolderAccount != null || deletableMailboxFolder != null
                                 Box {
                                     IconButton(onClick = { mailboxMenuOpen = true }) {
                                         Icon(
@@ -1025,6 +1040,37 @@ internal fun MailRouteContent(
                                                 },
                                             )
                                         }
+                                        // Changes to the folder itself, the one destructive item last.
+                                        if (showFolderActions) {
+                                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                                        }
+                                        newFolderAccount?.let { account ->
+                                            DropdownMenuItem(
+                                                text = { Text(tr("folders.newFolderOrLabel")) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    mailboxMenuOpen = false
+                                                    promptNewFolder(
+                                                        account,
+                                                        NewFolderPlacement.OpenMailbox(selectedCoreFolder),
+                                                    )
+                                                },
+                                            )
+                                        }
+                                        deletableMailboxFolder?.let { folder ->
+                                            DropdownMenuItem(
+                                                text = { Text(tr("folders.rename.action")) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Filled.DriveFileRenameOutline, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    mailboxMenuOpen = false
+                                                    promptRenameFolder(folder)
+                                                },
+                                            )
+                                        }
                                         deletableMailboxFolder?.let { folder ->
                                             DropdownMenuItem(
                                                 text = {
@@ -1058,7 +1104,7 @@ internal fun MailRouteContent(
                                             )
                                         }
                                         if (showAccountActions) {
-                                            if (showMarkAllRead) {
+                                            if (showMarkAllRead || showFolderActions) {
                                                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                                             }
                                             DropdownMenuItem(

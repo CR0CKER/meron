@@ -695,6 +695,10 @@ class MobileCommandsTest {
         assertEquals(MobileCommand.FolderDelete, core.lastCommand)
         assertEquals("""{"account_id":"acc1","folder_id":"Work"}""", core.lastPayloadJson)
 
+        runSuspend { client.renameFolder(FolderRenameParams(accountId = "acc1", folderId = "Work", name = "Jobs")) }
+        assertEquals(MobileCommand.FolderRename, core.lastCommand)
+        assertEquals("""{"account_id":"acc1","folder_id":"Work","name":"Jobs"}""", core.lastPayloadJson)
+
         runSuspend { client.setFolderNotify(FolderSetNotifyParams(accountId = "acc1", folderId = "Work", enabled = true)) }
         assertEquals(MobileCommand.FolderSetNotify, core.lastCommand)
         assertEquals("""{"account_id":"acc1","folder_id":"Work","enabled":true}""", core.lastPayloadJson)

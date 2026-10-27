@@ -255,6 +255,42 @@ internal data class DeleteFolderTarget(
     val column: KanbanColumnSpec? = null,
 )
 
+/** Where a folder made by a "new folder" action shows up once it exists. The
+ *  board placements apply only while [boardId] is still the active board. */
+internal sealed interface NewFolderPlacement {
+    /** As a new column, from the add-column dialog. */
+    data class AddColumn(
+        val boardId: String,
+    ) : NewFolderPlacement
+
+    /** In place of [column], as picking it in the column's folder switcher would. */
+    data class SwitchColumn(
+        val boardId: String,
+        val column: KanbanColumnSpec,
+    ) : NewFolderPlacement
+
+    /** In the mail view, unless it moved on from [folderId] while the server
+     *  made the folder. */
+    data class OpenMailbox(
+        val folderId: String,
+    ) : NewFolderPlacement
+}
+
+/** An account awaiting a new folder's name. */
+internal data class NewFolderTarget(
+    val account: AccountSummary,
+    val placement: NewFolderPlacement,
+)
+
+/** A folder awaiting its new name. [folderName] is its own (leaf) name, the
+ *  part the dialog edits; [parent] is the path above it, kept as it is. */
+internal data class RenameFolderTarget(
+    val accountId: String,
+    val folderId: String,
+    val folderName: String,
+    val parent: String,
+)
+
 internal data class KanbanBoardSpec(
     val id: String,
     val name: String,

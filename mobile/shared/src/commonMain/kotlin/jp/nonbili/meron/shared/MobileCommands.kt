@@ -44,6 +44,7 @@ object MobileCommand {
     const val FolderList = "mail.folderList"
     const val FolderCreate = "mail.folderCreate"
     const val FolderDelete = "mail.folderDelete"
+    const val FolderRename = "mail.folderRename"
     const val FolderSetNotify = "mail.folderSetNotify"
     const val ContactSuggest = "mail.suggestContacts"
     const val ThreadList = "mail.threadList"
@@ -639,6 +640,23 @@ data class FolderDeleteParams(
         )
 }
 
+/**
+ * Renames a folder on the server, subfolders included. [name] is the folder's
+ * new full path; the core rejects special-use folders like a delete.
+ */
+data class FolderRenameParams(
+    val accountId: String,
+    val folderId: String,
+    val name: String,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "account_id" to accountId.jsonString(),
+            "folder_id" to folderId.jsonString(),
+            "name" to name.jsonString(),
+        )
+}
+
 data class FolderSetNotifyParams(
     val accountId: String,
     val folderId: String,
@@ -1213,6 +1231,8 @@ class MobileMailCommandClient(
 
     suspend fun deleteFolder(params: FolderDeleteParams): String = core.invoke(MobileCommand.FolderDelete, params.toJson())
 
+    suspend fun renameFolder(params: FolderRenameParams): String = core.invoke(MobileCommand.FolderRename, params.toJson())
+
     suspend fun setFolderNotify(params: FolderSetNotifyParams): String = core.invoke(MobileCommand.FolderSetNotify, params.toJson())
 
     suspend fun suggestContacts(params: ContactSuggestParams): String = core.invoke(MobileCommand.ContactSuggest, params.toJson())
@@ -1479,6 +1499,11 @@ fun folderDeleteRequest(
     id: Long = 1,
     params: FolderDeleteParams,
 ): CoreRequest = CoreRequest(id, MobileCommand.FolderDelete, params.toJson())
+
+fun folderRenameRequest(
+    id: Long = 1,
+    params: FolderRenameParams,
+): CoreRequest = CoreRequest(id, MobileCommand.FolderRename, params.toJson())
 
 fun contactSuggestRequest(
     id: Long = 1,

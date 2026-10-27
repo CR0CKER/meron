@@ -715,6 +715,95 @@ pub(crate) fn delete_mobile_folder(data_dir: &str, params: &Value) -> Result<Val
     })
 }
 
+// Rename a folder, and everything nested under it, on the server. `name` is the
+// folder's new full path as the user reads it. Special-use folders are refused
+// here rather than trusted from the caller, like a delete.
+pub(crate) fn rename_mobile_folder(data_dir: &str, params: &Value) -> Result<Value, String> {
+    let account_id = req_account_id(params)?;
+    let folder = params
+        .get("folder_id")
+        .or_else(|| params.get("folder"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(canon_folder)
+        .ok_or_else(|| "folder_id is required".to_string())?;
+    let display_name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if display_name.is_empty() {
+        return Err("Folder name is required".to_string());
+    }
+    if account_id == "unified" {
+        return Err("Pick a single account to rename a folder".to_string());
+    }
+    // Addressed by its wire form, as `mail.folderCreate` stores it.
+    let name = crate::utf7::encode(&display_name);
+
+    let engine = crate::ffi::engine_for(data_dir)?;
+    with_mobile_db(data_dir, |conn| {
+        if is_rss_account(&conn, &account_id)? {
+            return Err("RSS accounts do not support folders".to_string());
+        }
+        crate::mail_model::check_folder_renamable(&conn, &account_id, &folder)?;
+        if name == folder {
+            let mut response = list_mobile_folders(data_dir, params)?;
+            response["ok"] = json!(true);
+            response["folder"] = json!(folder);
+            response["renamed"] = json!([]);
+            return Ok(response);
+        }
+        let delimiter = store::get_folders(&conn, &account_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .find(|item| item.name == folder)
+            .and_then(|item| item.delimiter)
+            .filter(|delimiter| !delimiter.is_empty());
+        if delimiter.is_some_and(|delimiter| name.starts_with(&format!("{folder}{delimiter}"))) {
+            return Err("A folder cannot be moved inside itself".to_string());
+        }
+        if store::folder_exists(&conn, &account_id, &name).map_err(|err| err.to_string())? {
+            return Err(format!("A folder named {display_name} already exists"));
+        }
+        let pairs = store::folder_rename_pairs(&conn, &account_id, &folder, &name)
+            .map_err(|err| err.to_string())?;
+        let creds = load_mobile_account_creds(&conn, &account_id)?;
+        if account_needs_reconnect(&creds) {
+            return Err(format!("account needs reconnect: {account_id}"));
+        }
+        // EXAMINE is a read-only preflight and may retry on a stale pooled
+        // socket. RENAME itself is never retried.
+        {
+            let (folder, name) = (folder.clone(), name.clone());
+            crate::ffi::engine_block_on(engine.with_preflighted_write_session(
+                &account_id,
+                |session| Box::pin(imap::prepare_folder_delete(session)),
+                move |session| {
+                    let (folder, name) = (folder.clone(), name.clone());
+                    Box::pin(async move { imap::rename_folder(session, &folder, &name).await })
+                },
+            ))?;
+        }
+        store::rename_folder(&conn, &account_id, &pairs).map_err(|err| err.to_string())?;
+        for (from, _) in &pairs {
+            // The old name is gone; a watcher would only fail to SELECT it and
+            // reconnect forever.
+            crate::ffi::forget_deleted_folder_watch(&account_id, from);
+        }
+        // Opted-in folders keep their opt-in under the new names.
+        crate::ffi::start_live_notify_watches(data_dir, &account_id);
+        let mut response = list_mobile_folders(data_dir, params)?;
+        response["ok"] = json!(true);
+        response["folder"] = json!(folder);
+        // Every folder that moved, as [old, new] pairs, so the caller can
+        // repoint the views and caches keyed on a nested folder as well.
+        response["renamed"] = json!(pairs);
+        Ok(response)
+    })
+}
+
 pub(crate) fn list_mobile_threads(data_dir: &str, params: &Value) -> Result<Value, String> {
     let account_id = req_str(params, "account_id")?;
     if account_id == "unified" {

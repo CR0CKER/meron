@@ -15,7 +15,7 @@ enum IosUnreadWidgets {
         }
         return [
             "mail.sync", "mail.markRead", "mail.markAllRead", "mail.archive", "mail.delete",
-            "mail.move", "mail.copy", "mail.emptyFolder", "mail.folderDelete",
+            "mail.move", "mail.copy", "mail.emptyFolder", "mail.folderDelete", "mail.folderRename",
             "rss.sync", "rss.markRead", "feed.add", "feed.remove", "feed.move",
             "rss.importOpml", "backup.import", "storage.clearCache",
         ].contains(command)

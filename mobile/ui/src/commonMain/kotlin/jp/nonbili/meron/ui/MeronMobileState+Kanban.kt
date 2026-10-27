@@ -3,7 +3,6 @@ package jp.nonbili.meron.ui
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.input.key.key
 import jp.nonbili.meron.shared.AccountSummary
-import jp.nonbili.meron.shared.FolderCreateParams
 import jp.nonbili.meron.shared.MobileMailCommandClient
 import jp.nonbili.meron.shared.StarredItemSummary
 import jp.nonbili.meron.shared.SyncMailParams
@@ -207,6 +206,7 @@ internal fun MeronMobileState.loadKanbanColumn(
     val listLimit = shown?.readDepth?.coerceIn(MAILBOX_PAGE_SIZE, MAILBOX_MAX_RELOAD_DEPTH) ?: MAILBOX_PAGE_SIZE
     val oldestShown = shown?.threads?.minOfOrNull { it.dateEpochSeconds }
     updateKanbanColumn(key) { it.copy(loading = true, error = null) }
+    val folderGeneration = mailboxFolderGeneration
     scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
@@ -234,6 +234,12 @@ internal fun MeronMobileState.loadKanbanColumn(
             // A newer load of this column is out or has landed; its rows are the
             // answer, and it clears the loading flag itself.
             if (kanbanColumnLoadTokens[key] != token) return@onSuccess
+            // A read begun before a folder rename holds the old names, in its
+            // folder list and its cards' ids alike: read again instead.
+            if (folderGeneration != mailboxFolderGeneration) {
+                loadKanbanColumn(column, refresh)
+                return@onSuccess
+            }
             if (result.folders.isNotEmpty()) {
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
             }
@@ -271,6 +277,7 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
     // A reload started since (new query, filter or sync) owns the list instead.
     val token = kanbanColumnLoadTokens[key] ?: 0L
     updateKanbanColumn(key) { it.copy(loadingMore = true, error = null) }
+    val folderGeneration = mailboxFolderGeneration
     scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
@@ -286,6 +293,11 @@ internal fun MeronMobileState.loadMoreKanbanColumn(column: KanbanColumnSpec) {
                 )
             }
         }.onSuccess { result ->
+            // A page read before a folder rename holds the old names; drop it.
+            if (folderGeneration != mailboxFolderGeneration) {
+                updateKanbanColumn(key) { it.copy(loadingMore = false) }
+                return@onSuccess
+            }
             if (result.folders.isNotEmpty()) {
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }
             }
@@ -523,6 +535,49 @@ internal fun MeronMobileState.removeKanbanColumnsForFolder(
 }
 
 /**
+ * Follow a folder rename on every board: columns on the old names, saved
+ * searches in them included, show the new ones in the same slots. A board that
+ * already shows the new name keeps that column alone. [renames] maps each old
+ * folder name to its new one.
+ */
+internal fun MeronMobileState.renameKanbanColumnsForFolder(
+    accountId: String,
+    renames: Map<String, String>,
+) {
+    val renamedKeys = mutableMapOf<String, String>()
+    persistKanbanBoards(
+        kanbanBoards.map { board ->
+            val columns = mutableListOf<KanbanColumnSpec>()
+            board.columns.forEach { column ->
+                val folderId = if (column.accountId == accountId) renames[column.folderId] else null
+                val target = folderId?.let { column.copy(folderId = it) } ?: column
+                if (folderId != null) renamedKeys[kanbanColumnKey(column)] = kanbanColumnKey(target)
+                if (columns.none { kanbanColumnKey(it) == kanbanColumnKey(target) }) columns += target
+            }
+            board.copy(columns = columns)
+        },
+    )
+    renamedKeys[kanbanSearchScope]?.let(::persistKanbanSearchScope)
+    // Cached pages name the old folders, and the rename dropped the folders'
+    // cached mail, so the renamed columns fetch afresh, on every board: opening
+    // a board later reads its saved searches from the cache alone.
+    // A load still in flight under an old name would bring it back.
+    renamedKeys.keys.forEach { key -> kanbanColumnLoadTokens[key] = (kanbanColumnLoadTokens[key] ?: 0L) + 1 }
+    kanbanColumns = kanbanColumns - renamedKeys.keys
+    // Other columns (Starred, unified) may hold cards from the renamed
+    // folders, under ids that name the old folders.
+    val holdsRenamed =
+        kanbanColumns
+            .filterValues { state -> state.threads.any { it.accountId == accountId && it.folder in renames } }
+            .keys
+    kanbanBoards
+        .flatMap { it.columns }
+        .filter { kanbanColumnKey(it) in renamedKeys.values || kanbanColumnKey(it) in holdsRenamed }
+        .distinctBy(::kanbanColumnKey)
+        .forEach { loadKanbanColumn(it, refresh = true) }
+}
+
+/**
  * Turn the board search on [column] into a column of its own, placed right after
  * it. A search scoped to just that column has done its job then, so it clears;
  * a board-wide one stays. [clearsScopedSearch] is false when [query] came from
@@ -660,40 +715,4 @@ internal fun MeronMobileState.moveKanbanColumn(
             }
         },
     )
-}
-
-internal fun MeronMobileState.createFolderForKanban(
-    account: AccountSummary,
-    name: String,
-) {
-    val trimmed = name.trim()
-    if (trimmed.isBlank()) {
-        status = trs("folders.nameRequired")
-        return
-    }
-    if (!coreLoaded) {
-        status = coreUnavailableMessage
-        return
-    }
-    scope.launch {
-        val folderReadVersion = folderReadGuard.version
-        runCatching {
-            withContext(ioDispatcher) {
-                val client = MobileMailCommandClient(core)
-                withManagedGoogleAuth(client, account.id) {
-                    client.createFolder(FolderCreateParams(accountId = account.id, name = trimmed))
-                }
-                loadAccountFolders(client, account)
-            }
-        }.onSuccess { folders ->
-            foldersByAccount = foldersByAccount + (account.id to reconcileFolderUnread(folders, folderReadVersion))
-            val created = folders.folderCreatedAs(trimmed)?.name ?: trimmed
-            addKanbanColumn(KanbanColumnSpec(account.id, created))
-            showKanbanCreateFolderDialog = null
-            kanbanFolderNameInput = ""
-            status = trs("mobile.status.folderCreated")
-        }.onFailure {
-            status = trsError("mobile.status.createFolderFailed", it)
-        }
-    }
 }

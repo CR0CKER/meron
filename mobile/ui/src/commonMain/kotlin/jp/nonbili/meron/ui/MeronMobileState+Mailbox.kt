@@ -287,6 +287,7 @@ internal fun MeronMobileState.syncCoreThreads(
     val requestToken = activeMailboxLoadToken + 1
     activeMailboxLoadToken = requestToken
     activeMailboxLoadKey = requestKey
+    val folderGeneration = mailboxFolderGeneration
     // This load reads the store after anything a skipped reload was reacting to.
     deferredMailboxReload = null
     activeMailboxLoadStartedAtMillis = currentTimeMillis()
@@ -389,19 +390,33 @@ internal fun MeronMobileState.syncCoreThreads(
             }
         }.onSuccess { (result, readDepth) ->
             val resultKey = mailboxCacheKey(accountId, result.folder, query, filter, attachmentsOnly)
-            mailboxCache =
-                mailboxCache +
-                (
-                    resultKey to
-                        result.copy(
-                            folders = result.folders,
-                            folder = result.folder,
-                            threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(read.filter(result.threads))),
-                            nextCursor = result.nextCursor,
-                            accountCursors = result.accountCursors,
-                            pageDepth = readDepth,
-                        )
-                )
+            // A read begun before a folder rename holds the old names.
+            if (folderGeneration == mailboxFolderGeneration) {
+                mailboxCache =
+                    mailboxCache +
+                    (
+                        resultKey to
+                            result.copy(
+                                folders = result.folders,
+                                folder = result.folder,
+                                threads = withLocalDraftFlags(withoutLocallyDiscardedThreads(read.filter(result.threads))),
+                                nextCursor = result.nextCursor,
+                                accountCursors = result.accountCursors,
+                                pageDepth = readDepth,
+                            )
+                    )
+            }
+            if (folderGeneration != mailboxFolderGeneration &&
+                activeMailboxLoadToken == requestToken &&
+                accountId == selectedCoreAccountId
+            ) {
+                // Still the current load, but read before a folder rename: read
+                // again rather than show the old names.
+                finishMailboxLoad()
+                deferredMailboxReload = null
+                syncCoreThreads(syncFirst = false)
+                return@onSuccess
+            }
             if (activeMailboxLoadToken != requestToken || accountId != selectedCoreAccountId) {
                 // A selection change without a replacement load still owns the
                 // loading flags. An older request must leave a newer load alone.
@@ -656,6 +671,7 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
     val selectedAccounts = pageableCoreAccounts()
     if (selectedAccounts.isEmpty()) return
     loadingMoreThreads = true
+    val folderGeneration = mailboxFolderGeneration
     scope.launchThreadListRead(threadRemovalGuard) { read ->
         val folderReadVersion = folderReadGuard.version
         runCatching {
@@ -688,6 +704,11 @@ internal fun MeronMobileState.loadMoreCoreThreads(quiet: Boolean = false) {
                 }
             }
         }.onSuccess { result ->
+            // A page read before a folder rename holds the old names; drop it.
+            if (folderGeneration != mailboxFolderGeneration) {
+                loadingMoreThreads = false
+                return@onSuccess
+            }
             if (result.folders.isNotEmpty()) {
                 coreFolders = reconcileFolderUnread(result.folders, folderReadVersion)
                 foldersByAccount = foldersByAccount + reconcileFolderUnread(result.folders, folderReadVersion).groupBy { it.accountId }

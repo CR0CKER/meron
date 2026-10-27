@@ -44,6 +44,21 @@ internal fun MeronMobileState.rememberThreadTransfer(entry: RecentThreadTransfer
     prefs.cacheStore().putString(RECENT_TRANSFERS_PREF, transferJson.encodeToString(recentThreadTransfers))
 }
 
+/** Follow a folder rename, so recent targets in it are still offered. */
+internal fun MeronMobileState.renameRecentTransferTargets(
+    accountId: String,
+    renames: Map<String, String>,
+) {
+    if (recentThreadTransfers.none { it.targetAccountId == accountId && it.targetFolderId in renames }) return
+    recentThreadTransfers =
+        recentThreadTransfers
+            .map { entry ->
+                val folderId = if (entry.targetAccountId == accountId) renames[entry.targetFolderId] else null
+                if (folderId == null) entry else entry.copy(targetFolderId = folderId)
+            }.distinct()
+    prefs.cacheStore().putString(RECENT_TRANSFERS_PREF, transferJson.encodeToString(recentThreadTransfers))
+}
+
 /** A successful RPC with zero affected messages is not a successful transfer. */
 internal fun requireTransferAffected(
     response: String,

@@ -157,6 +157,10 @@ internal class MeronMobileState(
      *  the answer the reload was after; it runs again once that load settles. */
     var deferredMailboxReload: DeferredMailboxReload? = null
     var activeMailboxLoadToken by mutableStateOf(0L)
+
+    /** Bumped when a folder rename changes an account's folder names, so a
+     *  mailbox read begun before it does not cache the old names. */
+    var mailboxFolderGeneration = 0L
     var activeMailboxLoadStartedAtMillis by mutableStateOf(0L)
     var blockingMailboxLoadWarned by mutableStateOf(false)
 
@@ -224,8 +228,11 @@ internal class MeronMobileState(
     var kanbanMenuOpen by mutableStateOf(false)
     var kanbanMarkingRead by mutableStateOf(false)
     var showKanbanColumnDialog by mutableStateOf(false)
-    var showKanbanCreateFolderDialog by mutableStateOf<AccountSummary?>(null)
-    var kanbanFolderNameInput by mutableStateOf("")
+    var pendingNewFolder by mutableStateOf<NewFolderTarget?>(null)
+    var pendingRenameFolder by mutableStateOf<RenameFolderTarget?>(null)
+
+    /** The name typed into the new-folder or rename dialog. */
+    var folderNameInput by mutableStateOf("")
     var to by mutableStateOf("")
     var composeFromAccountId by mutableStateOf("")
     var composeFromEmail by mutableStateOf("")

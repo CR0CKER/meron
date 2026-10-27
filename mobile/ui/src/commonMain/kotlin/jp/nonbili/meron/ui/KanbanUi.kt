@@ -46,9 +46,11 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FilterList
@@ -469,6 +471,8 @@ internal fun KanbanScreen(
     markingRead: Boolean,
     onEmptyColumnFolder: (KanbanColumnSpec, FolderSummary) -> Unit,
     onDeleteColumnFolder: (KanbanColumnSpec, FolderSummary) -> Unit,
+    onRenameColumnFolder: (FolderSummary) -> Unit,
+    onNewColumnFolder: (KanbanColumnSpec, AccountSummary) -> Unit,
     onRemoveColumn: (KanbanColumnSpec) -> Unit,
     onMoveColumn: (KanbanColumnSpec, Int) -> Unit,
     onSearchColumn: (KanbanColumnSpec) -> Unit,
@@ -557,6 +561,8 @@ internal fun KanbanScreen(
                                 markingRead = markingRead,
                                 onEmptyFolder = { folder -> onEmptyColumnFolder(column, folder) },
                                 onDeleteFolder = { folder -> onDeleteColumnFolder(column, folder) },
+                                onRenameFolder = onRenameColumnFolder,
+                                onNewFolder = { account -> onNewColumnFolder(column, account) },
                                 onRemove = { onRemoveColumn(column) },
                                 onMoveLeft = { onMoveColumn(column, -1) },
                                 onMoveRight = { onMoveColumn(column, 1) },
@@ -664,6 +670,8 @@ internal fun KanbanColumn(
     markingRead: Boolean,
     onEmptyFolder: (FolderSummary) -> Unit,
     onDeleteFolder: (FolderSummary) -> Unit,
+    onRenameFolder: (FolderSummary) -> Unit,
+    onNewFolder: (AccountSummary) -> Unit,
     onRemove: () -> Unit,
     onMoveLeft: () -> Unit,
     onMoveRight: () -> Unit,
@@ -711,6 +719,8 @@ internal fun KanbanColumn(
                 markingRead = markingRead,
                 onEmptyFolder = onEmptyFolder,
                 onDeleteFolder = onDeleteFolder,
+                onRenameFolder = onRenameFolder,
+                onNewFolder = onNewFolder,
                 onRemove = onRemove,
                 onMoveLeft = onMoveLeft,
                 onMoveRight = onMoveRight,
@@ -843,6 +853,8 @@ internal fun KanbanColumnHeader(
     markingRead: Boolean,
     onEmptyFolder: (FolderSummary) -> Unit,
     onDeleteFolder: (FolderSummary) -> Unit,
+    onRenameFolder: (FolderSummary) -> Unit,
+    onNewFolder: (AccountSummary) -> Unit,
     onRemove: () -> Unit,
     onMoveLeft: () -> Unit,
     onMoveRight: () -> Unit,
@@ -881,6 +893,8 @@ internal fun KanbanColumnHeader(
     // folder; anything nested under it goes too — see `deletableFolder`.
     val deletableColumnFolder =
         if (savedSearch) null else deletableFolder(foldersByAccount[column.accountId].orEmpty(), column.accountId, column.folderId)
+    // Any single mail account can gain a folder, which the column then shows.
+    val newFolderAccount = account?.takeIf { column.accountId != UNIFIED_ACCOUNT_ID && !accountSummaryIsRss(it) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -991,6 +1005,27 @@ internal fun KanbanColumnHeader(
                     menuOpen = false
                     onRemove()
                 })
+                // Changes to the folder itself, the one destructive item last.
+                if (newFolderAccount != null || deletableColumnFolder != null) {
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                }
+                newFolderAccount?.let { account ->
+                    DropdownMenuItem(text = { Text(tr("folders.newFolderOrLabel")) }, leadingIcon = {
+                        Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
+                    }, onClick = {
+                        menuOpen = false
+                        onNewFolder(account)
+                    })
+                }
+                // Renaming follows the delete rule.
+                deletableColumnFolder?.let { folder ->
+                    DropdownMenuItem(text = { Text(tr("folders.rename.action")) }, leadingIcon = {
+                        Icon(Icons.Filled.DriveFileRenameOutline, contentDescription = null)
+                    }, onClick = {
+                        menuOpen = false
+                        onRenameFolder(folder)
+                    })
+                }
                 deletableColumnFolder?.let { folder ->
                     DropdownMenuItem(text = {
                         Text(tr("folders.delete.action"), color = MaterialTheme.colorScheme.error)

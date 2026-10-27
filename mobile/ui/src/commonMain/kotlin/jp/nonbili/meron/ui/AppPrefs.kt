@@ -103,6 +103,19 @@ internal fun saveLastMailLocation(
     prefs.putString(LAST_MAIL_ACCOUNT_PREF, accountId.ifBlank { UNIFIED_ACCOUNT_ID })
 }
 
+/** Follow a folder rename in the folder remembered for [accountId], without
+ *  making it the last-opened account. */
+internal fun renameMailFolderForAccount(
+    prefs: AppPreferences,
+    accountId: String,
+    renames: Map<String, String>,
+) {
+    migrateLegacyMailFolder(prefs)
+    val key = accountMailFolderKey(accountId)
+    val renamed = renames[prefs.getString(key, "")] ?: return
+    prefs.putString(key, renamed)
+}
+
 internal fun clearMailFolderForAccount(
     prefs: AppPreferences,
     accountId: String,

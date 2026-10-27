@@ -249,32 +249,39 @@ internal fun CrashReportDialog(
     )
 }
 
+/**
+ * Asks for a folder's name: a new folder's (with [hint] on nesting it), or the
+ * new name of one being renamed.
+ */
 @Composable
-internal fun KanbanCreateFolderDialog(
+internal fun FolderNameDialog(
+    title: String,
+    confirmLabel: String,
     name: String,
-    delimiter: String,
     onNameChange: (String) -> Unit,
-    onCreate: () -> Unit,
+    onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    hint: String? = null,
 ) {
+    val canConfirm = name.isNotBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(tr("folders.create")) },
+        title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = onNameChange,
                 label = { Text(tr("folders.namePlaceholder")) },
-                supportingText = { Text(tr("folders.subfolderHint", mapOf("delimiter" to delimiter))) },
+                supportingText = hint?.let { { Text(it) } },
                 singleLine = true,
                 keyboardOptions = nativeTextKeyboardOptions.copy(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onCreate() }),
+                keyboardActions = KeyboardActions(onDone = { if (canConfirm) onConfirm() }),
                 modifier = Modifier.fillMaxWidth(),
             )
         },
         confirmButton = {
-            TextButton(onClick = onCreate) {
-                Text(tr("folders.create"))
+            TextButton(onClick = onConfirm, enabled = canConfirm) {
+                Text(confirmLabel)
             }
         },
         dismissButton = {

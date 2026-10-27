@@ -646,6 +646,16 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun parsesFolderRenamePairs() {
+        val renamed =
+            parseFolderRenameResponse(
+                """{"result":{"ok":true,"renamed":[["Work","Jobs"],["Work/Reports","Jobs/Reports"]],"folders":[]}}""",
+            )
+
+        assertEquals(mapOf("Work" to "Jobs", "Work/Reports" to "Jobs/Reports"), renamed)
+    }
+
+    @Test
     fun parsesThreadActionLocationFromArchiveResponse() {
         val location =
             parseThreadActionLocationResponse(

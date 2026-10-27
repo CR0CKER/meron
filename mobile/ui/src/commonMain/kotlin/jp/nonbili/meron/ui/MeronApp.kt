@@ -1706,21 +1706,35 @@ private fun MeronMobileScreenContent(
                     applyKanbanColumns(it)
                     showKanbanColumnDialog = false
                 },
-                onCreateFolder = {
-                    showKanbanCreateFolderDialog = it
-                    kanbanFolderNameInput = ""
-                },
+                onCreateFolder = { promptNewFolder(it, NewFolderPlacement.AddColumn(activeKanbanBoardId)) },
                 onDismiss = { showKanbanColumnDialog = false },
             )
         }
 
-        showKanbanCreateFolderDialog?.let { account ->
-            KanbanCreateFolderDialog(
-                name = kanbanFolderNameInput,
-                delimiter = folderTreeDelimiter(foldersByAccount[account.id].orEmpty()),
-                onNameChange = { kanbanFolderNameInput = it },
-                onCreate = { createFolderForKanban(account, kanbanFolderNameInput) },
-                onDismiss = { showKanbanCreateFolderDialog = null },
+        pendingNewFolder?.let { target ->
+            FolderNameDialog(
+                title = tr("folders.newFolderOrLabel"),
+                confirmLabel = tr("folders.create"),
+                name = folderNameInput,
+                hint =
+                    tr(
+                        "folders.subfolderHint",
+                        mapOf("delimiter" to folderTreeDelimiter(foldersByAccount[target.account.id].orEmpty())),
+                    ),
+                onNameChange = { folderNameInput = it },
+                onConfirm = { createMailFolder(target, folderNameInput) },
+                onDismiss = { pendingNewFolder = null },
+            )
+        }
+
+        pendingRenameFolder?.let { target ->
+            FolderNameDialog(
+                title = tr("folders.rename.title", mapOf("folder" to target.folderName)),
+                confirmLabel = tr("folders.rename.confirmButton"),
+                name = folderNameInput,
+                onNameChange = { folderNameInput = it },
+                onConfirm = { renameMailFolder(target, folderNameInput) },
+                onDismiss = { pendingRenameFolder = null },
             )
         }
 
