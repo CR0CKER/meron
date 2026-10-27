@@ -893,6 +893,14 @@ pub async fn create_folder(session: &mut Session, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Rename a folder on the server. RFC 3501 renames its inferiors with it. Run
+/// [`prepare_folder_delete`] first: like DELETE, some servers refuse to rename
+/// the mailbox the session has selected.
+pub async fn rename_folder(session: &mut Session, from: &str, to: &str) -> Result<()> {
+    session.rename(from, to).await.context("RENAME")?;
+    Ok(())
+}
+
 /// A multi-folder delete that failed after removing part of its target list.
 /// Callers must reconcile `removed` before surfacing the failure.
 #[derive(Debug)]

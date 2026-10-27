@@ -48,38 +48,90 @@ pub fn folder_exists(conn: &Connection, account: &str, name: &str) -> Result<boo
 /// with `imap::delete_folder`. Returns the number of cached messages dropped.
 pub fn delete_folder(conn: &Connection, account: &str, name: &str) -> Result<usize> {
     let tx = conn.unchecked_transaction()?;
-    let deleted = tx.execute(
+    let deleted = delete_folder_rows(&tx, account, name)?;
+    tx.commit()?;
+    Ok(deleted)
+}
+
+/// [`delete_folder`] inside a transaction the caller holds.
+pub(super) fn delete_folder_rows(conn: &Connection, account: &str, name: &str) -> Result<usize> {
+    let deleted = conn.execute(
         "DELETE FROM messages WHERE account = ?1 AND folder = ?2",
         params![account, name],
     )?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM mail_search_hits WHERE account = ?1 AND folder = ?2",
         params![account, name],
     )?;
     // A snapshot's scope and pending hits name its folders. Snapshots are
     // disposable, so the account's are dropped rather than rewritten.
-    tx.execute(
+    conn.execute(
         "DELETE FROM mail_search_snapshots WHERE account = ?1",
         params![account],
     )?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM mail_search_pending WHERE account = ?1",
         params![account],
     )?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM folder_state WHERE account = ?1 AND folder = ?2",
         params![account, name],
     )?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
         params![account, name],
     )?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM folders WHERE account = ?1 AND name = ?2",
         params![account, name],
     )?;
-    tx.commit()?;
     Ok(deleted)
+}
+
+/// The renames a server RENAME of `from` to `to` makes: the folder and every
+/// folder nested under it, each paired with its new name.
+pub fn folder_rename_pairs(
+    conn: &Connection,
+    account: &str,
+    from: &str,
+    to: &str,
+) -> Result<Vec<(String, String)>> {
+    let mut pairs = vec![(from.to_string(), to.to_string())];
+    for child in child_folders(conn, account, from)? {
+        let renamed = format!("{to}{}", &child[from.len()..]);
+        pairs.push((child, renamed));
+    }
+    Ok(pairs)
+}
+
+/// Follow a server-side rename in the folder list. Each folder keeps its row
+/// (delimiter, notify opt-in) under the new name, but its cached mail is
+/// dropped like a deleted folder's: cached bodies point at attachment files
+/// keyed by the old name, and the next sync fetches the folder afresh. One
+/// transaction, so the list never shows a folder under both names.
+pub fn rename_folder(conn: &Connection, account: &str, pairs: &[(String, String)]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for (from, to) in pairs {
+        let row: Option<(Option<String>, Option<String>, i64)> = tx
+            .query_row(
+                "SELECT delimiter, special_use, notify FROM folders WHERE account = ?1 AND name = ?2",
+                params![account, from],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        delete_folder_rows(&tx, account, from)?;
+        let (delimiter, special_use, notify) = row.unwrap_or((None, None, 0));
+        tx.execute(
+            "INSERT INTO folders(account, name, delimiter, special_use, notify) VALUES(?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(account, name) DO UPDATE SET
+               delimiter = excluded.delimiter,
+               special_use = excluded.special_use,
+               notify = excluded.notify",
+            params![account, to, delimiter, special_use, notify],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// Names of the folders nested under `name`, using the target folder's

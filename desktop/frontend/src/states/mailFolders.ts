@@ -1,11 +1,22 @@
 import type { Folder } from '../types'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
-import { confirmAction, ui$, showToast } from './ui'
+import { confirmAction, promptText, ui$, showToast } from './ui'
 import { isLocalAccountId, unifiedAccounts } from './accounts'
-import { forgetDeletedMailViewFolder, removeKanbanColumnsForFolder } from './kanban'
+import {
+  closeCurrentConversation,
+  forgetDeletedMailViewFolder,
+  kanban$,
+  removeKanbanColumnsForFolder,
+  renameKanbanColumnsForFolder,
+  renameMailViewFolder,
+} from './kanban'
+import { folderLeafName } from '../lib/folderTree'
+import { renameRecentTransferTargets } from './recentThreadTransfers'
 import { unifiedFolders } from '../lib/unifiedFolders'
 import { findLocalThread, mail$ } from './mail'
+import { closeMessageTabs } from './compose'
+import { compose$ } from './composeState'
 
 // Folder lists, unread counts, and folder-level operations (empty, delete).
 
@@ -294,6 +305,70 @@ export async function deleteFolder(accountId: string, folderId: string, name?: s
     return true
   } catch (error) {
     showToast(error instanceof Error ? error.message : t('folders.delete.failed', { folder: label }), 'error')
+    return false
+  }
+}
+
+// Ask for a folder's new name and rename it, subfolders included: on the
+// server, or in local folders. The folder stays where it is nested; only its
+// own name changes. Views on any folder that moved follow it.
+export async function renameFolder(accountId: string, folder: Folder): Promise<boolean> {
+  if (!accountId || !folder.id || accountId === 'unified') return false
+  const leaf = folderLeafName(folder)
+  const parent = folder.name.endsWith(leaf) ? folder.name.slice(0, folder.name.length - leaf.length) : ''
+  const input = await promptText({
+    title: t('folders.rename.title', { folder: leaf }),
+    value: leaf,
+    placeholder: t('folders.namePlaceholder'),
+    confirmLabel: t('folders.rename.confirmButton'),
+  })
+  const name = input?.trim()
+  if (!name || name === leaf) return false
+
+  try {
+    const res = await invoke<{ folders?: Folder[]; renamed?: [string, string][] }>('mail.folderRename', {
+      account_id: accountId,
+      folder_id: folder.id,
+      name: parent + name,
+    })
+    const renames = new Map(res?.renamed ?? [])
+    if (res?.folders) {
+      mail$.foldersByAccount[accountId].set(res.folders)
+      if (ui$.selectedAccount.get() === accountId) mail$.folders.set(res.folders)
+    } else {
+      void loadFolders(accountId, false)
+    }
+    // Capture these before repointing the Kanban columns, which drops their
+    // thread caches and would make the conversations unfindable.
+    const openThreadId = ui$.selectedThread.get()
+    const openThread = findLocalThread(openThreadId)
+    const paneThread = findLocalThread(kanban$.paneThreadId.peek())
+    const currentThread = findLocalThread(compose$.conversationThread.peek())
+    const moved = (thread: { account_id: string; folder_id?: string } | undefined) =>
+      thread?.account_id === accountId && renames.has(thread.folder_id ?? '')
+    renameKanbanColumnsForFolder(accountId, renames)
+    // A conversation's id names its old folder, and the folder's cached mail is
+    // fetched again under the new name, so whatever shows one closes: tabs
+    // (selected or not; compose tabs keep their drafts), then the conversation
+    // behind them, in the mail view or a board's pane.
+    closeMessageTabs(
+      compose$.tabs
+        .peek()
+        .filter((tab) => tab.accountId === accountId && renames.has(tab.folderId ?? ''))
+        .map((tab) => tab.id),
+    )
+    if (moved(paneThread) || moved(currentThread)) closeCurrentConversation()
+    if (moved(openThread) && ui$.selectedThread.peek() === openThreadId) ui$.selectedThread.set('')
+    if (ui$.selectedAccount.get() === accountId) {
+      const selected = renames.get(ui$.selectedFolder.get())
+      if (selected !== undefined) ui$.selectedFolder.set(selected)
+      renameMailViewFolder(renames)
+    }
+    renameRecentTransferTargets(accountId, renames)
+    showToast(t('folders.rename.done', { folder: name }))
+    return true
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : t('folders.rename.failed', { folder: leaf }), 'error')
     return false
   }
 }

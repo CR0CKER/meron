@@ -189,6 +189,12 @@ type FolderDeleteRequest struct {
 	FolderID  string `json:"folder_id"`
 }
 
+type FolderRenameRequest struct {
+	AccountID string `json:"account_id"`
+	FolderID  string `json:"folder_id"`
+	Name      string `json:"name"`
+}
+
 type FolderSetNotifyRequest struct {
 	AccountID string `json:"account_id"`
 	FolderID  string `json:"folder_id"`

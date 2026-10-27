@@ -39,6 +39,15 @@ function loadRecentThreadTransfers() {
 
 export const recentThreadTransfers$ = observable<RecentThreadTransfer[]>(loadRecentThreadTransfers())
 
+function saveRecentThreadTransfers(entries: RecentThreadTransfer[]) {
+  recentThreadTransfers$.set(entries)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  } catch {
+    // Keep session history when storage is unavailable or full.
+  }
+}
+
 /** Record confirmed transfers, never implicit archive/delete moves or undo. */
 export function rememberThreadTransfer(entry: RecentThreadTransfer) {
   const entries = [
@@ -53,10 +62,17 @@ export function rememberThreadTransfer(entry: RecentThreadTransfer) {
           previous.targetFolderId !== entry.targetFolderId,
       ),
   ].slice(0, LIMIT)
-  recentThreadTransfers$.set(entries)
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
-  } catch {
-    // Keep session history when storage is unavailable or full.
-  }
+  saveRecentThreadTransfers(entries)
+}
+
+/** Follow a folder rename, so recent targets in it are still offered. */
+export function renameRecentTransferTargets(accountId: string, renames: Map<string, string>) {
+  const entries = recentThreadTransfers$.get()
+  if (!entries.some((entry) => entry.targetAccountId === accountId && renames.has(entry.targetFolderId))) return
+  saveRecentThreadTransfers(
+    entries.map((entry) => {
+      const targetFolderId = entry.targetAccountId === accountId ? renames.get(entry.targetFolderId) : undefined
+      return targetFolderId === undefined ? entry : { ...entry, targetFolderId }
+    }),
+  )
 }

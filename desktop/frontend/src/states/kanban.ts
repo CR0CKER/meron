@@ -11,7 +11,7 @@ import {
 } from './mailFolders'
 import { accounts$ } from './accounts'
 import { filterThreads, isRssAccount } from '../lib/threadActions'
-import { isUnifiedStarredColumn } from '../lib/kanbanData'
+import { isUnifiedStarredColumn, loadKanbanColumn } from '../lib/kanbanData'
 import { accountFolderForRole, unifiedFolderRole } from '../lib/unifiedFolders'
 import { openMessageTab } from './compose'
 import { compose$ } from './composeState'
@@ -165,6 +165,14 @@ export function focusKanbanThreadFolder(folderId: string) {
 export function forgetDeletedMailViewFolder(folderIds: string[]) {
   if (mailViewFolder === null || !folderIds.includes(mailViewFolder)) return
   mailViewFolder = 'inbox'
+  persistMailFolder(mailViewFolder)
+}
+
+/** Follow a folder rename in the stashed mail view folder. */
+export function renameMailViewFolder(renames: Map<string, string>) {
+  const renamed = mailViewFolder === null ? undefined : renames.get(mailViewFolder)
+  if (renamed === undefined) return
+  mailViewFolder = renamed
   persistMailFolder(mailViewFolder)
 }
 
@@ -463,6 +471,21 @@ export function removeKanbanColumnsForFolder(accountId: string, folderId: string
   for (const board of settings$.kanbanBoards.get()) {
     for (const column of board.columns) {
       if (column.accountId === accountId && column.folderId === folderId) removeKanbanColumn(board.id, column)
+    }
+  }
+}
+
+// Follow a folder rename: columns on the old names show the new ones, in the
+// same slots, and load them afresh.
+export function renameKanbanColumnsForFolder(accountId: string, renames: Map<string, string>) {
+  if (!accountId) return
+  for (const board of settings$.kanbanBoards.get()) {
+    for (const column of board.columns) {
+      const folderId = column.accountId === accountId ? renames.get(column.folderId) : undefined
+      if (folderId === undefined) continue
+      // A board already showing the new name keeps that column alone.
+      if (!replaceKanbanColumn(board.id, column, { ...column, folderId })) removeKanbanColumn(board.id, column)
+      else void loadKanbanColumn({ ...column, folderId }, true)
     }
   }
 }

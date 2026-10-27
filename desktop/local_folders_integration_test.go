@@ -127,6 +127,30 @@ func TestIntegrationLocalFolders(t *testing.T) {
 		}
 	})
 
+	t.Run("rename keeps the mail", func(t *testing.T) {
+		renamed := callMap(t, sidecar, "folders.rename", map[string]any{"account": localAccountID, "folder": "Old", "name": "Older"})
+		if foldersContain(renamed, "Old/2024") || !foldersContain(renamed, "Older/2024") {
+			t.Fatalf("folders.rename did not move the subtree: %v", renamed)
+		}
+		message := pollFolder(t, sidecar, localAccountID, "Older/2024", func(message map[string]any) bool {
+			return str(message, "subject") == subject && boolValue(message, "starred")
+		})
+		thread := callMap(t, sidecar, "messages.thread", map[string]any{
+			"account":    localAccountID,
+			"folder":     "Older/2024",
+			"thread_key": str(message, "thread_key"),
+			"limit":      20,
+		})
+		if rows := attachmentRows(t, firstThreadMessage(t, thread)); len(rows) != 1 {
+			t.Fatalf("attachments after rename = %v, want notes.txt", rows)
+		}
+		// Back, so the steps below find it where they expect.
+		callMap(t, sidecar, "folders.rename", map[string]any{"account": localAccountID, "folder": "Older", "name": "Old"})
+		localUID = num(pollFolder(t, sidecar, localAccountID, "Old/2024", func(message map[string]any) bool {
+			return str(message, "subject") == subject
+		}), "uid")
+	})
+
 	t.Run("move back to the server", func(t *testing.T) {
 		result := callMap(t, sidecar, "messages.move", map[string]any{
 			"account":        localAccountID,

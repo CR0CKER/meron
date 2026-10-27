@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useValue } from '@legendapp/state/react'
-import { Bell, BellOff, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { Bell, BellOff, Check, ChevronDown, ChevronRight, FolderPen } from 'lucide-react'
 import { folderIcon } from '../../lib/folderIcon'
 import { useTranslation } from '../../lib/i18n'
 import { clsx } from '../../lib/utils'
 import { accounts$ } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
-import { ensureAccountFolders, isNotifiableFolder, setFolderNotify } from '../../states/mailFolders'
+import {
+  deletableFolder,
+  ensureAccountFolders,
+  isNotifiableFolder,
+  renameFolder,
+  setFolderNotify,
+} from '../../states/mailFolders'
 import { UNIFIED_ACCOUNT, unifiedFolderLabel, unifiedFolders } from '../../lib/unifiedFolders'
 import type { Folder } from '../../types'
 import { FloatingContextMenu } from './FloatingContextMenu'
@@ -76,7 +82,7 @@ function FolderNodeRow({
           )}
           onClick={() => node.folder && onPick(node.folder.id)}
           onContextMenu={(event) => {
-            if (node.folder && onFolderMenu && isNotifiableFolder(node.folder)) onFolderMenu(event, node.folder)
+            if (node.folder && onFolderMenu) onFolderMenu(event, node.folder)
           }}
         >
           {current ? (
@@ -139,7 +145,8 @@ export function FolderSwitcher({
   // A mail account (or local folders) can gain folders here; feeds and the
   // unified view's fixed roles cannot.
   const account = useValue(accounts$).find((item) => item.id === accountId)
-  const canCreate = allowCreate && !isUnified && !!account && !isRssAccount(account, accountId)
+  const canManage = !isUnified && !!account && !isRssAccount(account, accountId)
+  const canCreate = allowCreate && canManage
   // Keep observing the shared cache: when it contains only the bootstrap Inbox,
   // ensureAccountFolders refreshes it in the background.
   const cachedFolders = useValue(mail$.foldersByAccount[accountId]) ?? []
@@ -199,6 +206,9 @@ export function FolderSwitcher({
   const showFilter = folders.length > FILTER_THRESHOLD
   // Looked up live so the row's label follows the folder's state.
   const menuFolder = folderMenu && folders.find((folder) => folder.id === folderMenu.folderId)
+  // Renaming follows the delete rule: ordinary folders with no special-use
+  // folder nested under them.
+  const canRename = (folder: Folder) => canManage && !!deletableFolder(folder, folders)
 
   return (
     <>
@@ -263,6 +273,7 @@ export function FolderSwitcher({
                     isUnified
                       ? undefined
                       : (event, folder) => {
+                          if (!isNotifiableFolder(folder) && !canRename(folder)) return
                           event.preventDefault()
                           event.stopPropagation()
                           setFolderMenu({ x: event.clientX, y: event.clientY, folderId: folder.id })
@@ -299,25 +310,38 @@ export function FolderSwitcher({
             event.stopPropagation()
           }}
         >
-          <MenuItem
-            className="flex-nowrap"
-            icon={
-              menuFolder.notify ? (
-                <BellOff size={13} className="text-secondary shrink-0" />
-              ) : (
-                <Bell size={13} className="text-secondary shrink-0" />
-              )
-            }
-            label={
-              <span className="whitespace-nowrap shrink-0">
-                {menuFolder.notify ? t('folders.notify.disable') : t('folders.notify.enable')}
-              </span>
-            }
-            onClick={() => {
-              setFolderMenu(null)
-              void setFolderNotify(accountId, menuFolder.id, !menuFolder.notify, menuFolder.name)
-            }}
-          />
+          {isNotifiableFolder(menuFolder) && (
+            <MenuItem
+              className="flex-nowrap"
+              icon={
+                menuFolder.notify ? (
+                  <BellOff size={13} className="text-secondary shrink-0" />
+                ) : (
+                  <Bell size={13} className="text-secondary shrink-0" />
+                )
+              }
+              label={
+                <span className="whitespace-nowrap shrink-0">
+                  {menuFolder.notify ? t('folders.notify.disable') : t('folders.notify.enable')}
+                </span>
+              }
+              onClick={() => {
+                setFolderMenu(null)
+                void setFolderNotify(accountId, menuFolder.id, !menuFolder.notify, menuFolder.name)
+              }}
+            />
+          )}
+          {canRename(menuFolder) && (
+            <MenuItem
+              className="flex-nowrap"
+              icon={<FolderPen size={13} className="text-secondary shrink-0" />}
+              label={<span className="whitespace-nowrap shrink-0">{t('folders.rename.action')}</span>}
+              onClick={() => {
+                close()
+                void renameFolder(accountId, menuFolder)
+              }}
+            />
+          )}
         </FloatingContextMenu>
       )}
     </>

@@ -239,6 +239,38 @@ func TestIntegrationMailFlow(t *testing.T) {
 		if len(removed) != 2 || removed[0] != child || removed[1] != parent {
 			t.Fatalf("removed = %#v, want [%q %q]", removed, child, parent)
 		}
+
+		// Renaming moves the subtree on the server and in the folder list, and
+		// names every folder that moved. Special-use folders are refused.
+		parent = "ITestRenameTree"
+		child = parent + delimiter + "Child"
+		renamedParent := "ITestRenamed"
+		renamedChild := renamedParent + delimiter + "Child"
+		callMap(t, sidecar, "folders.create", map[string]any{"account": "alice", "name": parent})
+		callMap(t, sidecar, "folders.create", map[string]any{"account": "alice", "name": child})
+		deadline = time.Now().Add(30 * time.Second)
+		for {
+			result = callMap(t, sidecar, "folders.list", map[string]any{"account": "alice"})
+			if foldersContain(result, child) && folderDelimiter(result, parent) == delimiter {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("nested folders never refreshed with delimiter %q: %v", delimiter, result)
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+		result = callMap(t, sidecar, "folders.rename", map[string]any{"account": "alice", "folder": parent, "name": renamedParent})
+		if foldersContain(result, parent) || foldersContain(result, child) ||
+			!foldersContain(result, renamedParent) || !foldersContain(result, renamedChild) {
+			t.Fatalf("folders.rename did not move the subtree: %v", result)
+		}
+		if renamed, _ := result["renamed"].([]any); len(renamed) != 2 {
+			t.Fatalf("renamed = %#v, want the folder and its child", result["renamed"])
+		}
+		if _, err := sidecar.Call("folders.rename", map[string]any{"account": "alice", "folder": "INBOX", "name": "Elsewhere"}); err == nil {
+			t.Fatal("folders.rename accepted INBOX, want refusal")
+		}
+		callMap(t, sidecar, "folders.delete", map[string]any{"account": "alice", "folder": renamedParent})
 	})
 
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())

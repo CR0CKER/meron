@@ -190,6 +190,48 @@ func (a *App) folderDelete(payload map[string]any) (any, error) {
 	return out, nil
 }
 
+// folderRename renames a folder, subfolders included: on the server, or in
+// local folders. name is the folder's new full path. The sidecar refuses
+// special-use folders, like a delete.
+func (a *App) folderRename(payload map[string]any) (any, error) {
+	var req FolderRenameRequest
+	_ = decode(payload, &req)
+	if req.AccountID == "" {
+		return nil, errors.New("account_id is required")
+	}
+	if strings.TrimSpace(req.FolderID) == "" {
+		return nil, errors.New("folder_id is required")
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errors.New("Folder name is required")
+	}
+	if isRSSAccountID(req.AccountID) {
+		return nil, errors.New("RSS accounts do not support folders")
+	}
+	if req.AccountID == "unified" {
+		return nil, errors.New("Pick a single account to rename a folder")
+	}
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, a.engineUnavailable()
+	}
+	res, err := a.sidecar.Call("folders.rename", map[string]any{"account": req.AccountID, "folder": req.FolderID, "name": req.Name})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{"ok": true, "folder": req.FolderID}
+	if m, isMap := res.(map[string]any); isMap {
+		// Every folder that moved, as [old, new] pairs, so the frontend can
+		// repoint the views and caches keyed on a nested folder as well.
+		if renamed, found := m["renamed"]; found {
+			out["renamed"] = renamed
+		}
+		if shaped, isShaped := foldersJSON(req.AccountID, res).(map[string]any); isShaped {
+			out["folders"] = shaped["folders"]
+		}
+	}
+	return out, nil
+}
+
 func (a *App) threadList(payload map[string]any) (any, error) {
 	var req ThreadListRequest
 	_ = decode(payload, &req)

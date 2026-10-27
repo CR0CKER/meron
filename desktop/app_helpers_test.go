@@ -94,6 +94,7 @@ func TestSidecarCallTimeouts(t *testing.T) {
 		"messages.markAllReadUnified": 30 * time.Second,
 		"folders.list":                15 * time.Second,
 		"folders.delete":              30 * time.Second,
+		"folders.rename":              30 * time.Second,
 		"rss.importOpml":              15 * time.Second,
 		"backup.export":               30 * time.Second,
 		"backup.import":               30 * time.Second,

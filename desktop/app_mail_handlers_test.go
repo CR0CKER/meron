@@ -142,6 +142,47 @@ func TestThreadReadPassesBranchKeyThrough(t *testing.T) {
 	}
 }
 
+func TestFolderRenamePassesTheNewNameAndRefusesBadTargets(t *testing.T) {
+	app, writer := newMailHandlerTestApp(t, sidecarResponsePlan{Result: map[string]any{
+		"ok":      true,
+		"folder":  "Work",
+		"renamed": []any{[]any{"Work", "Jobs"}, []any{"Work/Reports", "Jobs/Reports"}},
+		"folders": []any{map[string]any{"name": "Jobs", "delimiter": "/"}},
+	}})
+
+	out, err := app.folderRename(map[string]any{"account_id": "acc", "folder_id": "Work", "name": "Jobs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.calls) != 1 {
+		t.Fatalf("sidecar calls = %d, want 1", len(writer.calls))
+	}
+	assertCall(t, writer.calls[0], "folders.rename", map[string]any{"account": "acc", "folder": "Work", "name": "Jobs"})
+
+	result, _ := out.(map[string]any)
+	if renamed, _ := result["renamed"].([]any); len(renamed) != 2 {
+		t.Fatalf("renamed = %#v, want the sidecar's subtree", result["renamed"])
+	}
+	folders, _ := result["folders"].([]Folder)
+	if len(folders) != 1 || folders[0].ID != "Jobs" {
+		t.Fatalf("folders = %#v, want the reshaped Jobs row", result["folders"])
+	}
+
+	app, writer = newMailHandlerTestApp(t)
+	if _, err := app.folderRename(map[string]any{"account_id": "acc", "folder_id": "Work", "name": " "}); err == nil {
+		t.Fatal("folderRename without a name succeeded, want an error")
+	}
+	if _, err := app.folderRename(map[string]any{"account_id": "unified", "folder_id": "Work", "name": "Jobs"}); err == nil {
+		t.Fatal("folderRename on the unified view succeeded, want an error")
+	}
+	if _, err := app.folderRename(map[string]any{"account_id": "rss-feeds", "folder_id": "Work", "name": "Jobs"}); err == nil {
+		t.Fatal("folderRename on an RSS account succeeded, want an error")
+	}
+	if len(writer.calls) != 0 {
+		t.Fatalf("sidecar calls = %d, want the bad payloads refused locally", len(writer.calls))
+	}
+}
+
 func TestFolderDeleteReshapesFoldersAndRefusesBadTargets(t *testing.T) {
 	app, writer := newMailHandlerTestApp(t, sidecarResponsePlan{Result: map[string]any{
 		"ok":      true,

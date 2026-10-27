@@ -171,6 +171,90 @@ pub(crate) async fn dispatch(
             }))
         }
 
+        // Rename a folder, and everything nested under it, on the server. `name`
+        // is the folder's new full path as the user reads it. Special-use
+        // folders are refused here rather than trusted from the caller.
+        "folders.rename" => {
+            let account = req_str(p, "account")?;
+            if is_rss(engine, &account)? {
+                return Err(anyhow::anyhow!("RSS accounts do not support folders"));
+            }
+            let folder = canon_folder(&req_str(p, "folder")?);
+            let display_name = req_str(p, "name")?.trim().to_string();
+            if display_name.is_empty() {
+                return Err(anyhow::anyhow!("Folder name is required"));
+            }
+            // Addressed by its wire form, as `folders.create` stores it.
+            let name = meron_core::utf7::encode(&display_name);
+            let pairs = {
+                let db = engine.db.lock().unwrap();
+                mail_model::check_folder_renamable(&db, &account, &folder)
+                    .map_err(anyhow::Error::msg)?;
+                if name == folder {
+                    return Ok(json!({
+                        "ok": true,
+                        "folder": folder,
+                        "renamed": [],
+                        "folders": serde_json::to_value(store::get_folders(&db, &account)?)?,
+                    }));
+                }
+                let delimiter = store::get_folders(&db, &account)?
+                    .into_iter()
+                    .find(|item| item.name == folder)
+                    .and_then(|item| item.delimiter)
+                    .filter(|delimiter| !delimiter.is_empty());
+                if delimiter
+                    .is_some_and(|delimiter| name.starts_with(&format!("{folder}{delimiter}")))
+                {
+                    return Err(anyhow::anyhow!("A folder cannot be moved inside itself"));
+                }
+                if store::folder_exists(&db, &account, &name)? {
+                    return Err(anyhow::anyhow!(
+                        "A folder named {display_name} already exists"
+                    ));
+                }
+                store::folder_rename_pairs(&db, &account, &folder, &name)?
+            };
+
+            // EXAMINE is a read-only preflight and may retry on a stale pooled
+            // socket. RENAME itself is never retried.
+            engine
+                .with_preflighted_write_session(
+                    &account,
+                    |session| Box::pin(imap::prepare_folder_delete(session)),
+                    |session| {
+                        let (folder, name) = (folder.clone(), name.clone());
+                        Box::pin(async move { imap::rename_folder(session, &folder, &name).await })
+                    },
+                )
+                .await?;
+
+            let folders = {
+                let db = engine.db.lock().unwrap();
+                store::rename_folder(&db, &account, &pairs)?;
+                for (from, _) in &pairs {
+                    // The old name is gone; a watcher would only fail to
+                    // SELECT it and reconnect forever.
+                    set_view_watch(&account, from, false);
+                    stop_idle_watch(engine, &account, from);
+                }
+                store::get_folders(&db, &account)?
+            };
+            if !engine.is_paused(&account) {
+                start_notify_folder_watches(engine, out, &account);
+            }
+            // Pick up what the server made of the new names.
+            spawn_folder_sync(engine.clone(), out.clone(), account);
+            Ok(json!({
+                "ok": true,
+                "folder": folder,
+                // Every folder that moved, so the caller can repoint the views
+                // and caches keyed on a nested folder as well.
+                "renamed": pairs,
+                "folders": serde_json::to_value(folders)?,
+            }))
+        }
+
         "folders.archive" => {
             let account = req_str(p, "account")?;
             let archive = engine

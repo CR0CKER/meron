@@ -97,19 +97,37 @@ pub fn check_folder_deletable(
     account: &str,
     folder: &str,
 ) -> Result<(), String> {
+    check_ordinary_folder_tree(conn, account, folder, "deleted")
+}
+
+/// Gate for renaming a folder on the server: the same rule as deleting, since a
+/// rename moves the whole subtree and the app would lose track of a special-use
+/// mailbox the server no longer reports under the name it had.
+pub fn check_folder_renamable(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+) -> Result<(), String> {
+    check_ordinary_folder_tree(conn, account, folder, "renamed")
+}
+
+fn check_ordinary_folder_tree(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    verb: &str,
+) -> Result<(), String> {
     if !store::folder_exists(conn, account, folder).map_err(|err| err.to_string())? {
         return Err(format!("{folder} is not in the synchronized folder list"));
     }
     let role = store::folder_role(conn, account, folder).map_err(|err| err.to_string())?;
     if role != "folder" {
-        return Err(format!(
-            "{folder} is a special folder and cannot be deleted"
-        ));
+        return Err(format!("{folder} is a special folder and cannot be {verb}"));
     }
     for child in store::child_folders(conn, account, folder).map_err(|err| err.to_string())? {
         let role = store::folder_role(conn, account, &child).map_err(|err| err.to_string())?;
         if role != "folder" {
-            return Err(format!("{child} is a special folder and cannot be deleted"));
+            return Err(format!("{child} is a special folder and cannot be {verb}"));
         }
     }
     Ok(())

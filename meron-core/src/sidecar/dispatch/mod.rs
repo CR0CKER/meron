@@ -115,6 +115,7 @@ pub(crate) async fn dispatch(
         "folders.list"
         | "folders.create"
         | "folders.delete"
+        | "folders.rename"
         | "folders.setNotify"
         | "folders.archive"
         | "messages.emptyFolder" => folders::dispatch(engine, req, out).await,

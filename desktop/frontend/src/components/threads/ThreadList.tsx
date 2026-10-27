@@ -34,6 +34,7 @@ import {
   emptyFolder,
   deletableFolder,
   deleteFolder,
+  renameFolder,
   setFolderNotify,
   isNotifiableFolder,
   folderMatches,
@@ -127,15 +128,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
     isStarredView || isRSSAccount || selectedAccount === 'unified'
       ? null
       : emptiableFolder(folders.find((folder) => folder.id === selectedFolder))
+  const selectedFolderRow = folders.find((folder) => folder.id === selectedFolder)
   // Non-null only in an ordinary folder of a single account, the only kind the
-  // server lets us delete.
+  // server lets us delete. The same rule gates renaming it.
   const deletableTarget =
-    isStarredView || isRSSAccount || selectedAccount === 'unified'
-      ? null
-      : deletableFolder(
-          folders.find((folder) => folder.id === selectedFolder),
-          folders,
-        )
+    isStarredView || isRSSAccount || selectedAccount === 'unified' ? null : deletableFolder(selectedFolderRow, folders)
   // A whole-folder export needs one real mailbox to list on the server. The
   // folder row only supplies a name: the inbox is selected as "inbox" whatever
   // the server calls it, and the list may not have loaded yet.
@@ -366,6 +363,11 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                               deletableTarget.name,
                               deletableTarget.nested,
                             )
+                        : undefined
+                    }
+                    onRenameFolder={
+                      deletableTarget && selectedFolderRow
+                        ? () => void renameFolder(selectedAccount, selectedFolderRow)
                         : undefined
                     }
                     onToggleNotify={

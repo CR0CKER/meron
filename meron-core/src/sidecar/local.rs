@@ -29,6 +29,7 @@ const LOCAL_MAIL_METHODS: &[&str] = &[
     "folders.list",
     "folders.create",
     "folders.delete",
+    "folders.rename",
     "folders.setNotify",
     "folders.archive",
     "messages.emptyFolder",
@@ -327,6 +328,19 @@ async fn local_mail(
                 "folder": folder,
                 "removed": removed,
                 "deleted": deleted,
+                "folders": serde_json::to_value(store::get_folders(&db, account)?)?,
+            }))
+        }
+
+        "folders.rename" => {
+            let folder = request_folder(p)?;
+            let db = archive.db.lock().unwrap();
+            let renamed =
+                store::rename_local_folder(&db, &folder, &req_str(p, "name")?, &media_root)?;
+            Ok(json!({
+                "ok": true,
+                "folder": folder,
+                "renamed": renamed,
                 "folders": serde_json::to_value(store::get_folders(&db, account)?)?,
             }))
         }

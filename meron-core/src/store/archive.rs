@@ -212,6 +212,84 @@ pub fn delete_local_folder(conn: &Connection, name: &str) -> Result<(Vec<String>
     Ok((targets, deleted))
 }
 
+/// Rename a local folder, moving its subfolders and their mail with it, and
+/// create any missing parents of the new name. Returns each folder's old and
+/// new name; none when the name is unchanged.
+pub fn rename_local_folder(
+    conn: &Connection,
+    name: &str,
+    display_name: &str,
+    media_root: &Path,
+) -> Result<Vec<(String, String)>> {
+    let display_name = tidy_folder_path(display_name)?;
+    let target = canon_local_folder(&crate::utf7::encode(&display_name));
+    let sources = local_folder_subtree(conn, name)?;
+    if target == name {
+        return Ok(Vec::new());
+    }
+    if target.starts_with(&format!("{name}{LOCAL_DELIMITER}")) {
+        bail!("A folder cannot be moved inside itself");
+    }
+    let pairs = sources
+        .iter()
+        .map(|from| (from.clone(), format!("{target}{}", &from[name.len()..])))
+        .collect::<Vec<_>>();
+    for (_, to) in &pairs {
+        if super::folder_exists(conn, LOCAL_ACCOUNT_ID, to)? {
+            bail!("A folder named {} already exists", crate::utf7::decode(to));
+        }
+    }
+
+    // Every row moves in one transaction, so an interruption leaves the folder
+    // whole under one name or the other. Attachment files and index rows are
+    // written again afterwards; opening the archive redoes any that are missing
+    // (`repair_local_index`).
+    let mut moved = Vec::with_capacity(pairs.len());
+    let tx = conn.unchecked_transaction()?;
+    // The parents of the new name, as creating it would add them.
+    let segments = target.split(LOCAL_DELIMITER).collect::<Vec<_>>();
+    for depth in 1..segments.len() {
+        let path = segments[..depth].join(LOCAL_DELIMITER);
+        tx.execute(
+            "INSERT OR IGNORE INTO folders(account, name, delimiter, special_use) VALUES(?1, ?2, ?3, ?4)",
+            params![LOCAL_ACCOUNT_ID, path, LOCAL_DELIMITER, LOCAL_SPECIAL_USE],
+        )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO folder_state(account, folder, uidvalidity, uid_next) VALUES(?1, ?2, 1, 1)",
+            params![LOCAL_ACCOUNT_ID, path],
+        )?;
+    }
+    for (from, to) in &pairs {
+        moved.push(local_folder_uids(&tx, from)?);
+        tx.execute(
+            "INSERT INTO folders(account, name, delimiter, special_use) VALUES(?1, ?2, ?3, ?4)",
+            params![LOCAL_ACCOUNT_ID, to, LOCAL_DELIMITER, LOCAL_SPECIAL_USE],
+        )?;
+        // Keeping the UID counter, so new mail does not reuse a moved UID.
+        tx.execute(
+            "INSERT INTO folder_state(account, folder, uidvalidity, uid_next)
+             SELECT account, ?3, uidvalidity, uid_next FROM folder_state WHERE account = ?1 AND folder = ?2",
+            params![LOCAL_ACCOUNT_ID, from, to],
+        )?;
+        tx.execute(
+            "UPDATE archive_raw SET folder = ?2 WHERE folder = ?1",
+            params![from, to],
+        )?;
+        super::delete_folder_rows(&tx, LOCAL_ACCOUNT_ID, from)?;
+    }
+    tx.commit()?;
+
+    // Attachment files are keyed by folder, so each message's are written again
+    // under the new name.
+    for ((from, to), uids) in pairs.iter().zip(&moved) {
+        for &uid in uids {
+            crate::parse::remove_message_media(media_root, LOCAL_ACCOUNT_ID, from, uid);
+            index_raw(conn, to, uid, media_root)?;
+        }
+    }
+    Ok(pairs)
+}
+
 /// One message to keep in a local folder.
 pub struct ArchiveInput<'a> {
     pub raw: &'a [u8],
@@ -915,6 +993,69 @@ mod tests {
         assert_eq!(removed, vec!["A/B".to_string(), "A".to_string()]);
         assert_eq!(deleted, 1);
         assert_eq!(local_storage_stats(&conn).unwrap()["messages"], 0);
+    }
+
+    #[test]
+    fn renamed_folder_takes_its_subtree_and_mail() {
+        let (conn, dir) = archive();
+        create_local_folder(&conn, "A/B").unwrap();
+        create_local_folder(&conn, "C").unwrap();
+        archive_messages(&conn, "A/B", &[input(RAW)], &dir).unwrap();
+        set_local_flags(&conn, "A/B", &[1], None, Some(true)).unwrap();
+        let renamed = rename_local_folder(&conn, "A", "X/Y", &dir).unwrap();
+        assert_eq!(
+            renamed,
+            vec![
+                ("A/B".to_string(), "X/Y/B".to_string()),
+                ("A".to_string(), "X/Y".to_string()),
+            ]
+        );
+        let names = crate::store::get_folders(&conn, LOCAL_ACCOUNT_ID)
+            .unwrap()
+            .into_iter()
+            .map(|folder| folder.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["C", "X", "X/Y", "X/Y/B"]);
+        assert_eq!(raw_message(&conn, "X/Y/B", 1).unwrap().unwrap(), RAW);
+        let cached = crate::store::get_cached_message(&conn, LOCAL_ACCOUNT_ID, "X/Y/B", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.subject, "Hello");
+        let starred: i64 = conn
+            .query_row(
+                "SELECT starred FROM messages WHERE account = 'local' AND folder = 'X/Y/B' AND uid = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(starred, 1);
+        // The UID counter came along: the next message does not reuse UID 1.
+        let next = archive_messages(
+            &conn,
+            "X/Y/B",
+            &[input(b"Message-ID: <c@example.com>\r\n\r\nHi\r\n")],
+            &dir,
+        )
+        .unwrap();
+        assert_eq!(next, vec![2]);
+
+        assert!(
+            rename_local_folder(&conn, "C", "X/Y", &dir)
+                .unwrap_err()
+                .to_string()
+                .contains("already exists")
+        );
+        assert!(
+            rename_local_folder(&conn, "X", "X/Y/Z", &dir)
+                .unwrap_err()
+                .to_string()
+                .contains("inside itself")
+        );
+        assert!(
+            rename_local_folder(&conn, "C", "C", &dir)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

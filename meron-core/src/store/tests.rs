@@ -5308,3 +5308,67 @@ fn a_cached_message_keeps_its_invite() {
         .unwrap();
     assert_eq!(cached.invite, Some(invite));
 }
+
+#[test]
+fn rename_folder_keeps_the_rows_and_drops_the_cache() {
+    let conn = test_conn();
+    upsert_folders(
+        &conn,
+        "acct",
+        &[
+            Folder {
+                name: "Work".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+            Folder {
+                name: "Work/Reports".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+            Folder {
+                name: "Workshop".to_string(),
+                delimiter: Some("/".to_string()),
+                ..Default::default()
+            },
+        ],
+    )
+    .unwrap();
+    set_folder_notify(&conn, "acct", "Work/Reports", true).unwrap();
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, subject, date, seen)
+         VALUES('acct', 'Work/Reports', '7', 7, 'Q3', 1779580800, 0)",
+        [],
+    )
+    .unwrap();
+    set_folder_state(&conn, "acct", "Work/Reports", 1, 8).unwrap();
+
+    let pairs = folder_rename_pairs(&conn, "acct", "Work", "Jobs").unwrap();
+    assert_eq!(
+        pairs,
+        vec![
+            ("Work".to_string(), "Jobs".to_string()),
+            ("Work/Reports".to_string(), "Jobs/Reports".to_string()),
+        ]
+    );
+    rename_folder(&conn, "acct", &pairs).unwrap();
+    let folders = get_folders(&conn, "acct").unwrap();
+    assert_eq!(
+        folders
+            .iter()
+            .map(|folder| folder.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Jobs", "Jobs/Reports", "Workshop"]
+    );
+    let reports = folders
+        .iter()
+        .find(|folder| folder.name == "Jobs/Reports")
+        .unwrap();
+    assert!(reports.notify);
+    assert_eq!(reports.delimiter.as_deref(), Some("/"));
+    assert_eq!(
+        get_folder_state(&conn, "acct", "Work/Reports").unwrap(),
+        None
+    );
+    assert_eq!(get_folder_unread(&conn, "acct", "Work/Reports").unwrap(), 0);
+}

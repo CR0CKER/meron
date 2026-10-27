@@ -12,6 +12,7 @@ import { exportFolderAsEml } from '../../states/emlExport'
 import {
   deletableFolder,
   deleteFolder,
+  renameFolder,
   emptiableFolder,
   emptyFolder,
   folderMatches,
@@ -194,13 +195,16 @@ function KanbanColumnContent({
       : emptiableFolder(
           labelFolders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId),
         )
-  // An ordinary folder of a single account can be deleted on the server; the
-  // column goes with it, so unified/starred/RSS columns never offer this.
+  const columnFolder = labelFolders.find(
+    (folder) => folder.account_id === column.accountId && folder.id === column.folderId,
+  )
+  // An ordinary folder of a single account can be deleted (or renamed) on the
+  // server; the column follows it, so unified/starred/RSS columns never offer this.
   const deletableTarget =
     starredColumn || isRss || savedSearch || column.accountId === 'unified'
       ? null
       : deletableFolder(
-          labelFolders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId),
+          columnFolder,
           labelFolders.filter((folder) => folder.account_id === column.accountId),
         )
   // A whole-folder export needs one real mailbox to list on the server. The
@@ -214,6 +218,10 @@ function KanbanColumnContent({
   const deleteColumnFolder = () => {
     if (!deletableTarget) return
     void deleteFolder(column.accountId, column.folderId, deletableTarget.name, deletableTarget.nested)
+  }
+  const renameColumnFolder = () => {
+    if (!deletableTarget || !columnFolder) return
+    void renameFolder(column.accountId, columnFolder)
   }
   const emptyColumnFolder = async () => {
     if (!emptiableTarget) return
@@ -332,6 +340,7 @@ function KanbanColumnContent({
           emptiableTarget?.role === 'junk' ? t('threads.actions.emptyJunk') : t('threads.actions.emptyTrash')
         }
         onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
+        onRenameFolder={deletableTarget ? renameColumnFolder : undefined}
         onExportFolder={canExportFolder ? exportColumnFolder : undefined}
         onSync={async () => {
           setSyncing(true)
@@ -507,6 +516,7 @@ function KanbanColumnContent({
                 emptiableTarget?.role === 'junk' ? t('threads.actions.emptyJunk') : t('threads.actions.emptyTrash')
               }
               onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
+              onRenameFolder={deletableTarget ? renameColumnFolder : undefined}
               onExportFolder={canExportFolder ? exportColumnFolder : undefined}
               onSync={async () => {
                 setSyncing(true)

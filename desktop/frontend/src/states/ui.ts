@@ -28,6 +28,8 @@ export type ConfirmState = {
   confirmLabel: string
   cancelLabel: string
   tone: ConfirmTone
+  /** A text field the dialog asks for, for `promptText`. */
+  input?: { value: string; placeholder?: string }
 }
 
 export type BulkSelectionSurface = 'thread-list' | 'kanban'
@@ -207,6 +209,7 @@ export function confirmAction(
         confirmLabel?: string
         cancelLabel?: string
         tone?: ConfirmTone
+        input?: ConfirmState['input']
       },
 ): Promise<boolean> {
   const next = typeof options === 'string' ? { message: options } : options
@@ -220,6 +223,7 @@ export function confirmAction(
     confirmLabel: next.confirmLabel ?? 'Confirm',
     cancelLabel: next.cancelLabel ?? 'Cancel',
     tone: next.tone ?? 'default',
+    input: next.input,
   })
 
   return new Promise((resolve) => {
@@ -227,11 +231,30 @@ export function confirmAction(
   })
 }
 
+// The text a prompt's field held when it was settled, for `promptText`.
+let settledInput = ''
+
 export function settleConfirm(confirmed: boolean) {
   const resolve = pendingConfirmResolve
   pendingConfirmResolve = null
+  settledInput = ui$.confirm.peek()?.input?.value ?? ''
   ui$.confirm.set(null)
   resolve?.(confirmed)
+}
+
+/** Ask for a line of text in the confirm dialog. Resolves with what was typed,
+ *  or null when cancelled. */
+export async function promptText(options: {
+  title: string
+  message?: string
+  value?: string
+  placeholder?: string
+  confirmLabel?: string
+  cancelLabel?: string
+}): Promise<string | null> {
+  const { value = '', placeholder, message = '', ...rest } = options
+  const confirmed = await confirmAction({ ...rest, message, input: { value, placeholder } })
+  return confirmed ? settledInput : null
 }
 
 export function isWailsDesktopRuntime() {

@@ -15,6 +15,7 @@ import {
   CheckCheck,
   Download,
   EyeOff,
+  FolderPen,
   FolderX,
   RefreshCw,
   Search,
@@ -39,6 +40,8 @@ export type ThreadActionsMenuItemsProps = {
   emptyFolderLabel?: string
   /** Only wired for an ordinary folder of a single mail account; hidden otherwise. */
   onDeleteFolder?: () => void
+  /** Only wired for an ordinary folder of a single mail account; hidden otherwise. */
+  onRenameFolder?: () => void
   /** Only wired for a folder of a single mail account; hidden otherwise. */
   onExportFolder?: () => void
   /** Only wired for a non-inbox folder of a single mail account; hidden otherwise. */
@@ -71,6 +74,7 @@ export function ThreadActionsMenuItems({
   onEmptyFolder,
   emptyFolderLabel,
   onDeleteFolder,
+  onRenameFolder,
   onExportFolder,
   onToggleNotify,
   notifyEnabled = false,
@@ -196,7 +200,7 @@ export function ThreadActionsMenuItems({
           }}
         />
       )}
-      {(onSync || onRemove || onDeleteFolder || onExportFolder || onToggleNotify) && (
+      {(onSync || onRemove || onDeleteFolder || onRenameFolder || onExportFolder || onToggleNotify) && (
         <>
           <div className="my-1 border-t border-border" />
           {onSync && (
@@ -264,6 +268,17 @@ export function ThreadActionsMenuItems({
               }}
             />
           )}
+          {onRenameFolder && (
+            <MenuItem
+              className="flex-nowrap"
+              icon={<FolderPen size={13} className="text-secondary shrink-0" />}
+              label={<span className="whitespace-nowrap shrink-0">{t('folders.rename.action')}</span>}
+              onClick={() => {
+                onRenameFolder()
+                closeMenu()
+              }}
+            />
+          )}
           {onDeleteFolder && (
             <MenuItem
               className="flex-nowrap text-rose-600 dark:text-rose-400"
@@ -294,6 +309,7 @@ export function ThreadActionsMenu({
   onEmptyFolder,
   emptyFolderLabel,
   onDeleteFolder,
+  onRenameFolder,
   onExportFolder,
   onToggleNotify,
   notifyEnabled = false,
@@ -319,6 +335,7 @@ export function ThreadActionsMenu({
   onEmptyFolder?: () => void
   emptyFolderLabel?: string
   onDeleteFolder?: () => void
+  onRenameFolder?: () => void
   onExportFolder?: () => void
   onToggleNotify?: () => void
   notifyEnabled?: boolean
@@ -378,6 +395,7 @@ export function ThreadActionsMenu({
             onEmptyFolder={onEmptyFolder}
             emptyFolderLabel={emptyFolderLabel}
             onDeleteFolder={onDeleteFolder}
+            onRenameFolder={onRenameFolder}
             onExportFolder={onExportFolder}
             onToggleNotify={onToggleNotify}
             notifyEnabled={notifyEnabled}
