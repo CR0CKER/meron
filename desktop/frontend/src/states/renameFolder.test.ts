@@ -3,7 +3,7 @@ import type { Folder } from '../types'
 // Initialize the account/boot dependency graph before importing mail directly.
 import './accounts'
 import { mail$ } from './mail'
-import { renameFolder } from './mailFolders'
+import { promptNewFolder, renameFolder } from './mailFolders'
 import { recentThreadTransfers$ } from './recentThreadTransfers'
 import { settleConfirm, ui$ } from './ui'
 import { compose$ } from './composeState'
@@ -102,5 +102,23 @@ describe('renameFolder', () => {
     settleConfirm(true)
     expect(await unchanged).toBe(false)
     expect(calls.some((item) => item.method === 'mail.folderRename')).toBe(false)
+  })
+
+  it('creates a folder named in the prompt', async () => {
+    ;(window as any).go.main.App.Invoke = async (method: string, payload: unknown) => {
+      calls.push({ method, payload })
+      return { folders: [folder('Work/Q4')] }
+    }
+    const creating = promptNewFolder('acc')
+    // The hint names the account's own separator.
+    expect(ui$.confirm.peek()?.message).toContain('Work/Reports')
+    ui$.confirm.input.value.set('Work/Q4')
+    settleConfirm(true)
+    expect((await creating)?.id).toBe('Work/Q4')
+    expect(calls[0]).toEqual({ method: 'mail.folderCreate', payload: { account_id: 'acc', name: 'Work/Q4' } })
+
+    const cancelled = promptNewFolder('acc')
+    settleConfirm(false)
+    expect(await cancelled).toBeNull()
   })
 })

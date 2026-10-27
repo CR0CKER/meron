@@ -12,6 +12,7 @@ import { exportFolderAsEml } from '../../states/emlExport'
 import {
   deletableFolder,
   deleteFolder,
+  promptNewFolder,
   renameFolder,
   emptiableFolder,
   emptyFolder,
@@ -219,6 +220,14 @@ function KanbanColumnContent({
     if (!deletableTarget) return
     void deleteFolder(column.accountId, column.folderId, deletableTarget.name, deletableTarget.nested)
   }
+  // The column shows the new folder, as picking it in the column's folder
+  // picker would.
+  const canCreateFolder = !starredColumn && !isRss && column.accountId !== 'unified' && !!columnAccount
+  const newColumnFolder = async () => {
+    const folder = await promptNewFolder(column.accountId)
+    if (!folder || !switchKanbanColumnFolder(boardId, column, folder.id)) return
+    void loadKanbanColumn({ ...column, folderId: folder.id }, true)
+  }
   const renameColumnFolder = () => {
     if (!deletableTarget || !columnFolder) return
     void renameFolder(column.accountId, columnFolder)
@@ -341,6 +350,7 @@ function KanbanColumnContent({
         }
         onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
         onRenameFolder={deletableTarget ? renameColumnFolder : undefined}
+        onNewFolder={canCreateFolder ? () => void newColumnFolder() : undefined}
         onExportFolder={canExportFolder ? exportColumnFolder : undefined}
         onSync={async () => {
           setSyncing(true)
@@ -517,6 +527,7 @@ function KanbanColumnContent({
               }
               onDeleteFolder={deletableTarget ? deleteColumnFolder : undefined}
               onRenameFolder={deletableTarget ? renameColumnFolder : undefined}
+              onNewFolder={canCreateFolder ? () => void newColumnFolder() : undefined}
               onExportFolder={canExportFolder ? exportColumnFolder : undefined}
               onSync={async () => {
                 setSyncing(true)

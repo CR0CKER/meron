@@ -77,7 +77,6 @@ function FolderNotificationsGroup({ accountId }: { accountId: string }) {
       {/* Always offered: the picker loads the folder list and reports on it itself. */}
       <div className="flex min-h-11 items-center px-1.5 py-2">
         <FolderSwitcher
-          allowCreate={false}
           accountId={accountId}
           folderId=""
           label={addLabel}

@@ -16,6 +16,7 @@ import {
   Download,
   EyeOff,
   FolderPen,
+  FolderPlus,
   FolderX,
   RefreshCw,
   Search,
@@ -42,6 +43,8 @@ export type ThreadActionsMenuItemsProps = {
   onDeleteFolder?: () => void
   /** Only wired for an ordinary folder of a single mail account; hidden otherwise. */
   onRenameFolder?: () => void
+  /** Only wired for a single mail account (or local folders); hidden otherwise. */
+  onNewFolder?: () => void
   /** Only wired for a folder of a single mail account; hidden otherwise. */
   onExportFolder?: () => void
   /** Only wired for a non-inbox folder of a single mail account; hidden otherwise. */
@@ -75,6 +78,7 @@ export function ThreadActionsMenuItems({
   emptyFolderLabel,
   onDeleteFolder,
   onRenameFolder,
+  onNewFolder,
   onExportFolder,
   onToggleNotify,
   notifyEnabled = false,
@@ -200,7 +204,7 @@ export function ThreadActionsMenuItems({
           }}
         />
       )}
-      {(onSync || onRemove || onDeleteFolder || onRenameFolder || onExportFolder || onToggleNotify) && (
+      {(onSync || onToggleNotify || onExportFolder || onRemove) && (
         <>
           <div className="my-1 border-t border-border" />
           {onSync && (
@@ -268,6 +272,23 @@ export function ThreadActionsMenuItems({
               }}
             />
           )}
+        </>
+      )}
+      {/* Changes to the folder itself, the one destructive item last. */}
+      {(onNewFolder || onRenameFolder || onDeleteFolder) && (
+        <>
+          <div className="my-1 border-t border-border" />
+          {onNewFolder && (
+            <MenuItem
+              className="flex-nowrap"
+              icon={<FolderPlus size={13} className="text-secondary shrink-0" />}
+              label={<span className="whitespace-nowrap shrink-0">{t('folders.newFolderOrLabel')}</span>}
+              onClick={() => {
+                onNewFolder()
+                closeMenu()
+              }}
+            />
+          )}
           {onRenameFolder && (
             <MenuItem
               className="flex-nowrap"
@@ -310,6 +331,7 @@ export function ThreadActionsMenu({
   emptyFolderLabel,
   onDeleteFolder,
   onRenameFolder,
+  onNewFolder,
   onExportFolder,
   onToggleNotify,
   notifyEnabled = false,
@@ -336,6 +358,7 @@ export function ThreadActionsMenu({
   emptyFolderLabel?: string
   onDeleteFolder?: () => void
   onRenameFolder?: () => void
+  onNewFolder?: () => void
   onExportFolder?: () => void
   onToggleNotify?: () => void
   notifyEnabled?: boolean
@@ -396,6 +419,7 @@ export function ThreadActionsMenu({
             emptyFolderLabel={emptyFolderLabel}
             onDeleteFolder={onDeleteFolder}
             onRenameFolder={onRenameFolder}
+            onNewFolder={onNewFolder}
             onExportFolder={onExportFolder}
             onToggleNotify={onToggleNotify}
             notifyEnabled={notifyEnabled}

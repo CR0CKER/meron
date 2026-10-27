@@ -11,7 +11,7 @@ import {
   renameKanbanColumnsForFolder,
   renameMailViewFolder,
 } from './kanban'
-import { folderLeafName } from '../lib/folderTree'
+import { folderLeafName, pickDelimiter } from '../lib/folderTree'
 import { renameRecentTransferTargets } from './recentThreadTransfers'
 import { unifiedFolders } from '../lib/unifiedFolders'
 import { findLocalThread, mail$ } from './mail'
@@ -451,6 +451,27 @@ export async function createFolder(accountId: string, name: string): Promise<Fol
   await refreshAccountFoldersCache(accountId, false)
   publishCachedFolders(accountId)
   return folder
+}
+
+/** Ask for a new folder's name and create it in an account. Resolves with the
+ *  folder as created, or null when cancelled or it could not be made. */
+export async function promptNewFolder(accountId: string): Promise<Folder | null> {
+  if (!accountId || accountId === 'unified') return null
+  // Nest with the server's own separator ("/" on most, "." on some).
+  const delimiter = pickDelimiter(mail$.foldersByAccount[accountId].peek() ?? [])
+  const name = await promptText({
+    title: t('folders.newFolderOrLabel'),
+    message: t('folders.subfolderHint', { delimiter }),
+    placeholder: t('folders.namePlaceholder'),
+    confirmLabel: t('folders.create'),
+  })
+  if (!name?.trim()) return null
+  try {
+    return await createFolder(accountId, name)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : t('folders.createFailed'), 'error')
+    return null
+  }
 }
 
 export async function refreshAccountFoldersCache(accountId: string, refresh = false): Promise<Folder[]> {

@@ -34,6 +34,7 @@ import {
   emptyFolder,
   deletableFolder,
   deleteFolder,
+  promptNewFolder,
   renameFolder,
   setFolderNotify,
   isNotifiableFolder,
@@ -128,6 +129,17 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
     isStarredView || isRSSAccount || selectedAccount === 'unified'
       ? null
       : emptiableFolder(folders.find((folder) => folder.id === selectedFolder))
+  // Any single mail account (or local folders) can gain a folder.
+  const canCreateFolder = !isStarredView && !isRSSAccount && selectedAccount !== 'unified' && !!activeAccount
+  // Opens the new folder, unless the view moved on while a slow server made
+  // it: its id means nothing in another account, and the user went elsewhere.
+  const createAndOpenFolder = async () => {
+    const accountId = selectedAccount
+    const folderId = selectedFolder
+    const folder = await promptNewFolder(accountId)
+    if (!folder || ui$.selectedAccount.peek() !== accountId || ui$.selectedFolder.peek() !== folderId) return
+    ui$.selectedFolder.set(folder.id)
+  }
   const selectedFolderRow = folders.find((folder) => folder.id === selectedFolder)
   // Non-null only in an ordinary folder of a single account, the only kind the
   // server lets us delete. The same rule gates renaming it.
@@ -365,6 +377,7 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
                             )
                         : undefined
                     }
+                    onNewFolder={canCreateFolder ? () => void createAndOpenFolder() : undefined}
                     onRenameFolder={
                       deletableTarget && selectedFolderRow
                         ? () => void renameFolder(selectedAccount, selectedFolderRow)
