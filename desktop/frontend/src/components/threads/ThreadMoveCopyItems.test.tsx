@@ -36,16 +36,16 @@ it('lists up to three valid, account-scoped recent targets of each action inside
     fireEvent.click(view.getByText('Move to...'))
     const titles = () =>
       Array.from(document.querySelectorAll('[data-thread-context-menu] span[title]')).map((span) => span.textContent)
-    await waitFor(() => expect(titles()).toEqual(['Work', 'Older', 'A', 'other@example.com']))
+    await waitFor(() => expect(titles()).toEqual(['Work', 'Older', 'A', 'me@example.com', 'other@example.com']))
     fireEvent.click(view.getByText('Move to...'))
     fireEvent.click(view.getByText('Copy to...'))
-    await waitFor(() => expect(titles()).toEqual(['Receipts', 'other@example.com']))
+    await waitFor(() => expect(titles()).toEqual(['Receipts', 'me@example.com', 'other@example.com']))
   } finally {
     cleanup()
   }
 })
 
-it('offers other accounts in Move to and forwards the selected account', async () => {
+it('nests every account in Move to and forwards the selected account', async () => {
   accounts$.set([
     { id: 'acc', email: 'me@example.com' },
     { id: 'other', email: 'other@example.com' },
@@ -67,10 +67,12 @@ it('offers other accounts in Move to and forwards the selected account', async (
   )
   try {
     fireEvent.click(view.getByText('Move to...'))
-    // The thread's own account is listed inline, without its source INBOX.
+    // Each account opens its folders one level further out; the thread's own
+    // account leaves out its source INBOX.
+    fireEvent.click(view.getByText('me@example.com'))
     await waitFor(() => expect(view.getByText('Work')).toBeTruthy())
     expect(view.queryByText('INBOX')).toBeNull()
-    // Other accounts open their folders one level further out.
+    fireEvent.click(view.getByText('me@example.com'))
     fireEvent.click(view.getByText('other@example.com'))
     fireEvent.click(view.getByText('INBOX'))
     expect(moves).toEqual([['acc#INBOX#thread', 'other', 'INBOX']])

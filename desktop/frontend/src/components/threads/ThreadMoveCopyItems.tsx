@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useValue } from '@legendapp/state/react'
-import { AtSign, ChevronRight, Copy, FolderInput, History } from 'lucide-react'
+import { ChevronRight, Copy, FolderInput, History } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
 import { accounts$, isSendableAccount } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
 import { ensureAccountFolders } from '../../states/mailFolders'
 import { copyThreadToFolder, moveThreadToFolder } from '../../states/mailMoves'
 import { recentThreadTransfers$, type RecentThreadTransfer } from '../../states/recentThreadTransfers'
+import { Avatar } from '../avatar/Avatar'
 import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { FolderMenuTree } from '../menu/FolderMenuTree'
 import { MenuItem } from '../menu/MenuItem'
@@ -44,8 +45,8 @@ function useFlyoutPosition(open: boolean, anchorRef: RefObject<HTMLDivElement | 
 
 /**
  * The "Move to" and "Copy to" rows of a mail thread's menu, each opening a
- * flyout: recent targets for that action, the thread's own account folders,
- * then one row per other account opening its folders a level further out. Shared by the thread list's right-click menu and the open
+ * flyout: recent targets for that action, then one row per account (the
+ * thread's own first) opening its folders a level further out. Shared by the thread list's right-click menu and the open
  * conversation's actions menu, which style their rows differently — hence
  * `itemClassName` and `iconSize`.
  */
@@ -135,8 +136,14 @@ export function ThreadMoveCopyItems({
   }, [accountId, accounts, recentTransfers])
 
   const canMove = mailAccounts.length > 0
-  const ownAccount = mailAccounts.find((account) => account.id === accountId)
-  const otherAccounts = mailAccounts.filter((account) => account.id !== accountId)
+  // The thread's own account leads; a lone account needs no row of its own.
+  const targetAccounts = [
+    ...mailAccounts.filter((account) => account.id === accountId),
+    ...mailAccounts.filter((account) => account.id !== accountId),
+  ]
+  const inlineAccount = targetAccounts.length === 1 ? targetAccounts[0] : undefined
+  // The thread's own folder stays in the tree as a parent, just not pickable.
+  const excludedFolders = (targetAccountId: string) => (targetAccountId === accountId ? [folderId] : [])
   const recentTargets = (action: RecentThreadTransfer['action']) =>
     recentTransfers
       .flatMap((entry) => {
@@ -177,7 +184,6 @@ export function ThreadMoveCopyItems({
     const pick = (targetAccountId: string, folder: Folder) =>
       action === 'move' ? moveTo(targetAccountId, folder.id) : copyTo(targetAccountId, folder.id)
     const recents = recentTargets(action)
-    const ownFolders = ownAccount ? (foldersByAccount[ownAccount.id] ?? []) : []
     return (
       <FloatingContextMenu
         x={position.x}
@@ -197,34 +203,32 @@ export function ThreadMoveCopyItems({
             onClick={() => pick(recent.accountId, recent.folder)}
           />
         ))}
-        {recents.length > 0 && (ownAccount || otherAccounts.length > 0) && (
-          <div className="my-1 border-t border-border" />
-        )}
-        {ownAccount && (
+        {recents.length > 0 && targetAccounts.length > 0 && <div className="my-1 border-t border-border" />}
+        {inlineAccount ? (
           <>
-            {ownFolders.length === 0 && <FolderListStatus loading={copyLoading} />}
-            {/* The thread's own folder stays in the tree as a parent, just not pickable. */}
+            {(foldersByAccount[inlineAccount.id] ?? []).length === 0 && <FolderListStatus loading={copyLoading} />}
             <FolderMenuTree
-              folders={ownFolders}
-              excludedFolderIds={[folderId]}
-              onPick={(folder) => pick(ownAccount.id, folder)}
+              folders={foldersByAccount[inlineAccount.id] ?? []}
+              excludedFolderIds={excludedFolders(inlineAccount.id)}
+              onPick={(folder) => pick(inlineAccount.id, folder)}
             />
           </>
+        ) : (
+          targetAccounts.map((account) => (
+            <AccountFolderItem
+              key={account.id}
+              account={account}
+              folders={foldersByAccount[account.id] ?? []}
+              excludedFolderIds={excludedFolders(account.id)}
+              loading={copyLoading}
+              open={openAccountId === account.id}
+              setOpen={(open) =>
+                setOpenAccountId((current) => (open ? account.id : current === account.id ? null : current))
+              }
+              onPick={(folder) => pick(account.id, folder)}
+            />
+          ))
         )}
-        {ownAccount && otherAccounts.length > 0 && <div className="my-1 border-t border-border" />}
-        {otherAccounts.map((account) => (
-          <AccountFolderItem
-            key={account.id}
-            account={account}
-            folders={foldersByAccount[account.id] ?? []}
-            loading={copyLoading}
-            open={openAccountId === account.id}
-            setOpen={(open) =>
-              setOpenAccountId((current) => (open ? account.id : current === account.id ? null : current))
-            }
-            onPick={(folder) => pick(account.id, folder)}
-          />
-        ))}
       </FloatingContextMenu>
     )
   }
@@ -294,11 +298,12 @@ function FolderListStatus({ loading }: { loading: boolean }) {
   )
 }
 
-/** A row in the folder flyout for an account other than the thread's own,
- *  opening that account's folders one level further out. */
+/** A row in the folder flyout for one account, opening that account's
+ *  folders one level further out. */
 function AccountFolderItem({
   account,
   folders,
+  excludedFolderIds,
   loading,
   open,
   setOpen,
@@ -306,6 +311,7 @@ function AccountFolderItem({
 }: {
   account: Account
   folders: Folder[]
+  excludedFolderIds: string[]
   loading: boolean
   open: boolean
   setOpen: (open: boolean) => void
@@ -317,7 +323,7 @@ function AccountFolderItem({
   return (
     <div ref={anchorRef} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <MenuItem
-        icon={<AtSign size={13} className="shrink-0 text-secondary" />}
+        icon={<Avatar name={label} src={account.avatar_url} size={18} className="shrink-0" />}
         label={
           <span className="min-w-0 truncate" title={label}>
             {label}
@@ -335,7 +341,7 @@ function AccountFolderItem({
           dataAttribute="data-thread-context-menu"
         >
           {folders.length === 0 && <FolderListStatus loading={loading} />}
-          <FolderMenuTree folders={folders} onPick={onPick} />
+          <FolderMenuTree folders={folders} excludedFolderIds={excludedFolderIds} onPick={onPick} />
         </FloatingContextMenu>
       )}
     </div>

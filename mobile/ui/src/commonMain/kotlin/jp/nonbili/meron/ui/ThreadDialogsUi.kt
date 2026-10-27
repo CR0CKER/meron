@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
@@ -78,9 +77,16 @@ internal fun CopyThreadDialog(
     )
 }
 
+private data class DestinationAccount(
+    val id: String,
+    val label: String,
+    val avatarUrl: String = "",
+)
+
 /**
- * Recent targets of this action first, then the thread's own account folders,
- * then one row per other account that expands to that account's folders.
+ * Recent targets of this action first, then one row per account (the thread's
+ * own first) that expands to that account's folders. A lone account's folders
+ * are listed directly.
  */
 @Composable
 private fun ThreadDestinationDialog(
@@ -96,10 +102,12 @@ private fun ThreadDestinationDialog(
     val foldersByAccount = folders.groupBy { it.accountId.ifBlank { thread.accountId } }
     val accountGroups =
         if (accounts.isNotEmpty()) {
-            accounts.map { account -> account.id to account.displayName.ifBlank { account.email.ifBlank { account.id } } }
+            accounts.map { account ->
+                DestinationAccount(account.id, account.displayName.ifBlank { account.email.ifBlank { account.id } }, account.avatarUrl)
+            }
         } else {
-            foldersByAccount.keys.map { accountId -> accountId to accountId }
-        }
+            foldersByAccount.keys.map { accountId -> DestinationAccount(accountId, accountId) }
+        }.sortedBy { it.id != thread.accountId }
 
     fun targetFolders(accountId: String) =
         foldersByAccount[accountId]
@@ -108,9 +116,8 @@ private fun ThreadDestinationDialog(
                 accountId == thread.accountId &&
                     folder.name.equals(thread.folder, ignoreCase = true)
             }
-    val ownAccount = accountGroups.firstOrNull { (accountId, _) -> accountId == thread.accountId }
-    val otherAccounts = accountGroups.filterNot { (accountId, _) -> accountId == thread.accountId }
-    val targetCount = accountGroups.sumOf { (accountId, _) -> targetFolders(accountId).size }
+    val inlineAccount = accountGroups.singleOrNull()
+    val targetCount = accountGroups.sumOf { targetFolders(it.id).size }
     var expandedAccountId by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -143,43 +150,41 @@ private fun ThreadDestinationDialog(
                     return@LazyColumn
                 }
                 items(recents, key = { "recent:${it.transfer.targetAccountId}\n${it.folder.name}" }) { recent ->
-                    DestinationAction(Icons.Filled.History, recent.destination) {
+                    DestinationAction({ DestinationIcon(Icons.Filled.History) }, recent.destination) {
                         onPick(recent.folder.copy(accountId = recent.transfer.targetAccountId))
                     }
                 }
                 if (recents.isNotEmpty() && accountGroups.isNotEmpty()) {
                     item(key = "recent-divider") { HorizontalDivider(Modifier.padding(vertical = 4.dp)) }
                 }
-                if (ownAccount != null) {
-                    val ownFolders = targetFolders(ownAccount.first)
-                    if (ownFolders.isEmpty()) {
-                        item(key = "empty:${ownAccount.first}") { NoFoldersText() }
+                if (inlineAccount != null) {
+                    val accountFolders = targetFolders(inlineAccount.id)
+                    if (accountFolders.isEmpty()) {
+                        item(key = "empty:${inlineAccount.id}") { NoFoldersText() }
                     } else {
-                        items(ownFolders, key = { "${ownAccount.first}\n${it.name}" }) { folder ->
+                        items(accountFolders, key = { "${inlineAccount.id}\n${it.name}" }) { folder ->
                             FolderDestinationAction(folder) { onPick(folder) }
                         }
                     }
-                    if (otherAccounts.isNotEmpty()) {
-                        item(key = "account-divider") { HorizontalDivider(Modifier.padding(vertical = 4.dp)) }
-                    }
+                    return@LazyColumn
                 }
-                otherAccounts.forEach { (accountId, accountLabel) ->
-                    val expanded = expandedAccountId == accountId
-                    item(key = "account:$accountId") {
+                accountGroups.forEach { account ->
+                    val expanded = expandedAccountId == account.id
+                    item(key = "account:${account.id}") {
                         DestinationAction(
-                            Icons.Filled.AlternateEmail,
-                            accountLabel,
+                            { AccountBadgeAvatar(account.label, account.avatarUrl, 20.dp) },
+                            account.label,
                             trailing = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         ) {
-                            expandedAccountId = if (expanded) null else accountId
+                            expandedAccountId = if (expanded) null else account.id
                         }
                     }
                     if (expanded) {
-                        val accountFolders = targetFolders(accountId)
+                        val accountFolders = targetFolders(account.id)
                         if (accountFolders.isEmpty()) {
-                            item(key = "empty:$accountId") { NoFoldersText(Modifier.padding(start = 16.dp)) }
+                            item(key = "empty:${account.id}") { NoFoldersText(Modifier.padding(start = 16.dp)) }
                         } else {
-                            items(accountFolders, key = { "$accountId\n${it.name}" }) { folder ->
+                            items(accountFolders, key = { "${account.id}\n${it.name}" }) { folder ->
                                 FolderDestinationAction(folder, Modifier.padding(start = 16.dp)) { onPick(folder) }
                             }
                         }
@@ -209,24 +214,29 @@ internal fun FolderDestinationAction(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    DestinationAction(folderIcon(folder), folder.displayName.replaceFirstChar { it.uppercase() }, modifier, onClick = onClick)
+    DestinationAction({ DestinationIcon(folderIcon(folder)) }, folder.displayName.replaceFirstChar { it.uppercase() }, modifier, onClick = onClick)
+}
+
+@Composable
+private fun DestinationIcon(icon: ImageVector) {
+    Icon(
+        icon,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
 private fun DestinationAction(
-    icon: ImageVector,
+    leading: @Composable () -> Unit,
     label: String,
     modifier: Modifier = Modifier,
     trailing: ImageVector? = null,
     onClick: () -> Unit,
 ) {
     TextButton(onClick = onClick, modifier = modifier.fillMaxWidth()) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        leading()
         Spacer(Modifier.width(10.dp))
         Text(
             label,
