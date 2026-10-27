@@ -365,6 +365,19 @@ export async function loadFolders(accountId: string, refresh = true) {
   }
 }
 
+/** Create a folder in an account (on its server, or in local folders) and
+ *  refresh the account's folder list. Returns the folder as created. */
+export async function createFolder(accountId: string, name: string): Promise<Folder> {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error(t('folders.nameRequired'))
+  const result = await invoke<{ folders?: Folder[] }>('mail.folderCreate', { account_id: accountId, name: trimmed })
+  const folder = result.folders?.[0]
+  if (!folder) throw new Error(t('folders.createdMissing'))
+  await refreshAccountFoldersCache(accountId, false)
+  publishCachedFolders(accountId)
+  return folder
+}
+
 export async function refreshAccountFoldersCache(accountId: string, refresh = false): Promise<Folder[]> {
   if (!accountId || accountId === 'unified') return []
   try {

@@ -26,7 +26,8 @@ func (a *App) accountAddLocal(payload map[string]any) (any, error) {
 		return nil, a.engineUnavailable()
 	}
 	name, _ := payload["name"].(string)
-	if _, err := a.sidecar.Call("account.addLocal", map[string]any{"name": name}); err != nil {
+	folder, _ := payload["folder"].(string)
+	if _, err := a.sidecar.Call("account.addLocal", map[string]any{"name": name, "folder": folder}); err != nil {
 		return nil, err
 	}
 	a.logf("account.addLocal: local folders ready")

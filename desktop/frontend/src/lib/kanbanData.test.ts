@@ -982,6 +982,14 @@ describe('labels', () => {
     expect(folderLabel({ accountId: 'acc1', folderId: 'f2' }, folders, accs)).toBe('f2')
   })
 
+  it('folderLabel names local folders without an inbox after the account', () => {
+    const local = { ...account('local'), display_name: 'Local Folders' }
+    const folders = [{ account_id: 'local', id: 'INBOX', name: 'INBOX', delimiter: '/' } as Folder]
+    expect(folderLabel({ accountId: 'local', folderId: 'inbox' }, [], [local])).toBe('Local Folders')
+    // A local folder the user named "inbox" is stored as INBOX and is real.
+    expect(folderLabel({ accountId: 'local', folderId: 'INBOX' }, folders, [local])).toBe('INBOX')
+  })
+
   it('folderLabel names a nested folder by its last path segment', () => {
     const folders = [
       { account_id: 'acc1', id: '[Gmail]/Now', name: '[Gmail]/Now', delimiter: '/' } as Folder,

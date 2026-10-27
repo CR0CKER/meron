@@ -36,7 +36,15 @@ func TestIntegrationLocalFolders(t *testing.T) {
 	})
 	uid := num(source, "uid")
 
-	callMap(t, sidecar, "account.addLocal", map[string]any{"name": "Local Folders"})
+	callMap(t, sidecar, "account.addLocal", map[string]any{"name": "Local Folders", "folder": "Archive"})
+	if !foldersContain(callMap(t, sidecar, "folders.list", map[string]any{"account": localAccountID}), "Archive") {
+		t.Fatal("new local folders have no default folder")
+	}
+	// Adding again creates no second default folder.
+	callMap(t, sidecar, "account.addLocal", map[string]any{"name": "Local Folders", "folder": "Other"})
+	if foldersContain(callMap(t, sidecar, "folders.list", map[string]any{"account": localAccountID}), "Other") {
+		t.Fatal("re-adding local folders created another default folder")
+	}
 	accounts := callMap(t, sidecar, "account.list", map[string]any{})
 	if !strings.Contains(fmt.Sprint(accounts["accounts"]), "auth_type:local") {
 		t.Fatalf("account.list has no local account: %v", accounts)

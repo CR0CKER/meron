@@ -133,7 +133,19 @@ pub(crate) async fn dispatch(
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| "Local Folders".to_string());
             let created = store::add_local_account(&main.db.lock().unwrap(), &name)?;
-            archive(main)?;
+            let archive = archive(main)?;
+            // Start with one folder, so there is somewhere to move mail and a
+            // folder to open. The UI names it in the user's language.
+            if created {
+                let folder = req_str(p, "folder")
+                    .ok()
+                    .filter(|folder| !folder.trim().is_empty())
+                    .unwrap_or_else(|| "Archive".to_string());
+                let db = archive.db.lock().unwrap();
+                if store::get_folders(&db, LOCAL_ACCOUNT_ID)?.is_empty() {
+                    store::create_local_folder(&db, &folder)?;
+                }
+            }
             Ok(json!({ "ok": true, "created": created, "id": LOCAL_ACCOUNT_ID }))
         }
 

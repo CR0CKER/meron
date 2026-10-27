@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { useValue } from '@legendapp/state/react'
 import { invoke } from './bridge'
 import { folderLeafName } from './folderTree'
-import { accounts$, unifiedAccounts } from '../states/accounts'
+import { accounts$, isLocalAccountId, unifiedAccounts } from '../states/accounts'
 import {
   getAllKanbanColumns,
   getKanbanColumns,
@@ -195,8 +195,13 @@ export function folderLabel(
   // account's, the qualified name is the one that reads unambiguously.
   if (column.accountId === 'unified') return unifiedFolderLabel(column.folderId, t)
   const isRSS = isRSSAccount(column.accountId, accounts)
-  if (isInbox) return isRSS ? 'Feed' : 'Inbox'
   const found = folders.find((folder) => folder.account_id === column.accountId && folder.id === column.folderId)
+  // Local folders have no Inbox: a view opened before any folder exists (or
+  // after the last one went) is named after the account, not a missing Inbox.
+  if (isLocalAccountId(column.accountId)) {
+    return found?.name ? folderLeafName(found) : accountLabel(column.accountId, accounts)
+  }
+  if (isInbox) return isRSS ? 'Feed' : 'Inbox'
   if (!found?.name) return column.folderId
   // A column names its folder without the path above it ("Now", not
   // "[Gmail]/Now"); the folder switcher's tree still shows where it sits. Feed

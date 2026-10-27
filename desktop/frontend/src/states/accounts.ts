@@ -54,7 +54,8 @@ export function hasLocalAccount(): boolean {
 // Create the local account (once) and show its settings.
 export async function addLocalAccount() {
   try {
-    await invoke('account.addLocal', { name: t('accounts.local.name') })
+    // Starts with one folder, named in the user's language.
+    await invoke('account.addLocal', { name: t('accounts.local.name'), folder: t('folders.roles.archive') })
     await boot()
     ui$.accountSettingsId.set(LOCAL_ACCOUNT_ID)
   } catch (error) {

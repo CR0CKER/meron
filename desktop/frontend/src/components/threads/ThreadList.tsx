@@ -6,7 +6,7 @@ import { useTranslation } from '../../lib/i18n'
 import { openAddFeed, RSS_FEED_DRAG_TYPE } from '../../states/feeds'
 import { openComposeTab, openThreadTab, openMessageTab, openDraftConversationOrCompose } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
-import { accounts$, isSendableAccount } from '../../states/accounts'
+import { accounts$, isLocalAccountId, isSendableAccount } from '../../states/accounts'
 import {
   clearBulkSelection,
   isWailsDesktopRuntime,
@@ -164,7 +164,9 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
   // any folder: "your inbox is empty" only holds in the inbox, and neither
   // wording holds while a search or filter is hiding the threads that are there.
   const inboxFolder = folders.find((folder) => folder.role === 'inbox' || folder.id === 'inbox')
-  const inInbox = selectedFolder === (inboxFolder?.id ?? 'inbox')
+  // Local folders have no Inbox and nothing to pull from a server.
+  const inLocalFolders = isLocalAccountId(selectedAccount)
+  const inInbox = !inLocalFolders && selectedFolder === (inboxFolder?.id ?? 'inbox')
   const narrowed = !!query.trim() || filterMode !== 'all' || attachmentsOnly
   const emptyStateTitle = narrowed
     ? t('empty.noMatchingMail')
@@ -181,7 +183,9 @@ export function ThreadList({ width, onResizeStart }: ThreadListProps = {}) {
         ? t('empty.noArchivedThreads')
         : inInbox
           ? t('empty.inboxEmpty')
-          : t('empty.pullLatestMessages')
+          : inLocalFolders
+            ? t('settings.sections.noLocalFolders')
+            : t('empty.pullLatestMessages')
   const loadMoreButton = (
     <button
       className="mx-3 my-3 flex h-9 shrink-0 items-center justify-center rounded-lg border border-border text-xs font-semibold text-secondary hover:bg-hover disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer transition-colors"

@@ -4,6 +4,7 @@ import { Bell, BellOff, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { folderIcon } from '../../lib/folderIcon'
 import { useTranslation } from '../../lib/i18n'
 import { clsx } from '../../lib/utils'
+import { accounts$ } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
 import { ensureAccountFolders, isNotifiableFolder, setFolderNotify } from '../../states/mailFolders'
 import { UNIFIED_ACCOUNT, unifiedFolderLabel, unifiedFolders } from '../../lib/unifiedFolders'
@@ -12,6 +13,8 @@ import { FloatingContextMenu } from './FloatingContextMenu'
 import { MenuItem } from './MenuItem'
 import { menuItemBase } from './menuStyles'
 import { buildFolderTree, type TreeNode } from '../../lib/folderTree'
+import { isRssAccount } from '../../lib/threadActions'
+import { NewFolderForm } from './NewFolderForm'
 
 const FILTER_THRESHOLD = 8
 
@@ -114,6 +117,7 @@ export function FolderSwitcher({
   labelClassName,
   title,
   takenFolderIds,
+  allowCreate = true,
   onSelect,
 }: {
   accountId: string
@@ -124,12 +128,18 @@ export function FolderSwitcher({
   title?: string
   /** Folders already shown elsewhere (e.g. another column) and so not offered. */
   takenFolderIds?: string[]
+  /** Offer a new-folder field under the list; off where picking is not switching. */
+  allowCreate?: boolean
   onSelect: (folderId: string) => void
 }) {
   const { t } = useTranslation()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folderId: string } | null>(null)
   const isUnified = accountId === UNIFIED_ACCOUNT
+  // A mail account (or local folders) can gain folders here; feeds and the
+  // unified view's fixed roles cannot.
+  const account = useValue(accounts$).find((item) => item.id === accountId)
+  const canCreate = allowCreate && !isUnified && !!account && !isRssAccount(account, accountId)
   // Keep observing the shared cache: when it contains only the bootstrap Inbox,
   // ensureAccountFolders refreshes it in the background.
   const cachedFolders = useValue(mail$.foldersByAccount[accountId]) ?? []
@@ -262,6 +272,18 @@ export function FolderSwitcher({
               ))
             )}
           </div>
+          {canCreate && (
+            <div className="mt-1 shrink-0 border-t border-border pt-1.5">
+              <NewFolderForm
+                accountId={accountId}
+                autoFocus={folders.length === 0}
+                onCreated={(folder) => {
+                  close()
+                  onSelect(folder.id)
+                }}
+              />
+            </div>
+          )}
         </FloatingContextMenu>
       )}
       {folderMenu && menuFolder && (
