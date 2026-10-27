@@ -107,6 +107,8 @@ func (a *App) storageUsage() (any, error) {
 	return map[string]any{
 		"cacheBytes": dirSize(mediaDir()),
 		"dbBytes":    fileSize(filepath.Join(appConfigDir(), "meron.db")),
+		// Local folders: the only copy of that mail, never cleared here.
+		"archiveBytes": fileSize(filepath.Join(appConfigDir(), "archive.db")),
 	}, nil
 }
 

@@ -1319,6 +1319,24 @@ pub fn remove_account_media(root: &Path, account: &str) {
     let _ = std::fs::remove_dir_all(root.join(segment));
 }
 
+/// Best-effort removal of one folder's cached attachment files.
+pub fn remove_folder_media(root: &Path, account: &str, folder: &str) {
+    let (account, folder) = (sanitize_segment(account), sanitize_segment(folder));
+    if account.is_empty() || folder.is_empty() {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(root.join(account).join(folder));
+}
+
+/// Best-effort removal of one message's cached attachment files.
+pub fn remove_message_media(root: &Path, account: &str, folder: &str, uid: u32) {
+    let (account, folder) = (sanitize_segment(account), sanitize_segment(folder));
+    if account.is_empty() || folder.is_empty() {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(root.join(account).join(folder).join(uid.to_string()));
+}
+
 pub fn html_to_text(html: &str) -> String {
     let options = ConversionOptions::builder()
         .extract_metadata(false)

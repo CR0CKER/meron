@@ -8,7 +8,10 @@ use serde_json::{Value, json};
 use super::{Engine, delete_to_trash, refresh_written_folder};
 use crate::{imap, mail_model, store};
 
-fn require_complete_fetch(uids: &[u32], messages: &[imap::RawMessageCopy]) -> anyhow::Result<()> {
+pub fn require_complete_fetch(
+    uids: &[u32],
+    messages: &[imap::RawMessageCopy],
+) -> anyhow::Result<()> {
     let requested: BTreeSet<_> = uids.iter().copied().collect();
     let fetched: BTreeSet<_> = messages.iter().map(|message| message.uid).collect();
     ensure!(

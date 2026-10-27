@@ -20,10 +20,10 @@ import { FloatingContextMenu } from '../menu/FloatingContextMenu'
 import { MenuItem } from '../menu/MenuItem'
 import { AddMailToTasksMenu } from '../tasks/AddMailToTasksMenu'
 import { markThreadRead, markThreadUnread, starThread } from '../../states/mailFlags'
-import { isDraftFolder, isTrashFolderId } from '../../states/mailFolders'
+import { deletesForever, isDraftFolder } from '../../states/mailFolders'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
 import { exportThreadsAsEml } from '../../states/emlExport'
-import { accounts$ } from '../../states/accounts'
+import { accounts$, isLocalAccountId } from '../../states/accounts'
 import { isRssAccount } from '../../lib/threadActions'
 import type { Account, Message } from '../../types'
 import { targetWithin, useDismissOnOutside } from '../menu/useDismissOnOutside'
@@ -301,7 +301,7 @@ export function ThreadContextMenu({
     )
   }
 
-  const inTrash = isTrashFolderId(menu.accountId, menu.folderId)
+  const inTrash = deletesForever(menu.accountId, menu.folderId)
   const inDrafts = isDraftFolder(menu.folderId, menu.accountId)
 
   return (
@@ -381,15 +381,17 @@ export function ThreadContextMenu({
           void exportThreadsAsEml([{ threadId, folderId }], subject)
         }}
       />
-      <MenuItem
-        icon={<Archive size={13} className="text-secondary" />}
-        label={t('threads.actions.archiveThread')}
-        onClick={() => {
-          const threadId = menu.threadId
-          close()
-          void archiveThread(threadId).then(() => after('archive', threadId))
-        }}
-      />
+      {!isLocalAccountId(menu.accountId) && (
+        <MenuItem
+          icon={<Archive size={13} className="text-secondary" />}
+          label={t('threads.actions.archiveThread')}
+          onClick={() => {
+            const threadId = menu.threadId
+            close()
+            void archiveThread(threadId).then(() => after('archive', threadId))
+          }}
+        />
+      )}
       <ThreadMoveCopyItems
         threadId={menu.threadId}
         accountId={menu.accountId}

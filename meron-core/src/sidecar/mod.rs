@@ -4,6 +4,7 @@
 
 pub(crate) mod dispatch;
 pub(crate) mod idle;
+pub(crate) mod local;
 pub(crate) mod params;
 pub(crate) mod prefs;
 pub(crate) mod spawn;

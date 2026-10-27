@@ -2614,6 +2614,21 @@ fn is_outgoing_matches_own_addresses_and_sent_folder_provenance() {
     assert!(is_outgoing(&mine, "Archive", "alias@other.jp", false));
     // A self-addressed copy in Sent stays outgoing despite being delivered too.
     assert!(is_outgoing(&mine, "Sent", "me@example.com", true));
+    // A local folder named Sent is just a name: received mail kept there stays incoming.
+    assert!(!account_message_is_outgoing(
+        LOCAL_ACCOUNT_ID,
+        &mine,
+        "Sent",
+        "cleo@example.com",
+        false
+    ));
+    assert!(account_message_is_outgoing(
+        LOCAL_ACCOUNT_ID,
+        &mine,
+        "Sent",
+        "me@example.com",
+        false
+    ));
 }
 
 #[test]

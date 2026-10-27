@@ -247,11 +247,129 @@ pub fn open() -> Result<Connection> {
             Err(error) => format!("failed: {error:#}"),
         }
     );
-    match key? {
+    let key = key?;
+    let _ = STORE_KEY.set(key.clone());
+    match key {
         Some(key) => open_at_keyed(path, &key),
         // Keyring disabled (tests/headless): keep the store plaintext as before.
         None => open_at(path),
     }
+}
+
+/// The key [`open`] resolved, so the local-folder archive opens with the same
+/// one without asking the keychain a second time.
+static STORE_KEY: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Open the local-folder archive (`archive.db`, beside the store), encrypted
+/// with the store's key. See `store::archive`.
+pub fn open_archive() -> Result<Connection> {
+    open_archive_at(archive_path(), archive_key()?.as_deref())
+}
+
+/// The key `archive.db` is encrypted with: the store's.
+fn archive_key() -> Result<Option<String>> {
+    match STORE_KEY.get() {
+        Some(key) => Ok(key.clone()),
+        None => crate::secrets::db_key(),
+    }
+}
+
+/// Open an archive at `path`, keyed when `key` is given. The archive shares
+/// the store's schema, so every message-list and thread read works on it
+/// unchanged, plus the `archive_raw` table holding the original messages.
+pub fn open_archive_at(path: impl AsRef<Path>, key: Option<&str>) -> Result<Connection> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let fresh = !path.exists();
+    let conn = open_keyed_connection(path, key)?;
+    // Deleting archived mail should give the disk space back. auto_vacuum only
+    // takes effect when set before the first table exists.
+    if fresh {
+        conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL;")
+            .context("set archive auto_vacuum")?;
+    }
+    configure_connection(&conn)?;
+    // The archive holds the only copy of its mail: a commit must reach the
+    // disk before the server copy is removed.
+    conn.execute_batch("PRAGMA synchronous = FULL;")
+        .context("set archive synchronous")?;
+    with_anyhow_busy_retry(|| run_migrations(&conn)).context("run migrations")?;
+    conn.execute_batch(super::archive::ARCHIVE_DDL)
+        .context("create archive tables")?;
+    Ok(conn)
+}
+
+/// Write a consistent copy of the open archive to `dest`, encrypted with
+/// `passphrase` rather than the keychain's key, so it can be restored on a
+/// computer that never had that key (see `store::restore_local_backup`).
+/// Copying `archive.db` itself while Meron runs is not a backup: recent
+/// commits live in its WAL.
+pub fn backup_archive_to(conn: &Connection, dest: &Path, passphrase: &str) -> Result<()> {
+    if passphrase.is_empty() {
+        anyhow::bail!("A passphrase is required");
+    }
+    // Renaming the snapshot over a database in use (or its WAL) would corrupt it.
+    let live = [
+        conn.path().map(PathBuf::from),
+        Some(archive_path()),
+        Some(db_path()),
+    ];
+    for database in live.into_iter().flatten() {
+        for suffix in ["", "-wal", "-shm"] {
+            if same_file_path(dest, &sibling_with_suffix(&database, suffix)) {
+                anyhow::bail!("Choose another file: {} is in use by Meron", dest.display());
+            }
+        }
+    }
+    let file_name = dest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("archive.db");
+    let partial = dest.with_file_name(format!("{file_name}.partial"));
+    let _ = std::fs::remove_file(&partial);
+    let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let exported = conn
+        .execute(
+            "ATTACH DATABASE ?1 AS snapshot KEY ?2",
+            params![partial.to_string_lossy(), passphrase],
+        )
+        .map_err(anyhow::Error::from)
+        .and_then(|_| {
+            conn.execute_batch(&format!(
+                "SELECT sqlcipher_export('snapshot');
+                 PRAGMA snapshot.user_version = {user_version};"
+            ))
+            .map_err(anyhow::Error::from)
+        });
+    let _ = conn.execute_batch("DETACH DATABASE snapshot;");
+    if let Err(err) = exported {
+        let _ = std::fs::remove_file(&partial);
+        return Err(err).context("export archive snapshot");
+    }
+    std::fs::rename(&partial, dest).context("move archive snapshot into place")?;
+    Ok(())
+}
+
+/// Whether two paths name the same file, comparing resolved directories so a
+/// path spelled through a symlink or `..` still matches.
+fn same_file_path(a: &Path, b: &Path) -> bool {
+    let resolve = |path: &Path| {
+        let dir = path.parent().filter(|dir| !dir.as_os_str().is_empty());
+        let dir = dir
+            .map(|dir| dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        path.file_name().map(|name| dir.join(name))
+    };
+    matches!((resolve(a), resolve(b)), (Some(a), Some(b)) if a == b)
+}
+
+fn archive_path() -> PathBuf {
+    if let Ok(path) = std::env::var("MERON_ARCHIVE_DB") {
+        return PathBuf::from(path);
+    }
+    app_dir().join("archive.db")
 }
 
 /// Open an unencrypted store. SQLCipher leaves a database untouched until a key
@@ -273,6 +391,14 @@ fn open_inner(path: &Path, key: Option<&str>) -> Result<Connection> {
         let _ = std::fs::create_dir_all(parent);
     }
     let conn = open_keyed_connection(path, key)?;
+    configure_connection(&conn)?;
+    with_anyhow_busy_retry(|| run_migrations(&conn)).context("run migrations")?;
+    with_anyhow_busy_retry(|| invalidate_body_cache_if_needed(&conn))
+        .context("invalidate body cache if needed")?;
+    Ok(conn)
+}
+
+fn configure_connection(conn: &Connection) -> Result<()> {
     conn.busy_timeout(Duration::from_millis(5000))
         .context("set busy timeout")?;
     // WAL + synchronous=NORMAL is the durable-but-fast desktop combo; busy_timeout
@@ -289,10 +415,7 @@ fn open_inner(path: &Path, key: Option<&str>) -> Result<Connection> {
         )
     })
     .context("set connection pragmas")?;
-    with_anyhow_busy_retry(|| run_migrations(&conn)).context("run migrations")?;
-    with_anyhow_busy_retry(|| invalidate_body_cache_if_needed(&conn))
-        .context("invalidate body cache if needed")?;
-    Ok(conn)
+    Ok(())
 }
 
 /// Opens `path` and applies the SQLCipher `key` (if any). When the key is set
@@ -491,6 +614,10 @@ fn config_dir() -> PathBuf {
 /// block; never edit or reorder a shipped one. (Cache-only invalidation lives in
 /// `invalidate_body_cache_if_needed`, kept off this counter so a render change
 /// doesn't look like a schema change.)
+///
+/// The local-folder archive runs these too (`open_archive_at`), and there the
+/// `messages` rows are not a cache: a migration may rebuild them, but never
+/// drop cached mail on the assumption that a sync will bring it back.
 pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
     let version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;

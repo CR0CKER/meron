@@ -223,6 +223,11 @@ func (a *App) accountRemove(payload map[string]any) (any, error) {
 	// subscriptions/items), plus the keychain secret.
 	if a.sidecar != nil && a.sidecar.Started() {
 		if _, err := a.sidecar.Call("account.remove", map[string]any{"id": id}); err != nil {
+			// Removing local folders deletes the only copy of their mail; a
+			// failure there (busy, file not deletable) must not read as done.
+			if isLocalAccountID(id) {
+				return nil, err
+			}
 			a.logf("account.remove: sidecar cleanup failed for %s: %v", id, err)
 		}
 	}

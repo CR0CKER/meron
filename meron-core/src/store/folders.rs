@@ -277,6 +277,8 @@ pub fn classify_folder_role(name: &str, special_use: Option<&str>) -> &'static s
         "trash" => "trash",
         "junk" => "junk",
         "archive" | "all" => "archive",
+        // A local folder is plain whatever it is called.
+        super::LOCAL_SPECIAL_USE => "folder",
         _ if name.eq_ignore_ascii_case("INBOX") => "inbox",
         _ if crate::imap::looks_like_sent(name) => "sent",
         _ if crate::imap::looks_like_drafts(name) => "drafts",

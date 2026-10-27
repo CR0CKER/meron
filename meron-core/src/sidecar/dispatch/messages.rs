@@ -118,8 +118,11 @@ pub(crate) async fn dispatch(
         // both mail and RSS so transport adapters do not mint ids or reshape it.
         "starred.items" => {
             let limit = req_u32(p, "limit").unwrap_or(200);
+            // Before taking the store lock: opening the archive reads the store.
+            let local = crate::sidecar::local::starred_cards(engine, 2_000);
             let db = engine.db.lock().unwrap();
             let mut items = mail_model::starred_thread_cards(&db, 2_000)?;
+            items.extend(local);
             items.extend(rss::starred_items(&db, 2_000)?);
             Ok(mail_model::starred_page(
                 items,
@@ -194,8 +197,13 @@ pub(crate) async fn dispatch(
                         &mine,
                     )
                 });
-            let outgoing =
-                store::is_outgoing(&mine, &folder, &message.from_addr, message.delivered);
+            let outgoing = store::account_message_is_outgoing(
+                &account,
+                &mine,
+                &folder,
+                &message.from_addr,
+                message.delivered,
+            );
             // The same reply rule the thread read ships with every message, so a
             // single-message read seeds a reply identically.
             let reply = meron_core::reply::reply_json(

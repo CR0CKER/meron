@@ -1,7 +1,7 @@
 import type { Message } from '../types'
 import { t } from '../lib/i18n'
 import { showToast, ui$ } from './ui'
-import { accounts$, isSendableAccount } from './accounts'
+import { accounts$, isLocalAccountId, isSendableAccount } from './accounts'
 import { getActiveThread, normalizeMessageId } from './mail'
 // From the leaf module: this one subscribes to it while loading, which can be
 // inside an import cycle through mail.ts.
@@ -151,7 +151,7 @@ async function performQuickReplyDraftSave() {
   if (!replyAccountId || replyAccountId === 'unified') return
   const accounts = accounts$.peek()
   const activeAcc = accounts.find((acc) => acc.id === replyAccountId) || accounts[0] || null
-  if (activeAcc?.provider === 'rss' || activeAcc?.auth_type === 'rss') return
+  if (activeAcc?.provider === 'rss' || activeAcc?.auth_type === 'rss' || isLocalAccountId(replyAccountId)) return
 
   const target = pickReplyTarget(activeT)
   const { to, cc } = buildReplyRecipients(target)

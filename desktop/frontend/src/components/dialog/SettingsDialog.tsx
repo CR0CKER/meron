@@ -38,13 +38,14 @@ import {
   PanelBottom,
   SquarePen,
   Contrast,
+  HardDrive,
 } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { importOpml, exportOpml } from '../../states/feeds'
 import { exportBackup, importBackup, backupErrorMessage, isWrongPassphrase } from '../../states/backup'
 import { BackupPassphraseDialog, type BackupPassphraseMode } from './BackupPassphraseDialog'
 import { showToast, ui$, type SetupMode } from '../../states/ui'
-import { accounts$, deleteAccount } from '../../states/accounts'
+import { accounts$, addLocalAccount, deleteAccount, isLocalAccountId, LOCAL_ACCOUNT_ID } from '../../states/accounts'
 import {
   settings$,
   clampKanbanColumnWidth,
@@ -60,6 +61,7 @@ import {
   type SendShortcut,
 } from '../../states/settings'
 import { createKanbanBoard } from '../../states/kanban'
+import { loadFolders } from '../../states/mailFolders'
 import { update$ } from '../../states/update'
 import type { Account } from '../../types'
 import { Avatar } from '../avatar/Avatar'
@@ -133,9 +135,12 @@ function reconnectMode(account: Account): SetupMode {
 
 function accountMeta(account: Account, t: ReturnType<typeof useTranslation>['t']) {
   const isRSS = isRssAccount(account)
-  const displayName = account.display_name || (isRSS ? t('accounts.rssFeeds') : account.email.split('@')[0])
-  const subtitle = isRSS ? t('accounts.rssAtomFeeds') : account.email
-  return { isRSS, displayName, subtitle }
+  const isLocal = isLocalAccountId(account.id)
+  const displayName =
+    account.display_name ||
+    (isRSS ? t('accounts.rssFeeds') : isLocal ? t('accounts.local.name') : account.email.split('@')[0])
+  const subtitle = isRSS ? t('accounts.rssAtomFeeds') : isLocal ? t('accounts.local.subtitle') : account.email
+  return { isRSS, isLocal, displayName, subtitle }
 }
 
 export function SettingsDialog() {
@@ -154,8 +159,9 @@ export function SettingsDialog() {
   // A removed account/board (or a stale id) falls back to General.
   const activeKey: string = selectedAccount || selectedBoard || PAGE_IDS.has(selected) ? selected : 'general'
 
-  const mailAccounts = accounts.filter((acc) => !isRssAccount(acc))
+  const mailAccounts = accounts.filter((acc) => !isRssAccount(acc) && !isLocalAccountId(acc.id))
   const feedAccounts = accounts.filter(isRssAccount)
+  const localAccounts = accounts.filter((acc) => isLocalAccountId(acc.id))
 
   const onClose = () => {
     ui$.accountSettingsId.set('')
@@ -222,6 +228,15 @@ export function SettingsDialog() {
             onAdd={() => onAddAccount('rss')}
             emptyLabel={t('settings.sections.noFeedAccounts')}
           />
+          <AccountGroup
+            label={t('settings.sections.localFolders')}
+            accounts={localAccounts}
+            activeKey={activeKey}
+            onSelect={selectAccount}
+            // There is one set of local folders: once added, nothing to add.
+            onAdd={localAccounts.length === 0 ? () => void addLocalAccount() : undefined}
+            emptyLabel={t('settings.sections.noLocalFolders')}
+          />
         </nav>
 
         {/* Content */}
@@ -284,21 +299,23 @@ function AccountGroup({
   accounts: Account[]
   activeKey: string
   onSelect: (id: string) => void
-  onAdd: () => void
+  onAdd?: () => void
   emptyLabel: string
 }) {
   const { t } = useTranslation()
   return (
     <>
-      <div className="mt-5 mb-1.5 flex items-center justify-between px-3">
+      <div className="mt-5 mb-1.5 flex min-h-6 items-center justify-between px-3">
         <span className="text-[0.6875rem] font-semibold text-secondary">{label}</span>
-        <button
-          onClick={onAdd}
-          title={t('accounts.actions.addAccount')}
-          className="flex h-6 w-6 items-center justify-center rounded-lg text-secondary hover:text-accent hover:bg-accent/10 cursor-pointer transition-colors"
-        >
-          <Plus size={13} />
-        </button>
+        {onAdd && (
+          <button
+            onClick={onAdd}
+            title={t('accounts.actions.addAccount')}
+            className="flex h-6 w-6 items-center justify-center rounded-lg text-secondary hover:text-accent hover:bg-accent/10 cursor-pointer transition-colors"
+          >
+            <Plus size={13} />
+          </button>
+        )}
       </div>
       {accounts.length === 0 ? (
         <p className="px-3 py-1 text-[0.65625rem] text-secondary font-medium">{emptyLabel}</p>
@@ -333,6 +350,7 @@ function AccountNavAvatar({ account, displayName }: { account: Account; displayN
         src={account.avatar_url}
         size={20}
         className={`!rounded-md transition-all ${isPaused ? 'grayscale opacity-40' : ''}`}
+        fallback={isLocalAccountId(account.id) ? <HardDrive size={12} /> : undefined}
       />
       {(isPaused || isMuted) && (
         <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/60 text-white/80 ring-2 ring-raised">
@@ -851,7 +869,7 @@ function AutoUpdateRow() {
   )
 }
 
-type StorageUsage = { cacheBytes: number; dbBytes: number }
+type StorageUsage = { cacheBytes: number; dbBytes: number; archiveBytes?: number }
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B'
@@ -913,7 +931,11 @@ function StorageRows() {
         control={
           <span className="text-xs text-secondary tabular-nums">
             {usage
-              ? `${t('settings.storage.cacheLabel')} ${formatBytes(usage.cacheBytes)} · ${t('settings.storage.databaseLabel')} ${formatBytes(usage.dbBytes)}`
+              ? `${t('settings.storage.cacheLabel')} ${formatBytes(usage.cacheBytes)} · ${t('settings.storage.databaseLabel')} ${formatBytes(usage.dbBytes)}${
+                  usage.archiveBytes
+                    ? ` · ${t('settings.sections.localFolders')} ${formatBytes(usage.archiveBytes)}`
+                    : ''
+                }`
               : '…'}
           </span>
         }
@@ -1064,7 +1086,7 @@ function OpmlGroup({ account }: { account: string }) {
 
 export function AccountPanel({ account }: { account: Account }) {
   const { t } = useTranslation()
-  const { isRSS, displayName, subtitle } = accountMeta(account, t)
+  const { isRSS, isLocal, displayName, subtitle } = accountMeta(account, t)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const { avatarBusy, persistAvatarFile, persistAvatarUrl } = useAccountAvatar(account.id)
 
@@ -1099,7 +1121,13 @@ export function AccountPanel({ account }: { account: Account }) {
             onClick={() => void pickAvatarFile()}
             className="relative block rounded-2xl disabled:cursor-default cursor-pointer"
           >
-            <Avatar name={displayName} src={account.avatar_url} size={40} className="!rounded-2xl" />
+            <Avatar
+              name={displayName}
+              src={account.avatar_url}
+              size={40}
+              className="!rounded-2xl"
+              fallback={isLocal ? <HardDrive size={20} /> : undefined}
+            />
             <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
               <Camera size={15} className="text-white" />
             </span>
@@ -1145,6 +1173,8 @@ export function AccountPanel({ account }: { account: Account }) {
         </SettingsGroup>
       )}
 
+      {isLocal && <LocalStorageGroup />}
+
       {account.needs_reconnect && !isRSS && (
         <SettingsGroup title={t('settings.account.reconnectTitle', { defaultValue: 'Reconnect' })}>
           <SettingRow
@@ -1166,14 +1196,14 @@ export function AccountPanel({ account }: { account: Account }) {
         </SettingsGroup>
       )}
 
-      <AccountProfileGroup account={account} isRSS={isRSS} />
+      <AccountProfileGroup account={account} isRSS={isRSS || isLocal} />
       <SettingsGroup title={t('settings.pages.appearance')}>
         <AccountWallpaperCard account={account} />
       </SettingsGroup>
-      <AccountTogglesSection account={account} isRSS={isRSS} />
-      {!isRSS && <AccountProxyCard account={account} />}
-      {!isRSS && <AccountAliasesCard account={account} />}
-      {!isRSS && <AccountSignatureCard account={account} />}
+      <AccountTogglesSection account={account} isRSS={isRSS} isLocal={isLocal} />
+      {!isRSS && !isLocal && <AccountProxyCard account={account} />}
+      {!isRSS && !isLocal && <AccountAliasesCard account={account} />}
+      {!isRSS && !isLocal && <AccountSignatureCard account={account} />}
       {isRSS && <OpmlGroup account={account.id} />}
 
       <button
@@ -1182,8 +1212,128 @@ export function AccountPanel({ account }: { account: Account }) {
         className="mt-1 self-start flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-secondary hover:text-rose-500 transition-colors cursor-pointer"
       >
         <Trash2 size={12} />
-        {t('settings.account.removeAccount')}
+        {isLocal ? t('accounts.local.removeConfirm') : t('settings.account.removeAccount')}
       </button>
     </div>
+  )
+}
+
+type LocalStats = { messages: number; message_bytes: number; file_bytes: number; path: string }
+
+// What the local folders keep, and the warning that matters most: this is the
+// only copy of that mail, and the settings backup does not include it. The
+// backup here is a consistent snapshot; copying archive.db while Meron runs
+// would miss what is still in its WAL.
+function LocalStorageGroup() {
+  const { t } = useTranslation()
+  const [stats, setStats] = useState<LocalStats | null>(null)
+  const [prompt, setPrompt] = useState<'localExport' | 'restore' | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  // The backup a wrong passphrase was tried on, so a retry skips the file dialog.
+  const [restorePath, setRestorePath] = useState('')
+  const loadStats = () =>
+    invoke<LocalStats>('account.localStats')
+      .then(setStats)
+      .catch(() => {})
+  const closePrompt = () => {
+    setPrompt(null)
+    setError('')
+    setRestorePath('')
+  }
+  const submit = async (passphrase: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      if (prompt === 'localExport') {
+        const result = await invoke<{ saved: boolean }>('account.localBackup', { passphrase })
+        if (result.saved) showToast(t('settings.backup.exported'), 'success')
+        closePrompt()
+        return
+      }
+      const result = await invoke<{ restored?: number; wrongPassphrase?: boolean; cancelled?: boolean; path?: string }>(
+        'account.localRestore',
+        { passphrase, path: restorePath },
+      )
+      if (result.cancelled) return
+      if (result.wrongPassphrase) {
+        setRestorePath(result.path ?? '')
+        setError(t('settings.backup.wrongPassphrase'))
+        return
+      }
+      closePrompt()
+      showToast(t('settings.local.restoredCount', { count: result.restored ?? 0 }), 'success')
+      void loadStats()
+      void loadFolders(LOCAL_ACCOUNT_ID, false)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t(prompt === 'localExport' ? 'settings.backup.exportFailed' : 'settings.backup.restoreFailed'),
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+  useEffect(() => {
+    let alive = true
+    invoke<LocalStats>('account.localStats')
+      .then((next) => {
+        if (alive) setStats(next)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  return (
+    <SettingsGroup title={t('settings.sections.data')}>
+      <SettingRow
+        title={t('settings.storage.usageTitle')}
+        hint={stats?.path}
+        control={
+          <span className="text-xs text-secondary tabular-nums whitespace-nowrap">
+            {stats ? `${t('chat.messagesCount', { count: stats.messages })} · ${formatBytes(stats.file_bytes)}` : '…'}
+          </span>
+        }
+      />
+      <SettingRow
+        title={t('settings.backup.exportTitle')}
+        hint={t('settings.local.backupHint')}
+        control={
+          <button
+            type="button"
+            onClick={() => setPrompt('localExport')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-default"
+          >
+            <Download size={12} />
+            {t('buttons.save')}
+          </button>
+        }
+      />
+      <SettingRow
+        title={t('settings.backup.restoreTitle')}
+        hint={t('settings.local.restoreHint')}
+        control={
+          <button
+            type="button"
+            onClick={() => setPrompt('restore')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-hover hover:bg-active text-primary font-bold text-[0.625rem] cursor-pointer transition-colors"
+          >
+            <Upload size={12} />
+            {t('settings.backup.restoreAction')}
+          </button>
+        }
+      />
+      {prompt && (
+        <BackupPassphraseDialog
+          mode={prompt}
+          busy={busy}
+          error={error}
+          onCancel={closePrompt}
+          onSubmit={(passphrase) => void submit(passphrase)}
+        />
+      )}
+    </SettingsGroup>
   )
 }

@@ -639,6 +639,30 @@ pub fn is_outgoing(
     if crate::imap::looks_like_sent(folder) {
         return true;
     }
+    is_outgoing_by_sender(mine, from_addr, delivered)
+}
+
+/// [`is_outgoing`] for a message of `account`. A local folder's name is the
+/// user's own choice, not a server's Sent mailbox, so there only the sender
+/// and delivery headers decide.
+pub fn account_message_is_outgoing(
+    account: &str,
+    mine: &std::collections::HashSet<String>,
+    folder: &str,
+    from_addr: &str,
+    delivered: bool,
+) -> bool {
+    if super::is_local_account(account) {
+        return is_outgoing_by_sender(mine, from_addr, delivered);
+    }
+    is_outgoing(mine, folder, from_addr, delivered)
+}
+
+fn is_outgoing_by_sender(
+    mine: &std::collections::HashSet<String>,
+    from_addr: &str,
+    delivered: bool,
+) -> bool {
     if delivered {
         return false;
     }
@@ -675,7 +699,7 @@ pub fn apply_card_identity(
         };
         // Envelope headers carry no delivery headers, so the thread card keeps
         // the address match; the reader and reply paths read the cached body.
-        if is_outgoing(&mine, source_folder, &header.from_addr, false)
+        if account_message_is_outgoing(account, &mine, source_folder, &header.from_addr, false)
             && let Some(first) = header.to.first().cloned()
         {
             header.recipient_overflow = (header.to.len() - 1) as u32;
@@ -896,7 +920,31 @@ pub fn list_accounts(conn: &Connection) -> Result<Vec<serde_json::Value>> {
         let save_sent_copy = p.save_sent_copy();
         let rss_sync_interval_minutes = p.rss_sync_interval_minutes();
         let chat_wallpaper = p.chat_wallpaper_json();
-        if engine == "rss" {
+        if engine == "local" {
+            out.push(json!({
+                "id": id,
+                "email": "",
+                "display_name": display_name,
+                "sender_name": "",
+                "avatar_url": avatar_url,
+                "provider": "local",
+                "auth_type": "local",
+                "imap_host": "",
+                "imap_port": 0,
+                "smtp_host": "",
+                "smtp_port": 0,
+                "tls": false,
+                "load_remote_images": load_remote_images,
+                // Local folders have no inbox to merge into the unified view.
+                "included_in_unified": false,
+                "muted": false,
+                "paused": false,
+                "conversation_html": conversation_html,
+                "save_sent_copy": false,
+                "chat_wallpaper": chat_wallpaper,
+                "sort_order": sort_order,
+            }));
+        } else if engine == "rss" {
             out.push(json!({
                 "id": id,
                 "email": format!("{id}.local"),

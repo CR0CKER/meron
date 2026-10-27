@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   PanelRight,
   Printer,
+  Reply,
   ReplyAll,
   Search,
   Star,
@@ -27,10 +28,10 @@ import { copyText } from '../../lib/native'
 import { showToast, ui$ } from '../../states/ui'
 import { settings$ } from '../../states/settings'
 import { starThread } from '../../states/mailFlags'
-import { isDraftFolder, isTrashFolderId } from '../../states/mailFolders'
+import { deletesForever, isDraftFolder } from '../../states/mailFolders'
 import { archiveThread, deleteThread } from '../../states/mailMoves'
 import { goToSearchMatch, setAllMessagesExpanded, thread$ } from '../../states/thread'
-import { accounts$ } from '../../states/accounts'
+import { accounts$, isLocalAccountId } from '../../states/accounts'
 import { exportThreadsAsEml } from '../../states/emlExport'
 import { isRssAccount } from '../../lib/threadActions'
 import { closeCurrentConversation, kanban$ } from '../../states/kanban'
@@ -110,7 +111,7 @@ export function ConversationHeader({
   const replyAll = useValue(canReplyAllToThread)
 
   // The same wording, and the same permanence in Trash, as the thread list's menu.
-  const inTrash = isTrashFolderId(activeThread.account_id, activeThread.folder_id)
+  const inTrash = deletesForever(activeThread.account_id, activeThread.folder_id)
   const inDrafts = isDraftFolder(activeThread.folder_id, activeThread.account_id)
   const closeActionMenus = () => {
     setActionsMenuOpen(false)
@@ -159,6 +160,18 @@ export function ConversationHeader({
         </button>
       )}
       <div className="my-1 h-px bg-border" />
+      {/* Local conversations have no quick reply box: reply from the full editor. */}
+      {!isRSS && isLocalAccountId(activeThread.account_id) && (
+        <button
+          onClick={() => {
+            openReplyInFullEditor()
+            closeActionMenus()
+          }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+        >
+          <Reply size={15} className="shrink-0" /> {t('chat.actions.reply')}
+        </button>
+      )}
       {!isRSS && replyAll && (
         <button
           onClick={() => {
@@ -182,15 +195,17 @@ export function ConversationHeader({
       </button>
       {!isRSS && (
         <>
-          <button
-            onClick={() => {
-              void archiveThread(activeThread.thread_id)
-              closeActionMenus()
-            }}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
-          >
-            <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
-          </button>
+          {!isLocalAccountId(activeThread.account_id) && (
+            <button
+              onClick={() => {
+                void archiveThread(activeThread.thread_id)
+                closeActionMenus()
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-primary cursor-pointer hover:bg-hover"
+            >
+              <Archive size={15} className="shrink-0" /> {t('threads.actions.archiveThread')}
+            </button>
+          )}
           <ThreadMoveCopyItems
             threadId={activeThread.thread_id}
             accountId={activeThread.account_id}

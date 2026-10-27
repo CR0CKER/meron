@@ -97,7 +97,17 @@ function FolderNotificationsGroup({ accountId }: { accountId: string }) {
 
 // The grouped toggle sections of the account panel: visibility,
 // notifications/sync (incl. the RSS interval), and content rendering.
-export function AccountTogglesSection({ account, isRSS }: { account: Account; isRSS: boolean }) {
+// `isLocal`: local folders, which have no inbox to merge, nothing to check or
+// notify about, and nothing to send.
+export function AccountTogglesSection({
+  account,
+  isRSS,
+  isLocal = false,
+}: {
+  account: Account
+  isRSS: boolean
+  isLocal?: boolean
+}) {
   const { t } = useTranslation()
   const hiddenSideNavAccounts = useValue(settings$.hiddenSideNavAccounts)
   const [rssIntervalVal, setRssIntervalVal] = useState('60')
@@ -125,13 +135,15 @@ export function AccountTogglesSection({ account, isRSS }: { account: Account; is
   return (
     <>
       <SettingsGroup title={t('settings.account.visibility')}>
-        <ToggleRow
-          icon={<Inbox size={15} />}
-          title={t('settings.account.showInUnifiedInbox')}
-          hint={t('settings.account.showInUnifiedInboxHint')}
-          checked={inUnified}
-          onChange={() => setAccountUnified(account.id, !inUnified)}
-        />
+        {!isLocal && (
+          <ToggleRow
+            icon={<Inbox size={15} />}
+            title={t('settings.account.showInUnifiedInbox')}
+            hint={t('settings.account.showInUnifiedInboxHint')}
+            checked={inUnified}
+            onChange={() => setAccountUnified(account.id, !inUnified)}
+          />
+        )}
         <ToggleRow
           icon={<Eye size={15} />}
           title={t('settings.account.showInSideNav')}
@@ -141,36 +153,38 @@ export function AccountTogglesSection({ account, isRSS }: { account: Account; is
         />
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.account.notificationsSync')}>
-        <ToggleRow
-          icon={<BellOff size={15} />}
-          title={t('settings.account.muteNotifications')}
-          hint={t('settings.account.muteNotificationsHint')}
-          checked={muted}
-          onChange={() => setAccountMuted(account.id, !muted)}
-        />
-        <ToggleRow
-          icon={<Pause size={15} />}
-          title={t('settings.account.pauseAccount')}
-          hint={t('settings.account.pauseAccountHint')}
-          checked={paused}
-          onChange={() => setAccountPaused(account.id, !paused)}
-        />
-        {isRSS && (
-          <NumberRow
-            icon={<Clock size={15} />}
-            title={t('settings.account.syncInterval')}
-            value={rssIntervalVal}
-            min={5}
-            max={1440}
-            step={5}
-            suffix="min"
-            onChange={updateRSSInterval}
+      {!isLocal && (
+        <SettingsGroup title={t('settings.account.notificationsSync')}>
+          <ToggleRow
+            icon={<BellOff size={15} />}
+            title={t('settings.account.muteNotifications')}
+            hint={t('settings.account.muteNotificationsHint')}
+            checked={muted}
+            onChange={() => setAccountMuted(account.id, !muted)}
           />
-        )}
-      </SettingsGroup>
+          <ToggleRow
+            icon={<Pause size={15} />}
+            title={t('settings.account.pauseAccount')}
+            hint={t('settings.account.pauseAccountHint')}
+            checked={paused}
+            onChange={() => setAccountPaused(account.id, !paused)}
+          />
+          {isRSS && (
+            <NumberRow
+              icon={<Clock size={15} />}
+              title={t('settings.account.syncInterval')}
+              value={rssIntervalVal}
+              min={5}
+              max={1440}
+              step={5}
+              suffix="min"
+              onChange={updateRSSInterval}
+            />
+          )}
+        </SettingsGroup>
+      )}
 
-      {!isRSS && <FolderNotificationsGroup accountId={account.id} />}
+      {!isRSS && !isLocal && <FolderNotificationsGroup accountId={account.id} />}
 
       <SettingsGroup title={t('settings.account.content')}>
         <ToggleRow
@@ -190,7 +204,7 @@ export function AccountTogglesSection({ account, isRSS }: { account: Account; is
           ]}
           onChange={(mode) => setAccountConversationHtml(account.id, mode === 'html')}
         />
-        {!isRSS && (
+        {!isRSS && !isLocal && (
           <ToggleRow
             icon={<Send size={15} />}
             title={t('settings.account.saveSentCopies')}

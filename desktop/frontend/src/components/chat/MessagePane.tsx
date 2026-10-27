@@ -6,7 +6,7 @@ import { compose$ } from '../../states/composeState'
 import { withoutHydratedQuickReplyDraft } from '../../states/quickReply'
 import { ui$ } from '../../states/ui'
 import { mail$, getActiveThread, loadThread } from '../../states/mail'
-import { accounts$ } from '../../states/accounts'
+import { accounts$, isLocalAccountId } from '../../states/accounts'
 import { settings$ } from '../../states/settings'
 import { resetThreadView, thread$ } from '../../states/thread'
 import { Gallery } from './Gallery'
@@ -335,7 +335,8 @@ export function MessagePane() {
         </ConversationScrollIntentContext>
       </ConversationScrollContext>
 
-      {!isRSS && (
+      {/* Local folders cannot send: a reply there starts from the full composer. */}
+      {!isRSS && !isLocalAccountId(activeThread?.account_id ?? selectedAccountId) && (
         <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
           {/* What shows around the box is frosted, from a line the box itself
               covers: below the footer's pt-1 and the curve of its rounded-2xl

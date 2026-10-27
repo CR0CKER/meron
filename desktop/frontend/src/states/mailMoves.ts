@@ -1,5 +1,6 @@
 import type { Message } from '../types'
 import { rememberThreadTransfer } from './recentThreadTransfers'
+import { isLocalAccountId } from './accounts'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
 import { mailTransferError } from '../lib/mailTransferErrors'
@@ -26,6 +27,7 @@ import {
 import {
   applyMutationFolderUnreads,
   isDraftFolder,
+  deletesForever,
   isTrashFolderId,
   loadFolders,
   type MutationResult,
@@ -340,7 +342,10 @@ export async function copyThreadToFolder(threadId: string, targetAccountId: stri
 }
 
 export async function bulkArchiveSelected(items: BulkSelectionItem[]) {
-  const targets = uniqueThreadItems(items).filter((item) => !item.draft && !item.trash)
+  // Local folders have no Archive folder.
+  const targets = uniqueThreadItems(items).filter(
+    (item) => !item.draft && !item.trash && !isLocalAccountId(item.accountId),
+  )
   if (targets.length === 0) return
   const rollbacks: Array<() => void> = []
   let completed = 0
@@ -455,7 +460,7 @@ export async function bulkDeleteSelected(items: BulkSelectionItem[]) {
   const targets = uniqueThreadItems(items)
   if (targets.length === 0) return
   const permanentTargets = targets.filter(
-    (item) => item.draft || item.trash || isTrashFolderId(item.accountId, item.folderId),
+    (item) => item.draft || item.trash || deletesForever(item.accountId, item.folderId),
   )
   if (permanentTargets.length > 0) {
     const confirmed = await confirmAction({
@@ -495,6 +500,7 @@ export async function bulkDeleteSelected(items: BulkSelectionItem[]) {
 export async function archiveThread(threadId: string) {
   if (!threadId) return
   const sourceThread = findLocalThread(threadId)
+  if (isLocalAccountId(sourceThread?.account_id || threadAccountId(threadId))) return
   const sourceFolder = sourceThread?.folder_id ?? ''
   const { rollback, complete } = removeThreadLocally(threadId)
   try {
@@ -541,7 +547,7 @@ export async function deleteThread(threadId: string, options: { permanent?: bool
   const isTrash =
     sourceThread?.folder_role === 'trash' ||
     (!sourceThread?.folder_role && isTrashFolderId(sourceThread?.account_id ?? '', sourceFolder))
-  const permanent = options.permanent ?? (isDraft || isTrash)
+  const permanent = options.permanent ?? (isDraft || isTrash || isLocalAccountId(sourceThread?.account_id))
   if (isDraft || permanent) {
     if (
       !(await confirmAction({
@@ -720,12 +726,17 @@ export async function deleteMessage(message: Message): Promise<boolean> {
   }
 
   const isDraft = isDraftFolder(message.folder_id, message.account_id)
-  const confirmMessage = isDraft ? "Discard this draft? This can't be undone." : 'Move this message to Trash?'
+  const forever = !isDraft && deletesForever(message.account_id, message.folder_id)
+  const confirmMessage = isDraft
+    ? "Discard this draft? This can't be undone."
+    : forever
+      ? "This message will be permanently deleted. This can't be undone."
+      : 'Move this message to Trash?'
   if (
     !(await confirmAction({
-      title: isDraft ? 'Discard draft?' : 'Move message to Trash?',
+      title: isDraft ? 'Discard draft?' : forever ? 'Delete message forever?' : 'Move message to Trash?',
       message: confirmMessage,
-      confirmLabel: isDraft ? 'Discard' : 'Move to Trash',
+      confirmLabel: isDraft ? 'Discard' : forever ? 'Delete forever' : 'Move to Trash',
       tone: 'danger',
     }))
   ) {
@@ -747,7 +758,13 @@ export async function deleteMessage(message: Message): Promise<boolean> {
     })
     if (!isDraft) assertDeleteAffected(res)
     applyMutationFolderUnreads(res as MutationResult)
-    showToast(isDraft ? t('mail.toast.draftDiscarded') : t('mail.toast.messageMovedToTrash'))
+    showToast(
+      isDraft
+        ? t('mail.toast.draftDiscarded')
+        : forever
+          ? t('mail.toast.deletedCount', { count: 1 })
+          : t('mail.toast.messageMovedToTrash'),
+    )
     // No messages left from this thread: drop the now-empty conversation.
     if (!nextMessages.some((item) => item.thread_id === threadId)) {
       if (ui$.selectedThread.get() === threadId) {

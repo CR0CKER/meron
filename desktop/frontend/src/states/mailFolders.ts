@@ -2,7 +2,7 @@ import type { Folder } from '../types'
 import { invoke } from '../lib/bridge'
 import { t } from '../lib/i18n'
 import { confirmAction, ui$, showToast } from './ui'
-import { unifiedAccounts } from './accounts'
+import { isLocalAccountId, unifiedAccounts } from './accounts'
 import { forgetDeletedMailViewFolder, removeKanbanColumnsForFolder } from './kanban'
 import { unifiedFolders } from '../lib/unifiedFolders'
 import { findLocalThread, mail$ } from './mail'
@@ -118,6 +118,12 @@ export function isTrashFolderId(accountId: string, folderId: string): boolean {
   return isTrashFolder(folder) || looksLikeTrashName(folderId)
 }
 
+// Whether deleting mail here removes it for good: in Trash, and anywhere in
+// local folders, which have no Trash to move it to.
+export function deletesForever(accountId: string, folderId: string): boolean {
+  return isLocalAccountId(accountId) || isTrashFolderId(accountId, folderId)
+}
+
 function looksLikeJunkName(value: string): boolean {
   return ['junk', 'spam', 'junk e-mail', 'junk email', 'bulk mail', '[gmail]/spam'].includes(value.trim().toLowerCase())
 }
@@ -198,8 +204,9 @@ export function deletableFolder(
 
 // Folders other than the inbox (always watched) can be opted in to live sync
 // and notifications, for mail a server-side rule files straight into them.
-export function isNotifiableFolder(folder: Pick<Folder, 'role'>): boolean {
-  return !['inbox', 'drafts', 'sent', 'trash', 'junk'].includes(folder.role)
+// Local folders get no new mail, so none of them can.
+export function isNotifiableFolder(folder: Pick<Folder, 'role'> & { account_id?: string }): boolean {
+  return !isLocalAccountId(folder.account_id) && !['inbox', 'drafts', 'sent', 'trash', 'junk'].includes(folder.role)
 }
 
 // Opt a folder in to (or out of) live sync and new-mail notifications. The
@@ -346,6 +353,16 @@ export async function loadFolders(accountId: string, refresh = true) {
   const folders = reconcileFolderCounts(accountId, result.folders || [], version)
   mail$.folders.set(folders)
   mail$.foldersByAccount[accountId].set(folders)
+  // Local folders have no Inbox to open on: land on the first folder instead
+  // of an empty view of one that does not exist.
+  if (
+    isLocalAccountId(accountId) &&
+    ui$.selectedAccount.peek() === accountId &&
+    folders.length > 0 &&
+    !folders.some((folder) => folder.id === ui$.selectedFolder.peek())
+  ) {
+    ui$.selectedFolder.set(folders[0].id)
+  }
 }
 
 export async function refreshAccountFoldersCache(accountId: string, refresh = false): Promise<Folder[]> {

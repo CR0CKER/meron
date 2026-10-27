@@ -497,7 +497,8 @@ pub fn card_senders(
             rows.sort_by_key(|row| row.date);
             let me_of = |row: &CardRow| {
                 let addr = row.from_addr.trim().to_lowercase();
-                let me = super::is_outgoing(&mine, &row.folder, &addr, false);
+                let me =
+                    super::account_message_is_outgoing(account, &mine, &row.folder, &addr, false);
                 (addr, me)
             };
             // Address alone is not a person: GitHub, Jira and mailing lists send

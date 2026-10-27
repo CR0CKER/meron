@@ -293,6 +293,14 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.accountAddOutlookOAuth(payload)
 	case "account.addRSS":
 		return a.accountAddRSS(payload)
+	case "account.addLocal":
+		return a.accountAddLocal(payload)
+	case "account.localStats":
+		return a.accountLocalStats()
+	case "account.localBackup":
+		return a.accountLocalBackup(payload)
+	case "account.localRestore":
+		return a.accountLocalRestore(payload)
 	case "rss.addFeed":
 		return a.feedAdd(payload)
 	case "rss.removeFeed":

@@ -3,7 +3,7 @@ import type { Attachment, ComposerAttachment, Message } from '../types'
 import { invoke } from '../lib/bridge'
 import { ui$, showToast } from './ui'
 import { thread$ } from './thread'
-import { accounts$ } from './accounts'
+import { accounts$, isLocalAccountId } from './accounts'
 import { mail$, getActiveThread, loadThread, normalizeMessageId } from './mail'
 import { isDraftFolder } from './mailFolders'
 import { discardSavedDraftCopy } from './mailMoves'
@@ -90,7 +90,7 @@ export async function sendReply() {
   const accounts = accounts$.get()
   const activeAcc = accounts.find((acc) => acc.id === replyAccountId) || accounts[0] || null
   if (!replyAccountId || replyAccountId === 'unified') return
-  if (activeAcc?.provider === 'rss' || activeAcc?.auth_type === 'rss') return
+  if (activeAcc?.provider === 'rss' || activeAcc?.auth_type === 'rss' || isLocalAccountId(replyAccountId)) return
 
   // Claim the box now, synchronously: the thread load and identity allocation
   // below are awaits the user can keep typing through, and an autosave that

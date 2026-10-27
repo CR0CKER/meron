@@ -27,7 +27,7 @@ pub(crate) async fn dispatch(
                 if account
                     .get("auth_type")
                     .and_then(Value::as_str)
-                    .is_some_and(|auth_type| auth_type == "rss")
+                    .is_some_and(|auth_type| auth_type == "rss" || auth_type == "local")
                 {
                     continue;
                 }

@@ -7,7 +7,7 @@ mod calendar;
 mod compose;
 mod feeds;
 mod folders;
-mod messages;
+pub(crate) mod messages;
 mod tasks;
 mod watch;
 
@@ -27,6 +27,9 @@ pub(crate) async fn dispatch(
     out: &Writer,
 ) -> anyhow::Result<Value> {
     let p = &req.params;
+    if crate::sidecar::local::handles(req) {
+        return crate::sidecar::local::dispatch(engine, req, out).await;
+    }
     match req.method.as_str() {
         "mcp.prepareDelete" => meron_core::mcp_mail::prepare_delete(engine, p.clone()).await,
         "mcp.delete" => meron_core::mcp_mail::delete(engine, p.clone()).await,

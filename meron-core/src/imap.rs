@@ -1432,6 +1432,35 @@ pub async fn fetch_headers_by_uid(
     Ok(out)
 }
 
+/// The list header of a message held as raw RFC822 rather than on a server
+/// (local folders), read the same way a header FETCH is, so stored mail threads
+/// and lists exactly like synced mail.
+pub fn header_from_raw(raw: &[u8], uid: u32, seen: bool, starred: bool) -> MessageHeader {
+    let ef = header_fields(raw);
+    let thread_key = thread_key(
+        None,
+        &ef.message_id,
+        &ef.in_reply_to,
+        &ef.references_root,
+        uid,
+    );
+    MessageHeader {
+        uid,
+        subject: ef.subject,
+        from_name: ef.from_name,
+        from_addr: ef.from_addr,
+        date: ef.date,
+        seen,
+        starred,
+        thread_key,
+        message_id: ef.message_id,
+        in_reply_to: ef.in_reply_to,
+        to: ef.to,
+        cc: ef.cc,
+        ..Default::default()
+    }
+}
+
 /// Each of `uids`' Date header as epoch seconds (INTERNALDATE when absent or
 /// unparseable), the same date [`fetch_headers_by_uid`] reports. Fetches only
 /// that one header field, so a search can order a large hit set by date without

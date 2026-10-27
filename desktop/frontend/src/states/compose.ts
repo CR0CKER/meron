@@ -488,7 +488,10 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
   // The composer opens in the mail pane, which the calendar replaces.
   ui$.calendarOpen.set(false)
   const selected = ui$.selectedAccount.get()
-  const accountId = seed?.accountId ?? sendable.find((acc) => acc.id === selected)?.id ?? sendable[0].id
+  // A seed from a thread in local folders names an account that cannot send;
+  // the reply then goes out from the selected or first sendable account.
+  const seededAccountId = sendable.some((acc) => acc.id === seed?.accountId) ? seed?.accountId : undefined
+  const accountId = seededAccountId ?? sendable.find((acc) => acc.id === selected)?.id ?? sendable[0].id
   // Only a truly blank compose (no seeded body) should pick up the account's
   // HTML/plain preference; reply/forward/mailto paths that seed plain `text`
   // stay plain since the editor only ever hydrates from `html`.

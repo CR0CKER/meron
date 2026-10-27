@@ -1,9 +1,11 @@
-import { Columns3, Pause, BellOff, KeyRound, Rss } from 'lucide-react'
+import { Columns3, Pause, BellOff, HardDrive, KeyRound, Rss } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useValue } from '@legendapp/state/react'
 import type { DragEvent } from 'react'
 import type { Account } from '../../types'
+import { useTranslation } from '../../lib/i18n'
+import { isLocalAccountId } from '../../states/accounts'
 import { settings$ } from '../../states/settings'
 import { mail$ } from '../../states/mail'
 import { inboxUnread } from '../../states/mailFolders'
@@ -106,9 +108,11 @@ export function SortableAccount({
   onFeedDragOver,
   onFeedDrop,
 }: SortableAccountProps) {
+  const { t } = useTranslation()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: account.id })
 
   const isRSS = account.provider === 'rss' || account.auth_type === 'rss'
+  const isLocal = isLocalAccountId(account.id)
   const needsReconnect = account.needs_reconnect === true
   const isPaused = account.paused ?? false
   const isMuted = account.muted ?? false
@@ -117,9 +121,11 @@ export function SortableAccount({
   const unreadCount = showUnreadBadge ? inboxUnread(accountFolders) : 0
   const baseTooltip = isRSS
     ? account.display_name || 'RSS Feeds'
-    : account.display_name
-      ? `${account.display_name} (${account.email})`
-      : account.email
+    : isLocal
+      ? `${account.display_name || t('accounts.local.name')} (${t('accounts.local.subtitle')})`
+      : account.display_name
+        ? `${account.display_name} (${account.email})`
+        : account.email
   const stateSuffix = needsReconnect ? ' — Needs reconnect' : isPaused ? ' — Paused' : isMuted ? ' — Muted' : ''
 
   return (
@@ -149,7 +155,7 @@ export function SortableAccount({
             name={accountLabel(account)}
             src={account.avatar_url}
             size={40}
-            fallback={isRSS ? <Rss size={20} /> : undefined}
+            fallback={isRSS ? <Rss size={20} /> : isLocal ? <HardDrive size={20} /> : undefined}
             className={`!rounded-none pointer-events-none transition-all ${
               isPaused || needsReconnect ? 'grayscale opacity-40' : ''
             }`}

@@ -224,7 +224,7 @@ pub fn collect(
 ) -> Result<BackupData> {
     let mut stmt = conn.prepare(
         "SELECT id, engine, provider, email, display_name, avatar_url, sender_name, config, prefs, sort_order
-         FROM accounts ORDER BY sort_order, id",
+         FROM accounts WHERE engine <> 'local' ORDER BY sort_order, id",
     )?;
     let rows = stmt
         .query_map([], |row| {

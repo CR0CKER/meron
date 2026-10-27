@@ -363,7 +363,23 @@ impl Engine {
             }
             accounts.insert(id, creds);
         }
-        Ok(Self {
+        Ok(Self::from_parts(conn, accounts, host))
+    }
+
+    /// An engine over a store that is not the app's: the local-folder archive.
+    /// It publishes no proxy setting and loads no accounts, so nothing in it
+    /// can reach a server.
+    pub fn for_archive(host: Box<dyn EngineHost>) -> anyhow::Result<Self> {
+        let conn = host.open_db()?;
+        Ok(Self::from_parts(conn, HashMap::new(), host))
+    }
+
+    fn from_parts(
+        conn: rusqlite::Connection,
+        accounts: HashMap<String, imap::Creds>,
+        host: Box<dyn EngineHost>,
+    ) -> Self {
+        Self {
             accounts: Arc::new(Mutex::new(accounts)),
             db: Arc::new(std::sync::Mutex::new(conn)),
             watched: std::sync::Mutex::new(HashSet::new()),
@@ -379,7 +395,7 @@ impl Engine {
             pool: std::sync::Mutex::new(HashMap::new()),
             connect_locks: std::sync::Mutex::new(HashMap::new()),
             host: Arc::from(host),
-        })
+        }
     }
 
     /// Whether automatic checking is paused for an account (per its stored pref).

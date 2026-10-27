@@ -18,7 +18,7 @@ import { useTranslation } from '../../lib/i18n'
 import { clsx } from '../../lib/utils'
 import type { BulkSelectionItem } from '../../states/ui'
 import { clearBulkSelection, setBulkSelection } from '../../states/ui'
-import { accounts$, isSendableAccount } from '../../states/accounts'
+import { accounts$, isLocalAccountId, isMailFolderAccount } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
 import { bulkMarkSelectedRead, bulkMarkSelectedUnread, bulkStarSelected } from '../../states/mailFlags'
 import { ensureAccountFolders } from '../../states/mailFolders'
@@ -58,10 +58,11 @@ export function BulkActionBar({
   const [moveFlyoutPosition, setMoveFlyoutPosition] = useState<{ x: number; y: number } | null>(null)
   const [copyFlyoutPosition, setCopyFlyoutPosition] = useState<{ x: number; y: number } | null>(null)
   const mailItems = useMemo(() => items.filter((item) => item.kind === 'mail'), [items])
-  const mailAccounts = accounts.filter(isSendableAccount)
+  const mailAccounts = accounts.filter(isMailFolderAccount)
   const accountIds = Array.from(new Set(mailItems.map((item) => item.accountId)))
   const singleAccountId = accountIds.length === 1 ? accountIds[0] : ''
-  const canArchive = mailItems.length > 0 && mailItems.every((item) => !item.draft && !item.trash)
+  const canArchive =
+    mailItems.length > 0 && mailItems.every((item) => !item.draft && !item.trash && !isLocalAccountId(item.accountId))
   const canMove = mailItems.length > 0 && mailAccounts.length > 0
   const canCopy = mailItems.length > 0 && mailAccounts.length > 0
 

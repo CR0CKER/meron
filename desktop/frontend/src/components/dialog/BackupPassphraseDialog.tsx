@@ -9,10 +9,11 @@ import { IconButton } from '../button/IconButton'
  * Passphrase prompt shared by both halves of backup/restore.
  *
  * 'export' collects a passphrase (and whether to include account passwords);
+ * 'localExport' collects the passphrase a local folders backup always needs;
  * 'restore' collects the passphrase for a file that turned out to be encrypted.
  * The parent owns the actual call, so this component never touches the bridge.
  */
-export type BackupPassphraseMode = 'export' | 'restore'
+export type BackupPassphraseMode = 'export' | 'localExport' | 'restore'
 
 type Props = {
   mode: BackupPassphraseMode
@@ -29,14 +30,16 @@ export function BackupPassphraseDialog({ mode, busy = false, error, onCancel, on
   const [confirmation, setConfirmation] = useState('')
   const [includeSecrets, setIncludeSecrets] = useState(false)
 
-  const exporting = mode === 'export'
+  const exporting = mode === 'export' || mode === 'localExport'
+  // A local folders backup holds mail, not settings: always encrypted.
+  const local = mode === 'localExport'
 
   // Exporting: a passphrase is optional unless passwords are included, but once
   // typed it must be confirmed — a typo would produce a file nobody can open.
   // Restoring: whatever the user types is checked against the file immediately,
   // so no confirmation field.
   const mismatched = exporting && passphrase !== confirmation
-  const missing = exporting ? includeSecrets && !passphrase : !passphrase
+  const missing = exporting && !local ? includeSecrets && !passphrase : !passphrase
   const canSubmit = !busy && !missing && !mismatched
 
   const submit = () => {
@@ -63,7 +66,11 @@ export function BackupPassphraseDialog({ mode, busy = false, error, onCancel, on
               {exporting ? t('settings.backup.exportTitle') : t('settings.backup.restoreTitle')}
             </h2>
             <p className="text-[0.65625rem] text-secondary mt-1 font-medium">
-              {exporting ? t('settings.backup.exportSubtitle') : t('settings.backup.restoreSubtitle')}
+              {local
+                ? t('settings.sections.localFolders')
+                : exporting
+                  ? t('settings.backup.exportSubtitle')
+                  : t('settings.backup.restoreSubtitle')}
             </p>
           </div>
         </div>
@@ -72,7 +79,7 @@ export function BackupPassphraseDialog({ mode, busy = false, error, onCancel, on
 
       {/* Content */}
       <div className="flex flex-col gap-4">
-        {exporting && (
+        {exporting && !local && (
           <label className="flex items-start gap-2.5 px-1 cursor-pointer">
             <input
               type="checkbox"
@@ -92,7 +99,7 @@ export function BackupPassphraseDialog({ mode, busy = false, error, onCancel, on
         <div className="flex flex-col gap-2">
           <label className="text-[0.6875rem] font-semibold text-secondary px-1">
             {t('settings.backup.passphrase')}
-            {exporting && !includeSecrets && (
+            {exporting && !local && !includeSecrets && (
               <span className="font-medium text-secondary"> · {t('settings.network.optional')}</span>
             )}
           </label>

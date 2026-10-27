@@ -354,13 +354,18 @@ func sidecarCallTimeout(method string) time.Duration {
 	// A batch is a handful of full messages, attachments included.
 	// A copy downloads every message in the thread in full, then APPENDs each
 	// one to the target.
-	case "messages.saveRawBatch", "messages.copy":
+	// Moving into or out of local folders downloads or uploads every message
+	// in full; so does a move between accounts.
+	case "messages.saveRawBatch", "messages.copy", "messages.move":
 		return 2 * time.Minute
+	// A snapshot or a restore copies every archived message.
+	case "account.localBackup", "account.localRestore":
+		return 10 * time.Minute
 	case "messages.exportUids":
 		return 30 * time.Second
 	case "messages.read", "messages.thread", "messages.markRead", "messages.markStarred", "messages.markAllRead", "messages.markAllReadUnified", "send", "save_draft", "folders.delete":
 		return 30 * time.Second
-	case "folders.list", "folders.create", "folders.archive", "messages.recent", "messages.sync", "rss.markRead", "rss.markAllRead", "watch.start", "watch.stop", "discard_draft", "account.addRss", "feed.add", "rss.importOpml":
+	case "folders.list", "folders.create", "folders.archive", "messages.recent", "messages.sync", "rss.markRead", "rss.markAllRead", "watch.start", "watch.stop", "discard_draft", "account.addRss", "account.addLocal", "feed.add", "rss.importOpml":
 		return 15 * time.Second
 	default:
 		return 5 * time.Second

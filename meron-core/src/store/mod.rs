@@ -16,7 +16,7 @@
 
 mod db;
 
-pub use db::{app_dir, now_unix, open};
+pub use db::{app_dir, backup_archive_to, now_unix, open, open_archive, open_archive_at};
 
 #[allow(dead_code)]
 pub fn open_at(path: impl AsRef<std::path::Path>) -> Result<Connection> {
@@ -42,6 +42,7 @@ use crate::imap::MessageHeader;
 pub const DEFAULT_RSS_SYNC_INTERVAL_MINUTES: u64 = 60;
 
 mod accounts;
+mod archive;
 mod calendar;
 mod contacts;
 mod folders;
@@ -54,6 +55,7 @@ mod threads;
 mod updates;
 
 pub use accounts::*;
+pub use archive::*;
 pub use calendar::*;
 pub use contacts::*;
 pub use folders::*;

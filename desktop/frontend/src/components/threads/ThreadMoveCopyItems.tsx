@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useValue } from '@legendapp/state/react'
-import { ChevronRight, Copy, FolderInput, History } from 'lucide-react'
+import { ChevronRight, Copy, FolderInput, HardDrive, History } from 'lucide-react'
 import { useTranslation } from '../../lib/i18n'
-import { accounts$, isSendableAccount } from '../../states/accounts'
+import { accounts$, isLocalAccountId, isMailFolderAccount } from '../../states/accounts'
 import { mail$ } from '../../states/mail'
 import { ensureAccountFolders } from '../../states/mailFolders'
 import { copyThreadToFolder, moveThreadToFolder } from '../../states/mailMoves'
@@ -77,7 +77,7 @@ export function ThreadMoveCopyItems({
   const foldersByAccount = useValue(mail$.foldersByAccount)
   const accounts = useValue(accounts$)
   const recentTransfers = useValue(recentThreadTransfers$)
-  const mailAccounts = accounts.filter(isSendableAccount)
+  const mailAccounts = accounts.filter(isMailFolderAccount)
   const [moveOpen, setMoveOpen] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
   const [openAccountId, setOpenAccountId] = useState<string | null>(null)
@@ -128,7 +128,7 @@ export function ThreadMoveCopyItems({
     for (const targetAccountId of targetAccounts) {
       if (
         targetAccountId !== accountId &&
-        accounts.some((account) => account.id === targetAccountId && isSendableAccount(account))
+        accounts.some((account) => account.id === targetAccountId && isMailFolderAccount(account))
       ) {
         void ensureAccountFolders(targetAccountId)
       }
@@ -317,15 +317,27 @@ function AccountFolderItem({
   setOpen: (open: boolean) => void
   onPick: (folder: Folder) => void
 }) {
+  const { t } = useTranslation()
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const position = useFlyoutPosition(open, anchorRef, ACCOUNT_FLYOUT_WIDTH)
   const label = accountLabel(account)
   return (
     <div ref={anchorRef} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <MenuItem
-        icon={<Avatar name={label} src={account.avatar_url} size={18} className="shrink-0" />}
+        icon={
+          <Avatar
+            name={label}
+            src={account.avatar_url}
+            size={18}
+            className="shrink-0"
+            fallback={isLocalAccountId(account.id) ? <HardDrive size={11} /> : undefined}
+          />
+        }
         label={
-          <span className="min-w-0 truncate" title={label}>
+          <span
+            className="min-w-0 truncate"
+            title={isLocalAccountId(account.id) ? `${label} (${t('accounts.local.subtitle')})` : label}
+          >
             {label}
           </span>
         }

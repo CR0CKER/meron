@@ -23,7 +23,43 @@ export function getActiveAccount() {
 }
 
 export function isSendableAccount(acc: Account | undefined | null): boolean {
-  return !!acc && acc.provider !== 'rss' && acc.auth_type !== 'rss' && acc.needs_reconnect !== true
+  return (
+    !!acc &&
+    acc.provider !== 'rss' &&
+    acc.auth_type !== 'rss' &&
+    !isLocalAccountId(acc.id) &&
+    acc.needs_reconnect !== true
+  )
+}
+
+// Accounts whose folders mail can be moved or copied into: every connected
+// mail account, and local folders, which hold mail but cannot send it.
+export function isMailFolderAccount(acc: Account | undefined | null): boolean {
+  return isSendableAccount(acc) || isLocalAccountId(acc?.id)
+}
+
+// The one account whose folders live on this computer instead of a server
+// (the core's archive). Its mail reads like any account's, but nothing in it
+// syncs, and a delete there is permanent: there is no Trash to move it to.
+export const LOCAL_ACCOUNT_ID = 'local'
+
+export function isLocalAccountId(accountId: string | undefined | null): boolean {
+  return accountId === LOCAL_ACCOUNT_ID
+}
+
+export function hasLocalAccount(): boolean {
+  return accounts$.get().some((account) => isLocalAccountId(account.id))
+}
+
+// Create the local account (once) and show its settings.
+export async function addLocalAccount() {
+  try {
+    await invoke('account.addLocal', { name: t('accounts.local.name') })
+    await boot()
+    ui$.accountSettingsId.set(LOCAL_ACCOUNT_ID)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : t('accounts.toast.failedToUpdateSetting'), 'error')
+  }
 }
 
 // All send-as identities for an account: the primary address first (carrying the
@@ -135,13 +171,23 @@ export async function writeAccountChatWallpaperFile(
 }
 
 export async function deleteAccount(accountId: string) {
+  const local = isLocalAccountId(accountId)
   if (
-    !(await confirmAction({
-      title: 'Remove account?',
-      message: 'This account will be removed from Meron.',
-      confirmLabel: 'Remove',
-      tone: 'danger',
-    }))
+    !(await confirmAction(
+      local
+        ? {
+            title: t('accounts.local.removeTitle'),
+            message: t('accounts.local.removeMessage'),
+            confirmLabel: t('accounts.local.removeConfirm'),
+            tone: 'danger',
+          }
+        : {
+            title: 'Remove account?',
+            message: 'This account will be removed from Meron.',
+            confirmLabel: 'Remove',
+            tone: 'danger',
+          },
+    ))
   ) {
     return
   }

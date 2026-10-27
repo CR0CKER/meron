@@ -60,6 +60,81 @@ struct Slot {
     media_missing: usize,
 }
 
+/// The headers one page of a thread shows, oldest first, and the cursor of the
+/// page before it: the thread across folders (or one folder for a `uid:` key),
+/// narrowed to the subject branch, drafts collapsed, then sliced by
+/// `before_cursor` and `limit`.
+pub fn thread_page_headers(
+    db: &rusqlite::Connection,
+    account: &str,
+    folder: &str,
+    thread_key: &str,
+    subject_filter: Option<&str>,
+    limit: Option<u32>,
+    before_cursor: Option<&str>,
+) -> anyhow::Result<(Vec<imap::MessageHeader>, Option<String>)> {
+    // Thread view spans folders within the account so the user's own Sent
+    // replies appear alongside the inbox messages they thread with.
+    //
+    // Exception: a synthetic `uid:N` key (a message with no real threading
+    // headers — e.g. a freshly-saved draft) is folder-local, because UIDs are
+    // folder-scoped. Spanning folders would match an unrelated message that
+    // happens to share UID N elsewhere and render the wrong thread.
+    let mut headers = if thread_key.starts_with("uid:") {
+        let mut headers = store::get_thread_headers(db, account, folder, thread_key)?;
+        // A message opened straight from a notification can have a cached body
+        // before its header row is synced; synthesize a header so the read
+        // still renders instead of coming back empty.
+        if headers.is_empty()
+            && let Ok(uid) = thread_key["uid:".len()..].parse::<u32>()
+            && store::get_cached_message(db, account, folder, uid)
+                .ok()
+                .flatten()
+                .is_some()
+        {
+            headers.push(imap::MessageHeader {
+                uid,
+                folder: folder.to_string(),
+                thread_key: thread_key.to_string(),
+                ..Default::default()
+            });
+        }
+        headers
+    } else {
+        store::get_thread_headers_all_folders(db, account, thread_key)?
+    };
+    if let Some(filter) = subject_filter {
+        headers.retain(|header| store::thread_grouping_subject(&header.subject) == filter);
+    }
+    let headers = store::collapse_thread_draft_headers(db, account, folder, headers)?;
+
+    // `before_cursor` / `limit` are honored as a date-ordered slice so the
+    // cross-folder query stays consistent with the old per-folder pagination
+    // contract. New cursors name both the source folder and UID because UIDs
+    // are only unique within one mailbox. Legacy uid-only cursors remain
+    // readable for pagination requests minted by an older app process.
+    let before_location = before_cursor.and_then(parse_thread_cursor);
+    Ok(if let Some(limit) = limit {
+        let mut headers = headers;
+        if let Some(cursor) = before_location
+            && let Some(idx) = thread_cursor_position(&headers, &cursor)
+        {
+            headers.truncate(idx);
+        }
+        let total = headers.len();
+        let start = total.saturating_sub(limit as usize);
+        let page = headers[start..].to_vec();
+        let next_cursor = if start > 0 {
+            page.first().map(thread_cursor)
+        } else {
+            None
+        };
+        (page, next_cursor)
+    } else {
+        (headers, None)
+    })
+}
+
 /// Read one page of a thread and return `{ "messages": [...], "next_cursor"? }`
 /// with final bridge-shaped message JSON (see [`thread_message_json`]).
 pub async fn read_thread_page(
@@ -79,70 +154,17 @@ pub async fn read_thread_page(
         media_root,
     } = args;
 
-    // Thread view spans folders within the account so the user's own Sent
-    // replies appear alongside the inbox messages they thread with.
-    //
-    // Exception: a synthetic `uid:N` key (a message with no real threading
-    // headers — e.g. a freshly-saved draft) is folder-local, because UIDs are
-    // folder-scoped. Spanning folders would match an unrelated message that
-    // happens to share UID N elsewhere and render the wrong thread.
-    let mut headers = if thread_key.starts_with("uid:") {
+    let (headers, next_cursor) = {
         let db = engine.db.lock().unwrap();
-        let mut headers = store::get_thread_headers(&db, account, folder, thread_key)?;
-        // A message opened straight from a notification can have a cached body
-        // before its header row is synced; synthesize a header so the read
-        // still renders instead of coming back empty.
-        if headers.is_empty()
-            && let Ok(uid) = thread_key["uid:".len()..].parse::<u32>()
-            && store::get_cached_message(&db, account, folder, uid)
-                .ok()
-                .flatten()
-                .is_some()
-        {
-            headers.push(imap::MessageHeader {
-                uid,
-                folder: folder.to_string(),
-                thread_key: thread_key.to_string(),
-                ..Default::default()
-            });
-        }
-        headers
-    } else {
-        let db = engine.db.lock().unwrap();
-        store::get_thread_headers_all_folders(&db, account, thread_key)?
-    };
-    if let Some(filter) = subject_filter {
-        headers.retain(|header| store::thread_grouping_subject(&header.subject) == filter);
-    }
-    let headers = {
-        let db = engine.db.lock().unwrap();
-        store::collapse_thread_draft_headers(&db, account, folder, headers)?
-    };
-
-    // `before_cursor` / `limit` are honored as a date-ordered slice so the
-    // cross-folder query stays consistent with the old per-folder pagination
-    // contract. New cursors name both the source folder and UID because UIDs
-    // are only unique within one mailbox. Legacy uid-only cursors remain
-    // readable for pagination requests minted by an older app process.
-    let before_location = before_cursor.and_then(parse_thread_cursor);
-    let (headers, next_cursor) = if let Some(limit) = limit {
-        let mut headers = headers;
-        if let Some(cursor) = before_location
-            && let Some(idx) = thread_cursor_position(&headers, &cursor)
-        {
-            headers.truncate(idx);
-        }
-        let total = headers.len();
-        let start = total.saturating_sub(limit as usize);
-        let page = headers[start..].to_vec();
-        let next_cursor = if start > 0 {
-            page.first().map(thread_cursor)
-        } else {
-            None
-        };
-        (page, next_cursor)
-    } else {
-        (headers, None)
+        thread_page_headers(
+            &db,
+            account,
+            folder,
+            thread_key,
+            subject_filter,
+            limit,
+            before_cursor,
+        )?
     };
 
     let cached_messages: Vec<(String, Option<parse::Message>)> = {
@@ -871,7 +893,8 @@ pub fn thread_message_json(
         // Classified in the core (own address *or* Sent-folder provenance) so
         // both frontends render alias-sent mail as outgoing without knowing
         // the account's aliases.
-        "outgoing": store::is_outgoing(
+        "outgoing": store::account_message_is_outgoing(
+            account_id,
             mine,
             folder,
             from_addr,
