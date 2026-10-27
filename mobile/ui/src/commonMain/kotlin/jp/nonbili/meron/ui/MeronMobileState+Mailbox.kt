@@ -521,6 +521,29 @@ internal fun MeronMobileState.syncCoreThreads(
     }
 }
 
+/** The blocking loader's watchdog fallback. A request still out owns the
+ *  loading flags and its token: its core call isn't cancelled, so clearing
+ *  `syncing` here would let a retry replace the token and throw away the late
+ *  but valid result. Only a loader with no request behind it is unblocked. */
+internal fun MeronMobileState.expireBlockingMailboxLoad() {
+    if (syncing && activeMailboxLoadKey != null) {
+        Log.w(
+            "MailLoad",
+            "mail load still pending past the UI budget activeLoad=$activeMailboxLoadKey selectedAccount=$selectedCoreAccountId folder=$selectedCoreFolder",
+        )
+        blockingMailboxLoadSlow = true
+        return
+    }
+    Log.w(
+        "MailLoad",
+        "mail UI unblocked accounts=${coreAccounts.size} syncing=$syncing initialThreadsLoaded=$initialThreadsLoaded selectedAccount=$selectedCoreAccountId folder=$selectedCoreFolder",
+    )
+    syncing = false
+    initialThreadsLoaded = true
+    blockingMailboxLoadSlow = false
+    errorBanner = trs("mobile.status.inboxLoadTimedOut")
+}
+
 private fun MeronMobileState.finishMailboxLoad() {
     activeMailboxLoadKey = null
     activeMailboxLoadStartedAtMillis = 0L

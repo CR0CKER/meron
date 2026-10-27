@@ -453,14 +453,16 @@ class AndroidMobileHost(
     override fun readDiagnosticLog(): String = AndroidSyncDiagnosticLog.read(activity)
 
     override fun shareDiagnosticLog() {
-        val body =
-            AndroidSyncDiagnosticLog.read(activity).ifBlank {
-                "No log entries recorded yet. Try again after the next sync."
-            }
-        val disclosure =
-            "Account emails below are masked to only the first letter and domain (e.g. j***@gmail.com).\n" +
-                "Review before sharing.\n\n"
-        shareBytesViaFileProvider(activity, (disclosure + body).toByteArray(), "meron-sync-log.txt", "text/plain")
+        activity.lifecycleScope.launch {
+            val body =
+                withContext(Dispatchers.IO) { AndroidSyncDiagnosticLog.read(activity) }.ifBlank {
+                    "No log entries recorded yet. Try again after the next sync."
+                }
+            val disclosure =
+                "Account emails below are masked to only the first letter and domain (e.g. j***@gmail.com).\n" +
+                    "Review before sharing.\n\n"
+            shareBytesViaFileProvider(activity, (disclosure + body).toByteArray(), "meron-sync-log.txt", "text/plain")
+        }
     }
 
     override fun shareText(text: String) {

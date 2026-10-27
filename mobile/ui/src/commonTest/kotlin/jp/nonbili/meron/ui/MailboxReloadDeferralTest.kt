@@ -10,6 +10,7 @@ import jp.nonbili.meron.shared.MobileCommand
 import jp.nonbili.meron.shared.ThreadSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -101,6 +102,45 @@ class MailboxReloadDeferralTest {
             delay(20)
             assertEquals(1, core.threadListCalls)
         }
+
+    // The loader's watchdog can't cancel the core call. Clearing `syncing` let a
+    // refresh start a second load whose token turned the first, valid result
+    // into a stale one.
+    @Test
+    fun watchdogLeavesAPendingLoadInChargeOfItsResult() =
+        runBlocking {
+            val core = GatedCore()
+            val state = state(core, this)
+
+            state.syncCoreThreads(syncFirst = false)
+            waitUntil { core.threadListCalls == 1 }
+            state.expireBlockingMailboxLoad()
+            assertEquals(true, state.syncing)
+            assertEquals(true, state.blockingMailboxLoadSlow)
+            assertEquals(null, state.errorBanner)
+
+            state.syncCoreThreads(syncFirst = false)
+            delay(20)
+            assertEquals(1, core.threadListCalls)
+
+            core.gate.complete(Unit)
+            waitUntil { core.threadListCalls == 2 && !state.syncing }
+            assertEquals(mailboxCacheKey("a", "INBOX", "", FilterMode.All), state.visibleMailboxKey)
+        }
+
+    @Test
+    fun watchdogUnblocksALoaderWithNoRequestBehindIt() {
+        val state = state(GatedCore(), CoroutineScope(Dispatchers.Unconfined))
+        state.initialThreadsLoaded = false
+        state.syncing = true
+
+        state.expireBlockingMailboxLoad()
+
+        assertEquals(false, state.syncing)
+        assertEquals(true, state.initialThreadsLoaded)
+        assertEquals(false, state.blockingMailboxLoadSlow)
+        assertEquals(true, state.errorBanner != null)
+    }
 
     @Test
     fun unstarRemovesOnlyStarredViewRowsAndRollsBackOnFailure() =

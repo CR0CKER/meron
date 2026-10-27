@@ -2,6 +2,7 @@ package jp.nonbili.meron
 
 import android.content.Context
 import java.io.File
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +30,11 @@ object AndroidSyncDiagnosticLog {
     private const val FILE_NAME = "sync-diagnostic.log"
     private const val MAX_LINES = 500
 
+    // One runaway entry (a huge stack trace or server reply) shouldn't make
+    // every later append and read rewrite megabytes.
+    private const val MAX_ENTRY_CHARS = 8_000
+    internal const val MAX_READ_BYTES = 64 * 1024
+
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
     @Synchronized
@@ -38,7 +44,8 @@ object AndroidSyncDiagnosticLog {
     ) {
         val file = logFile(context)
         val timestamp = timestampFormat.format(Date())
-        val lines = (if (file.exists()) file.readLines() else emptyList()) + "$timestamp $message"
+        val entry = if (message.length > MAX_ENTRY_CHARS) message.take(MAX_ENTRY_CHARS) + "…" else message
+        val lines = (if (file.exists()) file.readLines() else emptyList()) + "$timestamp $entry"
         file.writeText(lines.takeLast(MAX_LINES).joinToString("\n") + "\n")
     }
 
@@ -58,10 +65,32 @@ object AndroidSyncDiagnosticLog {
         jp.nonbili.meron.ui.Log.diagnosticSink = { line -> appendRedacted(appContext, line) }
     }
 
+    /** The newest [MAX_READ_BYTES] of the log, which is all the viewer and
+     *  the share sheet need. */
     @Synchronized
-    fun read(context: Context): String {
-        val file = logFile(context)
-        return if (file.exists()) file.readText() else ""
+    fun read(context: Context): String = readTail(logFile(context))
+
+    internal fun readTail(
+        file: File,
+        maxBytes: Int = MAX_READ_BYTES,
+    ): String {
+        if (!file.exists()) return ""
+        RandomAccessFile(file, "r").use { raf ->
+            val length = raf.length()
+            if (length <= maxBytes) {
+                val bytes = ByteArray(length.toInt())
+                raf.readFully(bytes)
+                return bytes.decodeToString()
+            }
+            raf.seek(length - maxBytes)
+            val bytes = ByteArray(maxBytes)
+            raf.readFully(bytes)
+            // Start on a line after the cut, so the first entry isn't a torn
+            // fragment (or a split UTF-8 sequence).
+            val newline = bytes.indexOf('\n'.code.toByte())
+            val start = if (newline >= 0) newline + 1 else bytes.indexOfFirst { (it.toInt() and 0xC0) != 0x80 }.coerceAtLeast(0)
+            return bytes.decodeToString(start, bytes.size)
+        }
     }
 
     private fun logFile(context: Context): File = File(context.filesDir, FILE_NAME)

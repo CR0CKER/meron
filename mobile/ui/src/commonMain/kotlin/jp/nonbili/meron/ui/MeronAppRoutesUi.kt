@@ -1392,16 +1392,7 @@ internal fun MailRouteContent(
                             blockingMailboxLoadSlow = true
                             delay(MAILBOX_BLOCKING_HARD_TIMEOUT_MS - MAILBOX_BLOCKING_TIMEOUT_MS)
                         }
-                        if (stillBlocked()) {
-                            Log.w(
-                                "MailLoad",
-                                "mail UI unblocked accounts=${coreAccounts.size} syncing=$syncing initialThreadsLoaded=$initialThreadsLoaded activeLoad=$activeMailboxLoadKey selectedAccount=$selectedCoreAccountId folder=$selectedCoreFolder",
-                            )
-                            syncing = false
-                            initialThreadsLoaded = true
-                            blockingMailboxLoadSlow = false
-                            errorBanner = trs("mobile.status.inboxLoadTimedOut")
-                        }
+                        if (stillBlocked()) expireBlockingMailboxLoad()
                     }
                     PullToRefreshBox(
                         isRefreshing = syncing && !showingBlockingInboxLoad,
