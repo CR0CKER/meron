@@ -853,7 +853,7 @@ export async function refreshKanbanContextAction(
   sourceQuery: string,
 ) {
   const columns = [source]
-  if (action === 'move' && detail?.targetFolderId) {
+  if ((action === 'move' || action === 'copy') && detail?.targetFolderId) {
     const targetAccountId = detail.targetAccountId ?? source.accountId
     for (const column of getAllKanbanColumns()) {
       if (column.accountId !== targetAccountId || column.folderId !== detail.targetFolderId) continue

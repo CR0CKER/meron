@@ -3,17 +3,21 @@ import type { Folder } from '../types'
 // Initialize the account/boot dependency graph before importing mail directly.
 import './accounts'
 import { mail$ } from './mail'
+import { ui$ } from './ui'
 import { isDraftFolder, isInboxFolder, loadFolders } from './mailFolders'
 
 describe('loadFolders', () => {
   let previousGo: unknown
   let previousFolders: Folder[]
   let previousFoldersByAccount: Record<string, Folder[]>
+  let previousSelectedAccount: string
 
   beforeEach(() => {
     previousGo = (window as any).go
     previousFolders = mail$.folders.peek()
     previousFoldersByAccount = mail$.foldersByAccount.peek()
+    previousSelectedAccount = ui$.selectedAccount.peek()
+    ui$.selectedAccount.set('acc')
     mail$.folders.set([])
     mail$.foldersByAccount.set({})
   })
@@ -21,6 +25,7 @@ describe('loadFolders', () => {
   afterEach(() => {
     mail$.folders.set(previousFolders)
     mail$.foldersByAccount.set(previousFoldersByAccount)
+    ui$.selectedAccount.set(previousSelectedAccount)
     if (previousGo === undefined) delete (window as any).go
     else (window as any).go = previousGo
   })
@@ -53,5 +58,19 @@ describe('loadFolders', () => {
     expect(mail$.foldersByAccount.acc.get()).toEqual(folders)
     expect(isInboxFolder('received', 'acc')).toBe(true)
     expect(isDraftFolder('unfinished', 'acc')).toBe(true)
+  })
+
+  it('leaves the visible list alone when refreshing another account', async () => {
+    const visible: Folder[] = [{ id: 'c', account_id: 'acc', name: 'a/b/c', role: '', unread: 0 }]
+    const other: Folder[] = [{ id: 'INBOX', account_id: 'other', name: 'INBOX', role: 'inbox', unread: 1 }]
+    mail$.folders.set(visible)
+    ;(window as any).go = {
+      main: { App: { Invoke: async () => ({ folders: other }) } },
+    }
+
+    await loadFolders('other', false)
+
+    expect(mail$.folders.get()).toEqual(visible)
+    expect(mail$.foldersByAccount.other.get()).toEqual(other)
   })
 })

@@ -836,14 +836,29 @@ pub fn local_storage_stats(conn: &Connection) -> Result<Value> {
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let page_count: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
-    let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
-    let free_pages: i64 = conn.query_row("PRAGMA freelist_count", [], |row| row.get(0))?;
+    let page_count = pragma_int(conn, "page_count")?;
+    let page_size = pragma_int(conn, "page_size")?;
+    let free_pages = pragma_int(conn, "freelist_count")?;
     Ok(json!({
         "messages": messages,
         "message_bytes": size,
         "file_bytes": (page_count - free_pages).max(0) * page_size,
     }))
+}
+
+/// An integer pragma. SQLCipher answers `page_size` on a keyed database as
+/// its own `cipher_page_size`, which is text.
+fn pragma_int(conn: &Connection, name: &str) -> Result<i64> {
+    let value: rusqlite::types::Value =
+        conn.query_row(&format!("PRAGMA {name}"), [], |row| row.get(0))?;
+    match value {
+        rusqlite::types::Value::Integer(n) => Ok(n),
+        rusqlite::types::Value::Text(text) => text
+            .trim()
+            .parse()
+            .with_context(|| format!("PRAGMA {name} returned {text:?}")),
+        other => bail!("PRAGMA {name} returned {other:?}"),
+    }
 }
 
 /// Allocate `count` consecutive UIDs in a local folder from its `uid_next`.
@@ -1111,6 +1126,9 @@ mod tests {
         let conn = crate::store::open_archive_at(dir.join("archive.db"), Some(KEY)).unwrap();
         create_local_folder(&conn, "Old/2024").unwrap();
         archive_messages(&conn, "Old/2024", &[input(RAW)], &dir).unwrap();
+        let stats = local_storage_stats(&conn).unwrap();
+        assert_eq!(stats["messages"], 1);
+        assert!(stats["file_bytes"].as_i64().unwrap() > 0);
         let dest = dir.join("copy.db");
         crate::store::backup_archive_to(&conn, &dest, "correct horse").unwrap();
 

@@ -426,8 +426,10 @@ export async function loadFolders(accountId: string, refresh = true) {
   // A response without a folders array (an empty JSON object from the sidecar)
   // must not leave the stores holding `undefined`: every reader spreads them.
   const folders = reconcileFolderCounts(accountId, result.folders || [], version)
-  mail$.folders.set(folders)
   mail$.foldersByAccount[accountId].set(folders)
+  // Callers also refresh accounts that are not on screen (a move's target):
+  // only the selected account's folders belong in the visible list.
+  publishCachedFolders(accountId)
   // Local folders have no Inbox to open on: land on the first folder instead
   // of an empty view of one that does not exist.
   if (
