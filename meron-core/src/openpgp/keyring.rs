@@ -31,6 +31,10 @@ pub enum Source {
     Gossip,
     Attachment,
     Imported,
+    /// Looked up on the recipient's domain (WKD).
+    Wkd,
+    /// Looked up on a keyserver.
+    Keyserver,
 }
 
 impl Source {
@@ -40,6 +44,8 @@ impl Source {
             Source::Gossip => "gossip",
             Source::Attachment => "attachment",
             Source::Imported => "imported",
+            Source::Wkd => "wkd",
+            Source::Keyserver => "keyserver",
         }
     }
 
@@ -48,6 +54,8 @@ impl Source {
             "gossip" => Source::Gossip,
             "attachment" => Source::Attachment,
             "imported" => Source::Imported,
+            "wkd" => Source::Wkd,
+            "keyserver" => Source::Keyserver,
             _ => Source::Autocrypt,
         }
     }

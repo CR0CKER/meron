@@ -59,10 +59,11 @@ export function indicatorFor(crypto?: MessageCrypto | null): Indicator | null {
   return { kind, tone: crypto.trust }
 }
 
-/** Tailwind colour per tone. Emerald and amber are what Meron already uses
- * for success and warning; contrast is checked on each theme's surface. */
+/** Colour per tone. Verified is a muted sage green (Nils: not neon), defined
+ * once as `--color-verified` in index.css for light and dark; amber and rose are
+ * Meron's warning and error colours. */
 export const TONE_CLASS: Record<IndicatorTone, string> = {
-  verified: 'text-emerald-600 dark:text-emerald-400',
+  verified: 'text-verified',
   known: 'text-secondary',
   unconfirmed: 'text-amber-600 dark:text-amber-400',
   danger: 'text-rose-600 dark:text-rose-400',
@@ -136,7 +137,7 @@ export type AccountEncryptionState = {
   previous: KeyInfo[]
 }
 
-export type PeerKeySource = 'autocrypt' | 'gossip' | 'attachment' | 'imported'
+export type PeerKeySource = 'autocrypt' | 'gossip' | 'attachment' | 'imported' | 'wkd' | 'keyserver'
 
 export type PeerRow = {
   addr: string
@@ -177,4 +178,21 @@ export type RecipientKeys = {
  * Johnny?", security notes §4). */
 export function mayQuoteInto(original: { crypto?: MessageCrypto | null } | null | undefined, encrypting: boolean) {
   return encrypting || !original?.crypto?.encrypted
+}
+
+/** Where key lookups go (meron-core `openpgp::lookup`). */
+export type KeySourceKind = 'wkd' | 'vks' | 'hkp'
+export type KeySource = { kind: KeySourceKind; url: string; enabled: boolean }
+
+export type FoundKey = { source: KeySource; verified: boolean; info: KeyInfo; data_b64: string }
+export type LookupResult = {
+  addr: string
+  found: FoundKey[]
+  searched: string[]
+  failed: { source: string; error: string }[]
+}
+
+/** A source's name for the UI: WKD, or the keyserver's host. */
+export function sourceLabel(source: KeySource): string {
+  return source.kind === 'wkd' ? 'WKD' : source.url.replace(/^https:\/\//, '').replace(/\/$/, '')
 }

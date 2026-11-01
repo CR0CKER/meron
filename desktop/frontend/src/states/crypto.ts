@@ -9,6 +9,9 @@ import type {
   ImportOwnResult,
   ImportPreview,
   KeyInfo,
+  KeySource,
+  LookupResult,
+  FoundKey,
   PeerRow,
   RecipientKeys,
 } from '../lib/crypto'
@@ -25,6 +28,8 @@ export const crypto$ = observable({
   /** Account whose "turn on encryption" dialog is open. */
   enableFor: null as null | { accountId: string; address: string },
   verify: null as null | VerifyTarget,
+  /** Addresses whose keys the lookup dialog is fetching (opened by a click). */
+  lookup: null as null | { addrs: string[] },
   /** Bumped after any key change, so open settings pages reload. */
   version: 0,
 })
@@ -128,4 +133,29 @@ export async function dismissEncryptionOffer(accountId: string, addr: string) {
 
 export function recipientKeys(accountId: string, addrs: string[]) {
   return invoke<RecipientKeys>('pgp.keys.forRecipients', { account: accountId, addrs })
+}
+
+/** Looks an address up on the configured key sources. Only on a click: the
+ * servers learn who the user writes to. */
+export function lookupKey(addr: string) {
+  return invoke<LookupResult>('pgp.lookup', { addr })
+}
+
+/** "Use this key": stored as Known (not Verified). */
+export async function addLookedUpKey(addr: string, found: FoundKey) {
+  const res = await invoke<{ key: KeyInfo }>('pgp.lookup.add', {
+    addr,
+    data_b64: found.data_b64,
+    source: found.source.kind,
+  })
+  changed()
+  return res.key
+}
+
+export function keySources() {
+  return invoke<{ sources: KeySource[]; defaults: KeySource[] }>('pgp.lookup.sources')
+}
+
+export function setKeySources(sources: KeySource[]) {
+  return invoke<{ sources: KeySource[] }>('pgp.lookup.setSources', { sources }).then((r) => r.sources)
 }

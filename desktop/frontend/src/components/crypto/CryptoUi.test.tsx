@@ -7,6 +7,7 @@ import { CryptoBadge } from './CryptoBadge'
 import { CryptoStrip } from './CryptoStrip'
 import { EncryptToggle, encryptionBlocksSend, recipientAddresses } from './EncryptToggle'
 import { VerifyKeyDialog } from './VerifyKeyDialog'
+import { KeyLookupDialog } from './KeyLookupDialog'
 
 const FPR = '8E9BCE8647564E257A411B71969BC97D064D88D5'
 const base: MessageCrypto = {
@@ -28,6 +29,7 @@ beforeEach(() => {
   calls = []
   crypto$.verify.set(null)
   crypto$.enableFor.set(null)
+  crypto$.lookup.set(null)
   ui$.selectedThread.set('')
   ;(window as any).go = {
     main: {
@@ -203,7 +205,7 @@ describe('EncryptToggle', () => {
     expect(value).toBe(true)
   })
 
-  test("can't be turned on while a recipient has no key", () => {
+  test('with a recipient lacking a key, the click looks the key up instead of turning on', () => {
     let value = false
     const { getByRole } = render(
       <EncryptToggle
@@ -213,10 +215,24 @@ describe('EncryptToggle', () => {
       />,
     )
     const sw = getByRole('switch') as HTMLButtonElement
-    expect(sw.disabled).toBe(true)
     expect(sw.title).toContain('bob@example.net')
     fireEvent.click(sw)
     expect(value).toBe(false)
+    expect(crypto$.lookup.get()).toEqual({ addrs: ['bob@example.net'] })
+  })
+
+  test('while on, the click still turns encryption off', () => {
+    let value = true
+    const { getByRole } = render(
+      <EncryptToggle
+        keys={keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })}
+        on
+        onChange={(on) => (value = on)}
+      />,
+    )
+    fireEvent.click(getByRole('switch'))
+    expect(value).toBe(false)
+    expect(crypto$.lookup.get()).toBeNull()
   })
 
   test('a forward of encrypted mail stays encrypted', () => {
@@ -249,4 +265,43 @@ test('an encrypted original is quoted only into an encrypted reply', async () =>
   expect(composedContent({ ...draft, encrypt: true })).toContain('> secret')
   expect(composedContent({ ...draft, encrypt: false })).toBe('Thanks!')
   expect(composedContent({ ...draft, sensitiveSource: undefined, encrypt: false })).toContain('> secret')
+})
+
+describe('KeyLookupDialog', () => {
+  test('looks up only when opened, shows the source, and adds the picked key', async () => {
+    const found = {
+      source: { kind: 'hkp', url: 'https://keyserver.ubuntu.com', enabled: true },
+      verified: false,
+      info: { fingerprint: FPR, user_ids: ['Bob <bob@example.net>'], emails: ['bob@example.net'] },
+      data_b64: 'AAAA',
+    }
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: any) => {
+      calls.push({ command, payload })
+      if (command === 'pgp.lookup')
+        return { addr: payload.addr, found: [found], searched: ['WKD', 'keyserver.ubuntu.com'], failed: [] }
+      if (command === 'pgp.lookup.add') return { key: found.info }
+      return {}
+    }
+    const { findByText, getByText } = render(<KeyLookupDialog />)
+    expect(calls.some((c) => c.command === 'pgp.lookup')).toBe(false)
+    act(() => crypto$.lookup.set({ addrs: ['bob@example.net'] }))
+    await findByText('Bob <bob@example.net>')
+    expect(getByText(/doesn't check addresses/)).toBeTruthy()
+    await act(async () => fireEvent.click(getByText('Use this key')))
+    expect(calls.find((c) => c.command === 'pgp.lookup.add')?.payload).toEqual({
+      addr: 'bob@example.net',
+      data_b64: 'AAAA',
+      source: 'hkp',
+    })
+  })
+
+  test('says where it looked when nothing is found', async () => {
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: any) =>
+      command === 'pgp.lookup'
+        ? { addr: payload.addr, found: [], searched: ['WKD', 'keys.openpgp.org'], failed: [] }
+        : {}
+    const { findByText } = render(<KeyLookupDialog />)
+    act(() => crypto$.lookup.set({ addrs: ['nobody@example.org'] }))
+    expect(await findByText('No key found (WKD, keys.openpgp.org).')).toBeTruthy()
+  })
 })

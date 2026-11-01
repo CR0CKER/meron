@@ -355,6 +355,9 @@ func sidecarCallTimeout(method string) time.Duration {
 	// Key generation, keyring imports (every key checked) and S2K.
 	case "pgp.account.create", "pgp.account.importKey", "pgp.account.exportSecret", "pgp.peers.importPreview", "pgp.peers.import":
 		return 30 * time.Second
+	// A key lookup asks each source in turn, up to 10s each (WKD tries two hosts).
+	case "pgp.lookup":
+		return 60 * time.Second
 	// A batch is a handful of full messages, attachments included.
 	// A copy downloads every message in the thread in full, then APPENDs each
 	// one to the target.

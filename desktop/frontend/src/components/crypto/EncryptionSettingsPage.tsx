@@ -17,6 +17,7 @@ import {
 import type { KeyFile } from '../../states/crypto'
 import { confirmAction, showToast } from '../../states/ui'
 import { Dialog } from '../dialog/Dialog'
+import { KeySourcesSection, LookupRow } from './KeySourcesSection'
 import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
 
@@ -100,6 +101,9 @@ export function EncryptionSettingsPage() {
         </ul>
       )}
 
+      <LookupRow />
+      <KeySourcesSection />
+
       {importing && (
         <ImportDialog file={importing.file} preview={importing.preview} onClose={() => setImporting(null)} />
       )}
@@ -116,7 +120,7 @@ function PeerRowItem({ peer }: { peer: PeerRow }) {
         <div className="flex items-center gap-2">
           <span className="truncate text-[0.75rem] font-semibold">{name}</span>
           {peer.verified ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[0.59375rem] font-bold text-emerald-700 dark:text-emerald-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-verified/10 px-1.5 py-0.5 text-[0.59375rem] font-bold text-verified">
               <BadgeCheck size={10} />
               {t('crypto.peers.verified')}
             </span>

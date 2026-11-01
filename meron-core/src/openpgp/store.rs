@@ -487,6 +487,31 @@ pub fn import_peers(conn: &Connection, data: &[u8], fingerprints: &[String]) -> 
     Ok(count)
 }
 
+/// Adds a key the user picked from a lookup ("Use this key"). Checked again
+/// here: it must carry `addr` and be usable. It counts as the newest key for
+/// the address (Known, not Verified).
+pub fn add_looked_up(conn: &Connection, addr: &str, data: &[u8], from_wkd: bool) -> Result<KeyInfo> {
+    let addr = addr.trim().to_ascii_lowercase();
+    let key = keys::parse_public(data)?;
+    let info = keys::info(&key, false, keys::now());
+    if !info.emails.contains(&addr) {
+        bail!("this key isn't for {addr}");
+    }
+    if info.unusable.is_some() {
+        bail!("this key can't be used");
+    }
+    let source = if from_wkd { Source::Wkd } else { Source::Keyserver };
+    let now = now_secs();
+    conn.execute(
+        "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
+         VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+         ON CONFLICT(addr, fingerprint) DO UPDATE SET public_key = excluded.public_key, last_seen = excluded.last_seen",
+        params![addr, info.fingerprint, keys::binary_public(&key)?, source.as_str(), now],
+    )?;
+    reload(conn)?;
+    Ok(info)
+}
+
 /// Marks a key verified (or not). `confirm_fingerprint` must equal the key's
 /// fingerprint: the UI passes what the user compared, so a stale dialog can't
 /// verify a different key.

@@ -148,6 +148,30 @@ pub(crate) async fn dispatch(engine: &Arc<Engine>, req: &Request, _out: &Writer)
                 pgp_store::dismiss_offer(&conn, &account, &addr)?;
                 Ok(json!({ "ok": true }))
             }
+            // Key lookup: only ever on the user's click (it tells the servers
+            // who the user writes to). Network-bound, but already off the reactor.
+            "pgp.lookup" => {
+                let addr = req_str(&p, "addr")?;
+                let sources = meron_core::openpgp::lookup::sources(&conn);
+                drop(conn);
+                Ok(json!(meron_core::openpgp::lookup::lookup(&addr, &sources)?))
+            }
+            "pgp.lookup.add" => {
+                let addr = req_str(&p, "addr")?;
+                let data = file_data(&p)?;
+                let from_wkd = p.get("source").and_then(Value::as_str) == Some("wkd");
+                Ok(json!({ "key": pgp_store::add_looked_up(&conn, &addr, &data, from_wkd)? }))
+            }
+            "pgp.lookup.sources" => Ok(json!({
+                "sources": meron_core::openpgp::lookup::sources(&conn),
+                "defaults": meron_core::openpgp::lookup::default_sources(),
+            })),
+            "pgp.lookup.setSources" => {
+                let list: Vec<meron_core::openpgp::lookup::KeySource> =
+                    serde_json::from_value(p.get("sources").cloned().unwrap_or_default()).context("sources")?;
+                meron_core::openpgp::lookup::set_sources(&conn, &list)?;
+                Ok(json!({ "sources": meron_core::openpgp::lookup::sources(&conn) }))
+            }
             // The composer's live check: can this message be encrypted, and
             // which recipients lack a key.
             "pgp.keys.forRecipients" => {

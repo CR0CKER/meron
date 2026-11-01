@@ -99,15 +99,23 @@ export function EncryptToggle({
   }
 
   const unavailable = keys.own_key_unusable || keys.missing.length > 0
+  // Missing keys can be looked up from here, on this click only.
+  const canLookUp = !on && !keys.own_key_unusable && keys.missing.length > 0
+  const lookUp = () => crypto$.lookup.set({ addrs: keys.missing.map((m) => m.addr) })
   const locked = on && sensitive === 'forward'
   let title = on ? t('crypto.toggle.on') : t('crypto.toggle.off')
   if (keys.own_key_unusable) title = t('crypto.toggle.ownKeyUnusable')
   else if (unavailable && on) title = t('crypto.toggle.blocked', { addresses: missing })
-  else if (unavailable) title = t('crypto.toggle.noKey', { addresses: missing })
+  else if (unavailable)
+    title = `${t('crypto.toggle.noKey', { addresses: missing })} ${t('crypto.toggle.clickToLookUp')}`
   else if (locked) title = t('crypto.toggle.forwardLocked')
 
   const click = async () => {
     if (locked) return
+    if (canLookUp) {
+      lookUp()
+      return
+    }
     if (!on) {
       if (!unavailable) onChange(true)
       return
@@ -129,7 +137,7 @@ export function EncryptToggle({
       ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
       : 'text-accent bg-accent/10'
     : unavailable
-      ? 'text-secondary/50 cursor-not-allowed'
+      ? 'text-secondary/50 hover:bg-active hover:text-secondary'
       : 'text-secondary hover:bg-active hover:text-primary'
   return (
     <button
@@ -138,7 +146,7 @@ export function EncryptToggle({
       aria-checked={on}
       aria-label={title}
       title={title}
-      disabled={!on && unavailable}
+      disabled={!on && keys.own_key_unusable}
       onClick={() => void click()}
       className={`flex ${box} shrink-0 items-center justify-center rounded-lg transition-colors cursor-pointer ${tone}`}
     >
@@ -155,9 +163,16 @@ export function EncryptRecipientsNote({ keys, on }: { keys: RecipientKeys | null
   return (
     <p
       role={on ? 'alert' : 'status'}
-      className={`px-1 text-[0.6875rem] ${on ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'}`}
+      className={`flex items-center gap-2 px-1 text-[0.6875rem] ${on ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'}`}
     >
-      {on ? t('crypto.toggle.blocked', { addresses }) : t('crypto.toggle.noKey', { addresses })}
+      <span>{on ? t('crypto.toggle.blocked', { addresses }) : t('crypto.toggle.noKey', { addresses })}</span>
+      <button
+        type="button"
+        onClick={() => crypto$.lookup.set({ addrs: keys.missing.map((m) => m.addr) })}
+        className="shrink-0 rounded-md px-1.5 py-0.5 font-semibold text-accent hover:bg-accent/10 cursor-pointer"
+      >
+        {t('crypto.lookup.action')}
+      </button>
     </p>
   )
 }
