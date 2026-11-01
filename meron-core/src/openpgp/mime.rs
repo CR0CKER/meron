@@ -36,7 +36,10 @@ pub enum Problem {
     InlineInHtml,
 }
 
-/// The message's OpenPGP facts, persisted with the cached body. Trust (the
+/// The message's OpenPGP facts, persisted with the cached body (every field
+/// is written, nulls included: the store merges with `json_patch`, where a
+/// missing field would keep a stale value such as an old `no_key` problem).
+/// Trust (the
 /// indicator colour) is *not* stored: it depends on later choices (verifying
 /// a key) and is computed when the message is read ([`CryptoStatus::trust`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,10 +50,10 @@ pub struct CryptoStatus {
     #[serde(default)]
     pub signed: bool,
     /// Primary fingerprint of the key whose signature verified.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub signer: Option<String>,
     /// Issuer named by the signature when we couldn't verify it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub issuer: Option<String>,
     /// Only part of the message is covered by the signature.
     #[serde(default)]
@@ -58,7 +61,7 @@ pub struct CryptoStatus {
     /// Made with SHA-1 or MD5.
     #[serde(default)]
     pub weak_hash: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub problem: Option<Problem>,
     /// Signed with a key we had never seen for this address before.
     #[serde(default)]
@@ -70,7 +73,7 @@ pub struct CryptoStatus {
     #[serde(default)]
     pub autocrypt: bool,
     /// Our key that opened it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub decrypted_with: Option<String>,
 }
 

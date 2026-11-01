@@ -85,26 +85,56 @@ pub(crate) async fn dispatch(
             let message_id = req_str(p, "message_id").unwrap_or_default();
             let attachments = opt_attachments(p)?;
             let requested_from = req_str(p, "from").unwrap_or_default();
+            // End-to-end encryption is decided in the composer; here it is
+            // enforced: an encrypted send never goes out unencrypted.
+            let encrypt = p.get("encrypt").and_then(Value::as_bool).unwrap_or(false);
             let creds = engine.ensure_valid_creds(&account).await?;
             let (from_addr, sender_name) =
                 resolve_send_from(engine, &account, &creds, &requested_from)?;
-            let raw = smtp::send(
-                &creds,
-                &from_addr,
-                &sender_name,
-                &to,
-                &cc,
-                &bcc,
-                &subject,
-                &body,
-                &html,
-                &attachments,
-                &in_reply_to,
-                &references,
-                &reply_to,
-                &message_id,
-            )
-            .await?;
+            let ring = meron_core::openpgp::keyring::current();
+            let raw = if encrypt {
+                let keys = meron_core::openpgp::outgoing::resolve(&ring, &account, &from_addr, &to, &cc, &bcc)?;
+                smtp::send_encrypted(
+                    &creds,
+                    &from_addr,
+                    &sender_name,
+                    &to,
+                    &cc,
+                    &bcc,
+                    &subject,
+                    &body,
+                    &html,
+                    &attachments,
+                    &in_reply_to,
+                    &references,
+                    &reply_to,
+                    &message_id,
+                    &keys,
+                )
+                .await?
+            } else {
+                let extra: Vec<(&str, String)> = meron_core::openpgp::outgoing::autocrypt_for(&ring, &account, &from_addr)
+                    .map(|v| vec![("Autocrypt", v)])
+                    .unwrap_or_default();
+                smtp::send(
+                    &creds,
+                    &from_addr,
+                    &sender_name,
+                    &to,
+                    &cc,
+                    &bcc,
+                    &subject,
+                    &body,
+                    &html,
+                    &attachments,
+                    &in_reply_to,
+                    &references,
+                    &reply_to,
+                    &message_id,
+                    &extra,
+                )
+                .await?
+            };
             finish_sent(engine, out, account, raw);
             Ok(json!({ "ok": true }))
         }
@@ -167,6 +197,22 @@ pub(crate) async fn dispatch(
                 &reply_to,
                 &draft_id,
             )?;
+            // A draft of an encrypted message is itself encrypted (to us
+            // only), or its text would sit on the server in the clear.
+            let raw = if p.get("encrypt").and_then(Value::as_bool).unwrap_or(false) {
+                let ring = meron_core::openpgp::keyring::current();
+                let own = ring
+                    .default_key(&account)
+                    .filter(|_| ring.is_enabled(&account))
+                    .context("end-to-end encryption is not set up for this account")?;
+                let autocrypt = meron_core::openpgp::autocrypt::header_value(
+                    &meron_core::openpgp::outgoing::bare_addr(&from_addr),
+                    &own.public,
+                )?;
+                meron_core::openpgp::outgoing::wrap(&raw, &[&own.public], &own.secret, &autocrypt)?
+            } else {
+                raw
+            };
             append_to_drafts(engine, &account, &raw, &draft_id).await?;
             Ok(json!({ "ok": true }))
         }

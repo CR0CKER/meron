@@ -517,6 +517,31 @@ pub fn normalize_fingerprint(s: &str) -> String {
     s.chars().filter(char::is_ascii_hexdigit).collect::<String>().to_ascii_uppercase()
 }
 
+/// Whether a cached message was encrypted (for the lock on its list card),
+/// with the trust its signature earns now. `None` when not encrypted.
+pub fn card_lock(conn: &Connection, account: &str, folder: &str, uid: u32) -> Option<keyring::Trust> {
+    let json: String = conn
+        .query_row(
+            "SELECT json_extract(json, '$.crypto') FROM messages WHERE account = ?1 AND folder = ?2 AND uid = ?3",
+            params![account, folder, uid],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .ok()
+        .flatten()?;
+    let status: super::mime::CryptoStatus = serde_json::from_str(&json).ok()?;
+    if !status.encrypted {
+        return None;
+    }
+    let from: String = conn
+        .query_row(
+            "SELECT from_addr FROM messages WHERE account = ?1 AND folder = ?2 AND uid = ?3",
+            params![account, folder, uid],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    Some(status.trust(&keyring::current(), &from))
+}
+
 // Offer ---------------------------------------------------------------------
 
 /// "Not now" (one sender) or "Don't ask again" (`addr` = `*`).

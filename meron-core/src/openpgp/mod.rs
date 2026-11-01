@@ -6,10 +6,12 @@
 //! - [`keyring`]: the in-memory key snapshot the parser and sender use
 //! - [`store`]: the SQLCipher tables behind it
 //! - [`mime`]: PGP/MIME detection and the decrypted inner message
+//! - [`outgoing`]: encrypted sending (RFC 3156 + RFC 9788 protected headers)
 
 pub mod autocrypt;
 pub mod crypt;
 pub mod keyring;
 pub mod keys;
 pub mod mime;
+pub mod outgoing;
 pub mod store;

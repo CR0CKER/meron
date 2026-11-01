@@ -336,7 +336,7 @@ pub fn sign_detached(content: &[u8], signer: &SignedSecretKey) -> anyhow::Result
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::openpgp::keys::{Unlock, parse_keys, unlock};
 
