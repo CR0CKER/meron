@@ -136,7 +136,7 @@ export function KeyLookupDialog() {
           </section>
         ))}
       </div>
-      <p className="px-1 text-[0.65625rem] leading-relaxed text-secondary">{t('crypto.lookup.note')}</p>
+      <p className="text-[0.65625rem] leading-relaxed text-secondary">{t('crypto.lookup.note')}</p>
       <div className="flex justify-end">
         <Button variant="secondary" onClick={close}>
           {t('buttons.close')}
