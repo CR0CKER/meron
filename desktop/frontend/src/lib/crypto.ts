@@ -59,7 +59,7 @@ export function indicatorFor(crypto?: MessageCrypto | null): Indicator | null {
   return { kind, tone: crypto.trust }
 }
 
-/** Colour per tone. Verified is a muted sage green (Nils: not neon), defined
+/** Colour per tone. Verified is a calm green (Nils: not neon, but clearly green), defined
  * once as `--color-verified` in index.css for light and dark; amber and rose are
  * Meron's warning and error colours. */
 export const TONE_CLASS: Record<IndicatorTone, string> = {
