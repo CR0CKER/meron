@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -451,8 +452,21 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 	case "mail.delete":
 		return a.mailDelete(payload)
 	default:
+		// End-to-end encryption settings and keys go straight to the core;
+		// payloads (passphrases, key files) are never logged (Invoke logs
+		// only the command name).
+		if strings.HasPrefix(command, "pgp.") {
+			return a.pgpInvoke(command, payload)
+		}
 		return nil, fmt.Errorf("unknown command: %s", command)
 	}
+}
+
+func (a *App) pgpInvoke(command string, payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, a.engineUnavailable()
+	}
+	return a.sidecar.Call(command, payload)
 }
 
 func (a *App) appPrefsGet(payload map[string]any) (any, error) {

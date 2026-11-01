@@ -84,13 +84,34 @@ func loadDotEnvLocal() {
 // path and blocks `..` traversal out of the media root.
 func mediaHandler() http.Handler {
 	fs := http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir())))
+	secure := http.StripPrefix("/media/"+secureMediaPrefix, http.FileServer(http.Dir(secureMediaDir())))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/media/") {
 			http.NotFound(w, r)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/media/"+secureMediaPrefix) {
+			secure.ServeHTTP(w, r)
+			return
+		}
 		fs.ServeHTTP(w, r)
 	})
+}
+
+// secureMediaPrefix marks media keys of decrypted (end-to-end encrypted)
+// mail. The sidecar writes those files under secureMediaDir, never in the
+// plain attachment cache (meron-core parse::SECURE_MEDIA_PREFIX).
+const secureMediaPrefix = "e2ee/"
+
+// secureMediaDir holds attachments of decrypted mail: on Linux in
+// $XDG_RUNTIME_DIR (tmpfs, owner-only, emptied at logout), elsewhere next to
+// the cache until a platform equivalent is chosen (open item for macOS and
+// Windows). After a reboot the sidecar decrypts the message again.
+func secureMediaDir() string {
+	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
+		return filepath.Join(runtime, appDirName(), "secure-media")
+	}
+	return filepath.Join(appCacheDir(), "secure-media")
 }
 
 // mediaDir is where the mail sidecar writes attachment files and the asset

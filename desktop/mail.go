@@ -676,6 +676,10 @@ func mediaFilePath(key string) (string, error) {
 		return "", errors.New("missing attachment key")
 	}
 	root := mediaDir()
+	// Decrypted mail's attachments live in the secure (tmpfs) dir.
+	if rest, ok := strings.CutPrefix(key, secureMediaPrefix); ok {
+		root, key = secureMediaDir(), rest
+	}
 	// Cleaning a rooted "/"+key strips any "..", then Join confines it to root.
 	src := filepath.Join(root, filepath.Clean("/"+key))
 	if rel, err := filepath.Rel(root, src); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
@@ -1006,6 +1010,7 @@ func (a *App) mailSend(payload map[string]any) (any, error) {
 		"from":        req.From,
 		"message_id":  req.MessageID,
 		"attachments": req.Attachments,
+		"encrypt":     req.Encrypt,
 	}); err != nil {
 		return nil, err
 	}
@@ -1034,6 +1039,7 @@ func (a *App) mailSaveDraft(payload map[string]any) (any, error) {
 		"from":        req.From,
 		"draft_id":    req.DraftID,
 		"attachments": req.Attachments,
+		"encrypt":     req.Encrypt,
 	}); err != nil {
 		return nil, err
 	}
