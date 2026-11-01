@@ -14,6 +14,8 @@ type T = ReturnType<typeof useTranslation>['t']
 export function trustSentence(crypto: MessageCrypto, sender: string, t: T): string {
   if (crypto.own) return t('crypto.trust.own')
   if (crypto.problem === 'invalid_signature') return t('crypto.trust.invalid')
+  if (crypto.problem === 'key_revoked') return t('crypto.trust.keyRevoked', { sender })
+  if (crypto.problem === 'key_expired') return t('crypto.trust.keyExpired', { sender })
   if (crypto.problem === 'signer_mismatch') return t('crypto.trust.signerMismatch', { sender })
   if (crypto.verified_conflict) return t('crypto.trust.verifiedConflict', { sender })
   if (crypto.weak_hash) return t('crypto.trust.weakHash')

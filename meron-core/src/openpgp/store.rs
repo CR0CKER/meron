@@ -296,6 +296,26 @@ pub fn delete_own_key(conn: &Connection, account_id: &str, fingerprint: &str) ->
 
 // Peers ---------------------------------------------------------------------
 
+/// G2: folds `key` into the stored copy with the same fingerprint (every
+/// address row), so revocations and renewals published later take effect.
+/// Stored key bytes are only ever extended through [`keys::merge`] (which keeps
+/// only signatures made by the key itself), never replaced: an older copy
+/// arriving late can't undo a revocation. Returns whether anything changed.
+fn merge_into_stored(conn: &Connection, key: &pgp::composed::SignedPublicKey) -> Result<bool> {
+    let fingerprint = fingerprint_hex(&key.primary_key);
+    let stored: Option<Vec<u8>> = conn
+        .query_row("SELECT public_key FROM openpgp_peer_keys WHERE fingerprint = ?1 LIMIT 1", [&fingerprint], |r| r.get(0))
+        .optional()?;
+    let Some(blob) = stored else { return Ok(false) };
+    let Ok(stored) = keys::parse_public(&blob) else { return Ok(false) };
+    let Some(merged) = keys::merge(&stored, key) else { return Ok(false) };
+    conn.execute(
+        "UPDATE openpgp_peer_keys SET public_key = ?1 WHERE fingerprint = ?2",
+        params![keys::binary_public(&merged)?, fingerprint],
+    )?;
+    Ok(true)
+}
+
 /// Records keys announced in a message (Autocrypt, gossip) or attached to it.
 /// Returns whether anything changed, so callers reload the snapshot only then.
 ///
@@ -310,6 +330,8 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
     let mut changed = false;
     let seen = if message_date > 0 { message_date } else { now_secs() };
     let mut put = |addr: &str, key: &pgp::composed::SignedPublicKey, source: Source, only_if_new_addr: bool| -> Result<()> {
+        // A copy of a key we already have (revoked, renewed) updates it first.
+        changed |= merge_into_stored(conn, key)?;
         if keys::check(key, keys::now()).is_some_and(|u| u != Unusable::Expired) {
             return Ok(());
         }
@@ -326,7 +348,6 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
             "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
              VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
              ON CONFLICT(addr, fingerprint) DO UPDATE SET
-               public_key = excluded.public_key,
                last_seen = MAX(openpgp_peer_keys.last_seen, excluded.last_seen)
              WHERE excluded.last_seen > openpgp_peer_keys.last_seen",
             params![addr, fingerprint, blob, source.as_str(), seen],
@@ -393,6 +414,9 @@ pub struct ImportPreview {
     pub replaces_unverified: Vec<String>,
     /// Differs from a verified key for that address; imported but not preferred.
     pub conflicts_with_verified: Vec<String>,
+    /// Keys already stored that this file updates (a revocation, a renewal).
+    /// Applied on import whether or not they are among the picked keys.
+    pub updates: Vec<KeyInfo>,
     pub unreadable: usize,
 }
 
@@ -426,6 +450,12 @@ pub fn import_preview(conn: &Connection, data: &[u8]) -> Result<ImportPreview> {
     let mut out = ImportPreview { unreadable, ..Default::default() };
     for key in all {
         let info = keys::info(&key, false, keys::now());
+        let fpr = info.fingerprint.clone();
+        if let Some(stored) = ring.peers.iter().find(|p| p.fingerprint == fpr) {
+            if keys::merge(&stored.key, &key).is_some() {
+                out.updates.push(info.clone());
+            }
+        }
         let reason = match info.unusable {
             Some(Unusable::Expired) => Some(SkipReason::Expired),
             Some(Unusable::Revoked) => Some(SkipReason::Revoked),
@@ -468,6 +498,8 @@ pub fn import_peers(conn: &Connection, data: &[u8], fingerprints: &[String]) -> 
     let now = now_secs();
     let mut count = 0;
     for key in all {
+        // Updates to stored keys (revocations) apply whether or not picked.
+        merge_into_stored(conn, &key)?;
         let info = keys::info(&key, false, keys::now());
         if !fingerprints.contains(&info.fingerprint) || info.unusable.is_some() {
             continue;
@@ -477,7 +509,7 @@ pub fn import_peers(conn: &Connection, data: &[u8], fingerprints: &[String]) -> 
             conn.execute(
                 "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
                  VALUES (?1, ?2, ?3, 'imported', 0, ?4, ?4)
-                 ON CONFLICT(addr, fingerprint) DO UPDATE SET public_key = excluded.public_key, last_seen = excluded.last_seen",
+                 ON CONFLICT(addr, fingerprint) DO UPDATE SET last_seen = excluded.last_seen",
                 params![addr, info.fingerprint, blob, now],
             )?;
         }
@@ -500,12 +532,13 @@ pub fn add_looked_up(conn: &Connection, addr: &str, data: &[u8], from_wkd: bool)
     if info.unusable.is_some() {
         bail!("this key can't be used");
     }
+    merge_into_stored(conn, &key)?;
     let source = if from_wkd { Source::Wkd } else { Source::Keyserver };
     let now = now_secs();
     conn.execute(
         "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
          VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
-         ON CONFLICT(addr, fingerprint) DO UPDATE SET public_key = excluded.public_key, last_seen = excluded.last_seen",
+         ON CONFLICT(addr, fingerprint) DO UPDATE SET last_seen = excluded.last_seen",
         params![addr, info.fingerprint, keys::binary_public(&key)?, source.as_str(), now],
     )?;
     reload(conn)?;
@@ -671,6 +704,7 @@ pub fn backup_apply(conn: &Connection, entries: &[BackupKeys]) -> Result<Vec<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openpgp::keyring::NoKeyReason;
 
     fn db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -804,6 +838,36 @@ mod tests {
         let again = import_preview(&conn, &data).unwrap();
         assert_eq!(again.already_present.len(), 3);
         assert!(again.ready.is_empty());
+    }
+
+    #[test]
+    fn a_revocation_arriving_later_takes_effect_and_an_older_copy_cannot_undo_it() {
+        let conn = db();
+        let carol = keys::parse_public(&fixture("carol-public.asc")).unwrap();
+        let revoked = keys::parse_public(&fixture("carol-revoked-public.asc")).unwrap();
+        let ann = |key: &pgp::composed::SignedPublicKey| Announced { addr: "carol@example.com".into(), key: key.clone(), prefer_mutual: true, gossip: false };
+        ingest(&conn, &[ann(&carol)], &[], 10).unwrap();
+        assert!(load(&conn).unwrap().encryption_key_for("carol@example.com").is_ok());
+        assert!(ingest(&conn, &[ann(&revoked)], &[], 20).unwrap(), "the revocation is a change");
+        let ring = load(&conn).unwrap();
+        assert_eq!(ring.encryption_key_for("carol@example.com").err(), Some(NoKeyReason::Unusable));
+        assert_eq!(list_peers(&conn).unwrap()[0].info.unusable, Some(Unusable::Revoked));
+        // Old mail fetched late, carrying the unrevoked copy with a newer date.
+        ingest(&conn, &[ann(&carol)], &[], 30).unwrap();
+        assert_eq!(load(&conn).unwrap().encryption_key_for("carol@example.com").err(), Some(NoKeyReason::Unusable));
+    }
+
+    #[test]
+    fn importing_a_revoked_copy_updates_the_stored_key() {
+        let conn = db();
+        let carol = keys::parse_public(&fixture("carol-public.asc")).unwrap();
+        ingest(&conn, &[Announced { addr: "carol@example.com".into(), key: carol, prefer_mutual: true, gossip: false }], &[], 10).unwrap();
+        let data = fixture("carol-revoked-public.asc");
+        let preview = import_preview(&conn, &data).unwrap();
+        assert_eq!(preview.updates.len(), 1);
+        assert!(preview.ready.is_empty(), "revoked keys are never offered as new");
+        import_peers(&conn, &data, &[]).unwrap();
+        assert_eq!(list_peers(&conn).unwrap()[0].info.unusable, Some(Unusable::Revoked));
     }
 
     #[test]

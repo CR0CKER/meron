@@ -213,10 +213,24 @@ def build(gpg: Gpg) -> None:
     # A key created two years ago that expired a year ago, and one that is revoked.
     expired = gpg.gen("Erin Expired <erin@example.com>", "ed25519", "cv25519", faked_time="20240101T000000", expire="1y")
     revoked = gpg.gen("Rex Revoked <rex@example.com>", "ed25519", "cv25519")
+    signed_part_rex = 'Content-Type: text/plain; charset="utf-8"' + CRLF + CRLF + "Signed before my key was revoked." + CRLF
+    # Signed while the key was still good; revoked afterwards (reason: none = void all).
+    write("signed-by-revoked.eml", signed_mime(gpg, headers("Rex Revoked <rex@example.com>", ALICE, "Revoked signer", msgid="signed-revoked"), signed_part_rex, revoked))
     # gpg >= 2.1 writes a revocation certificate for every new key; its armor line is
     # prefixed with ":" so it can't be imported by accident.
     rev_cert = (gpg.home / "openpgp-revocs.d" / f"{revoked}.rev").read_text()
     gpg.run("--import", stdin=rev_cert.replace(":-----BEGIN", "-----BEGIN").encode())
+    # Erin's key (2024-01-01, expired 2025) signed a message in June 2024: still valid.
+    erin_part = 'Content-Type: text/plain; charset="utf-8"' + CRLF + CRLF + "Signed while my key was valid." + CRLF
+    erin_sig = gpg.run("--faked-system-time", "20240601T000000", "--local-user", expired, "--digest-algo", "SHA256", "--armor", "--detach-sign", stdin=erin_part.encode())
+    write(
+        "signed-by-expired-while-valid.eml",
+        headers("Erin Expired <erin@example.com>", ALICE, "Old signature", msgid="signed-expired-valid")
+        + 'Content-Type: multipart/signed; micalg=pgp-sha256; protocol="application/pgp-signature"; boundary="sig-boundary"'
+        + CRLF + CRLF + "--sig-boundary" + CRLF + erin_part + CRLF + "--sig-boundary" + CRLF
+        + 'Content-Type: application/pgp-signature; name="signature.asc"' + CRLF + CRLF
+        + erin_sig.decode().replace("\n", CRLF) + CRLF + "--sig-boundary--" + CRLF,
+    )
 
     # Keys -------------------------------------------------------------
     write("alice-secret.asc", gpg.run("--armor", "--export-secret-keys", alice))
@@ -438,6 +452,12 @@ def build(gpg: Gpg) -> None:
         + "Posted to a list."
         + CRLF,
     )
+    # Carol revokes her key: the revoked copy must update the stored one (G2).
+    carol_rev = (gpg.home / "openpgp-revocs.d" / f"{carol}.rev").read_text()
+    gpg.run("--import", stdin=carol_rev.replace(":-----BEGIN", "-----BEGIN").encode())
+    write("carol-revoked-public.asc", gpg.run("--armor", "--export", carol))
+    write("expired-public.asc", gpg.run("--armor", "--export", expired))
+    write("revoked-public.asc", gpg.run("--armor", "--export", revoked))
     print("fingerprints:", {"alice": alice, "bob": bob, "carol": carol, "mallory": mallory, "expired": expired, "revoked": revoked})
 
 

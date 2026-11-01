@@ -50,8 +50,11 @@ pub struct SigCheck {
     pub issuer: Option<String>,
     /// Primary fingerprint of the known key that verified it.
     pub signer: Option<String>,
-    /// The signature verified against `signer` and passed the hash policy.
+    /// The signature verified against `signer`, passed the hash policy, and
+    /// the key was valid (not revoked, not expired) when it was made.
     pub valid: bool,
+    /// The signature verified, but the key was revoked or expired at the time.
+    pub key_problem: Option<keys::SigningProblem>,
     /// Made with SHA-1/MD5: never counts as valid.
     pub weak_hash: bool,
     pub created: Option<i64>,
@@ -157,7 +160,7 @@ fn signing_keys(key: &SignedPublicKey) -> Vec<(String, SigningPart<'_>)> {
             .iter()
             .any(|s| s.verify_subkey_binding(&key.primary_key, &sub.key).is_ok() && s.key_flags().sign());
         if bound {
-            out.push((fingerprint_hex(&sub.key), SigningPart::Sub(&sub.key)));
+            out.push((fingerprint_hex(&sub.key), SigningPart::Sub(sub)));
         }
     }
     out
@@ -166,21 +169,31 @@ fn signing_keys(key: &SignedPublicKey) -> Vec<(String, SigningPart<'_>)> {
 /// A primary key or signing subkey, the two concrete verifier types.
 enum SigningPart<'a> {
     Primary(&'a pgp::packet::PublicKey),
-    Sub(&'a pgp::packet::PublicSubkey),
+    Sub(&'a pgp::composed::SignedPublicSubKey),
 }
 
 impl SigningPart<'_> {
+    /// Whether this part's key was valid when `sig` was made (G1: signatures
+    /// by revoked or expired keys don't count).
+    fn valid_at(&self, key: &SignedPublicKey, sig: &Signature) -> Result<(), keys::SigningProblem> {
+        let when = sig.created().map(|t| t.as_secs()).unwrap_or_else(keys::now);
+        match self {
+            SigningPart::Primary(_) => keys::primary_valid_at(key, when),
+            SigningPart::Sub(sub) => keys::subkey_valid_at(key, sub, when),
+        }
+    }
+
     fn as_dyn(&self) -> &dyn VerifyingKey {
         match self {
             SigningPart::Primary(k) => *k,
-            SigningPart::Sub(k) => *k,
+            SigningPart::Sub(k) => &k.key,
         }
     }
 
     fn verify_detached(&self, sig: &Signature, content: &[u8]) -> bool {
         match self {
             SigningPart::Primary(k) => sig.verify(*k, content).is_ok(),
-            SigningPart::Sub(k) => sig.verify(*k, content).is_ok(),
+            SigningPart::Sub(k) => sig.verify(&k.key, content).is_ok(),
         }
     }
 }
@@ -210,12 +223,13 @@ fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey]) -
         let issuer = issuer_of(sig);
         let weak_hash = !data_hash_ok(sig.hash_alg());
         let created = sig.created().map(|t| i64::from(t.as_secs()));
-        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, weak_hash, created };
+        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created };
         'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
             for (_, vk) in signing_keys(key) {
                 if msg.verify_nested_explicit(index, vk.as_dyn()).is_ok() {
                     check.signer = Some(fingerprint_hex(&key.primary_key));
-                    check.valid = !weak_hash;
+                    check.key_problem = vk.valid_at(key, sig).err();
+                    check.valid = !weak_hash && check.key_problem.is_none();
                     break 'keys;
                 }
             }
@@ -241,7 +255,7 @@ fn verify_detached_inner(content: &[u8], signature: &[u8], verifiers: &[&SignedP
             .map(|iter| iter.filter_map(Result::ok).collect::<Vec<_>>())
     };
     let Ok(sigs) = parsed else {
-        return vec![SigCheck { issuer: None, signer: None, valid: false, weak_hash: false, created: None }];
+        return vec![SigCheck { issuer: None, signer: None, valid: false, key_problem: None, weak_hash: false, created: None }];
     };
     sigs.iter()
         .map(|detached| {
@@ -249,12 +263,13 @@ fn verify_detached_inner(content: &[u8], signature: &[u8], verifiers: &[&SignedP
             let issuer = issuer_of(sig);
             let weak_hash = !data_hash_ok(sig.hash_alg());
             let created = sig.created().map(|t| i64::from(t.as_secs()));
-            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, weak_hash, created };
+            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created };
             'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
                 for (_, vk) in signing_keys(key) {
                     if vk.verify_detached(sig, content) {
                         check.signer = Some(fingerprint_hex(&key.primary_key));
-                        check.valid = !weak_hash;
+                        check.key_problem = vk.valid_at(key, sig).err();
+                        check.valid = !weak_hash && check.key_problem.is_none();
                         break 'keys;
                     }
                 }

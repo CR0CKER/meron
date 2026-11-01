@@ -34,6 +34,10 @@ pub enum Problem {
     PartlyEncrypted,
     /// Inline encryption inside an HTML body, which Meron doesn't open.
     InlineInHtml,
+    /// Signed by a key that was revoked when the signature was made.
+    KeyRevoked,
+    /// Signed by a key that had expired when the signature was made.
+    KeyExpired,
 }
 
 /// The message's OpenPGP facts, persisted with the cached body (every field
@@ -388,6 +392,17 @@ fn open_encrypted(
 /// matches the From address, whether it is new for that address.
 fn apply_signature(status: &mut CryptoStatus, checks: &[SigCheck], from: &str, ring: &Keyring, extra: &[SignedPublicKey]) {
     status.weak_hash = checks.iter().any(|c| c.weak_hash);
+    // G1: the signature verified, but its key was revoked or expired then.
+    if !checks.iter().any(|c| c.valid) {
+        if let Some(c) = checks.iter().find(|c| c.key_problem.is_some()) {
+            status.issuer = c.signer.clone().or_else(|| c.issuer.clone());
+            status.problem = Some(match c.key_problem {
+                Some(keys::SigningProblem::Revoked) => Problem::KeyRevoked,
+                _ => Problem::KeyExpired,
+            });
+            return;
+        }
+    }
     let Some(valid) = checks.iter().find(|c| c.valid) else {
         status.issuer = checks.iter().find_map(|c| c.issuer.clone());
         // We hold the key the signature names, yet it didn't verify: altered.
@@ -616,6 +631,26 @@ mod tests {
         assert!(c.signer.is_some(), "verified with the key from the Autocrypt header");
         assert!(c.key_changed);
         assert_eq!(c.problem, None);
+    }
+
+    #[test]
+    fn a_signature_by_a_revoked_key_is_not_valid_even_if_made_before() {
+        let ring = with_peer(alice_ring(), "rex@example.com", "revoked-public.asc", false);
+        let m = parse("signed-by-revoked.eml", &ring);
+        let c = crypto(&m);
+        assert_eq!(c.problem, Some(Problem::KeyRevoked));
+        assert_eq!(c.signer, None);
+        assert_eq!(c.trust(&ring, &m.from_addr), Trust::Unconfirmed);
+    }
+
+    #[test]
+    fn a_signature_made_while_the_key_was_valid_stays_valid_after_expiry() {
+        let ring = with_peer(alice_ring(), "erin@example.com", "expired-public.asc", false);
+        let m = parse("signed-by-expired-while-valid.eml", &ring);
+        let c = crypto(&m);
+        assert_eq!(c.problem, None);
+        assert!(c.signer.is_some());
+        assert_eq!(c.trust(&ring, &m.from_addr), Trust::Known);
     }
 
     #[test]

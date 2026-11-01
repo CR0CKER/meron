@@ -13,6 +13,8 @@ export type CryptoProblem =
   | 'signer_mismatch'
   | 'partly_encrypted'
   | 'inline_in_html'
+  | 'key_revoked'
+  | 'key_expired'
 
 /** A message's OpenPGP status, from `thread_message_json`. */
 export type MessageCrypto = {
@@ -45,7 +47,13 @@ export type IndicatorTone = 'verified' | 'known' | 'unconfirmed' | 'danger'
 export type Indicator = { kind: IndicatorKind; tone: IndicatorTone }
 
 const DECRYPT_FAILURES: CryptoProblem[] = ['no_key', 'integrity', 'too_large', 'unreadable']
-const DANGER: CryptoProblem[] = [...DECRYPT_FAILURES, 'invalid_signature', 'signer_mismatch']
+const DANGER: CryptoProblem[] = [
+  ...DECRYPT_FAILURES,
+  'invalid_signature',
+  'signer_mismatch',
+  'key_revoked',
+  'key_expired',
+]
 
 /**
  * The header indicator for a message, or null for ordinary mail (Nils: plain,
@@ -155,6 +163,8 @@ export type ImportPreview = {
   already_present: KeyInfo[]
   replaces_unverified: string[]
   conflicts_with_verified: string[]
+  /** Stored keys this file updates (revocations, renewals); applied on import. */
+  updates: KeyInfo[]
   unreadable: number
 }
 

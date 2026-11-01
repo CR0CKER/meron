@@ -218,7 +218,10 @@ function ImportDialog({ file, preview, onClose }: { file: KeyFile; preview: Impo
         file,
         preview.ready.map((k) => k.fingerprint),
       )
-      showToast(t('crypto.peers.imported', { count: n }), 'success')
+      showToast(
+        n > 0 ? t('crypto.peers.imported', { count: n }) : t('crypto.peers.updated', { count: preview.updates.length }),
+        'success',
+      )
       onClose()
     } catch (err) {
       showToast(String(err), 'error')
@@ -266,6 +269,9 @@ function ImportDialog({ file, preview, onClose }: { file: KeyFile; preview: Impo
             })}
           </li>
         )}
+        {preview.updates.length > 0 && (
+          <li className="text-secondary">{t('crypto.peers.updates', { count: preview.updates.length })}</li>
+        )}
         {preview.unreadable > 0 && (
           <li className="text-secondary">{t('crypto.peers.unreadable', { count: preview.unreadable })}</li>
         )}
@@ -303,9 +309,17 @@ function ImportDialog({ file, preview, onClose }: { file: KeyFile; preview: Impo
         <Button variant="ghost" onClick={onClose} disabled={busy}>
           {t('buttons.cancel')}
         </Button>
-        <Button variant="primary" onClick={() => void run()} disabled={busy || preview.ready.length === 0}>
+        <Button
+          variant="primary"
+          onClick={() => void run()}
+          disabled={busy || (preview.ready.length === 0 && preview.updates.length === 0)}
+        >
           {busy && <RefreshCw size={11} className="animate-spin" />}
-          <span>{t('crypto.peers.importAction', { count: preview.ready.length })}</span>
+          <span>
+            {preview.ready.length === 0
+              ? t('crypto.peers.applyUpdates')
+              : t('crypto.peers.importAction', { count: preview.ready.length })}
+          </span>
         </Button>
       </div>
     </Dialog>

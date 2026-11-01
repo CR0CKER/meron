@@ -374,6 +374,141 @@ fn is_revoked(key: &SignedPublicKey) -> bool {
         .any(|s| s.verify_key(&key.primary_key).is_ok())
 }
 
+/// Why a key could not make a valid signature at a given time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SigningProblem {
+    Revoked,
+    Expired,
+}
+
+/// Whether a revocation also voids signatures made before it. RFC 9580
+/// §5.2.3.31: a key revoked as superseded or retired was fine until then;
+/// compromised, unspecified or unknown reasons void every signature.
+fn revocation_applies_at(rev: &Signature, when: u32) -> bool {
+    use pgp::packet::RevocationCode;
+    let soft = matches!(
+        rev.revocation_reason_code(),
+        Some(RevocationCode::KeySuperseded) | Some(RevocationCode::KeyRetired)
+    );
+    match (soft, rev.created()) {
+        (true, Some(at)) => when >= at.as_secs(),
+        _ => true,
+    }
+}
+
+/// Whether `key`'s primary could make a valid signature at `when` (the
+/// signature's creation time): not revoked then, not expired then.
+pub fn primary_valid_at(key: &SignedPublicKey, when: u32) -> Result<(), SigningProblem> {
+    let revoked = key
+        .details
+        .revocation_signatures
+        .iter()
+        .filter(|s| s.verify_key(&key.primary_key).is_ok())
+        .any(|s| revocation_applies_at(s, when));
+    if revoked {
+        return Err(SigningProblem::Revoked);
+    }
+    if primary_expiry(key).is_some_and(|e| i64::from(when) > e) {
+        return Err(SigningProblem::Expired);
+    }
+    Ok(())
+}
+
+/// The same for a signing subkey: its primary must be valid at `when`, the
+/// subkey not revoked then, and its newest binding not expired then.
+pub fn subkey_valid_at(key: &SignedPublicKey, sub: &SignedPublicSubKey, when: u32) -> Result<(), SigningProblem> {
+    primary_valid_at(key, when)?;
+    let valid: Vec<&Signature> = sub
+        .signatures
+        .iter()
+        .filter(|s| s.verify_subkey_binding(&key.primary_key, &sub.key).is_ok())
+        .collect();
+    let revoked = valid
+        .iter()
+        .filter(|s| s.typ() == Some(pgp::packet::SignatureType::SubkeyRevocation))
+        .any(|s| revocation_applies_at(s, when));
+    if revoked {
+        return Err(SigningProblem::Revoked);
+    }
+    let binding = newest(valid.iter().copied().filter(|s| s.typ() != Some(pgp::packet::SignatureType::SubkeyRevocation)));
+    let expires = binding
+        .and_then(|b| b.key_expiration_time())
+        .filter(|d| d.as_secs() != 0)
+        .map(|d| sub.key.created_at().as_secs().saturating_add(d.as_secs()));
+    if expires.is_some_and(|e| when > e) {
+        return Err(SigningProblem::Expired);
+    }
+    Ok(())
+}
+
+/// Most signatures kept per component when merging, so a hostile key can't
+/// grow a stored one without bound.
+const MAX_SIGNATURES: usize = 64;
+
+fn add_signatures(into: &mut Vec<Signature>, from: &[Signature], valid: impl Fn(&Signature) -> bool) -> bool {
+    let mut changed = false;
+    for sig in from {
+        if into.len() >= MAX_SIGNATURES {
+            break;
+        }
+        if !into.contains(sig) && valid(sig) {
+            into.push(sig.clone());
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Merges a newer copy of the same key (same primary fingerprint) into the
+/// stored one: revocations, direct-key signatures, user ID certifications and
+/// subkey bindings it adds, and user IDs and subkeys that are new. Only
+/// signatures that verify against the primary key are taken, so nobody but the
+/// key's owner can change it. Returns `None` when nothing changed or the keys
+/// differ. This is how a revocation published later takes effect.
+pub fn merge(stored: &SignedPublicKey, incoming: &SignedPublicKey) -> Option<SignedPublicKey> {
+    if fingerprint_hex(&stored.primary_key) != fingerprint_hex(&incoming.primary_key) {
+        return None;
+    }
+    let primary = &stored.primary_key;
+    let mut out = stored.clone();
+    let mut changed = false;
+    changed |= add_signatures(&mut out.details.revocation_signatures, &incoming.details.revocation_signatures, |s| {
+        s.verify_key(primary).is_ok()
+    });
+    changed |= add_signatures(&mut out.details.direct_signatures, &incoming.details.direct_signatures, |s| {
+        s.verify_key(primary).is_ok()
+    });
+    for user in &incoming.details.users {
+        let certifies = |s: &Signature| s.verify_certification(primary, pgp::types::Tag::UserId, &user.id).is_ok();
+        match out.details.users.iter_mut().find(|u| u.id == user.id) {
+            Some(existing) => changed |= add_signatures(&mut existing.signatures, &user.signatures, certifies),
+            None => {
+                let sigs: Vec<Signature> = user.signatures.iter().filter(|s| certifies(s)).take(MAX_SIGNATURES).cloned().collect();
+                if !sigs.is_empty() {
+                    out.details.users.push(pgp::types::SignedUser::new(user.id.clone(), sigs));
+                    changed = true;
+                }
+            }
+        }
+    }
+    for sub in &incoming.public_subkeys {
+        let binds = |s: &Signature| s.verify_subkey_binding(primary, &sub.key).is_ok();
+        let fpr = fingerprint_hex(&sub.key);
+        match out.public_subkeys.iter_mut().find(|s| fingerprint_hex(&s.key) == fpr) {
+            Some(existing) => changed |= add_signatures(&mut existing.signatures, &sub.signatures, binds),
+            None => {
+                let sigs: Vec<Signature> = sub.signatures.iter().filter(|s| binds(s)).take(MAX_SIGNATURES).cloned().collect();
+                if !sigs.is_empty() {
+                    out.public_subkeys.push(SignedPublicSubKey::new(sub.key.clone(), sigs));
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed.then_some(out)
+}
+
 /// The subkey to encrypt to now, chosen like Delta Chat and the Autocrypt v2
 /// draft: valid binding, encrypt flag, not expired, not revoked; of several,
 /// the one expiring soonest.
@@ -579,6 +714,30 @@ mod tests {
         assert_eq!(email_of_user_id("<a@b.org>").as_deref(), Some("a@b.org"));
         assert_eq!(email_of_user_id("a@b.org").as_deref(), Some("a@b.org"));
         assert_eq!(email_of_user_id("No Address"), None);
+    }
+
+    #[test]
+    fn validity_at_a_time_respects_expiry_and_revocation() {
+        let erin = parse_keys(&fixture("expired-public.asc")).unwrap().public.remove(0);
+        // Created 2024-01-01, one-year expiry.
+        assert_eq!(primary_valid_at(&erin, 1_717_200_000), Ok(()), "June 2024: valid");
+        assert_eq!(primary_valid_at(&erin, now()), Err(SigningProblem::Expired));
+        let rex = parse_keys(&fixture("revoked-public.asc")).unwrap().public.remove(0);
+        // Revoked with no reason: every signature is void, even old ones.
+        assert_eq!(primary_valid_at(&rex, rex.primary_key.created_at().as_secs()), Err(SigningProblem::Revoked));
+    }
+
+    #[test]
+    fn merging_a_revoked_copy_revokes_the_stored_key() {
+        let carol = parse_keys(&fixture("carol-public.asc")).unwrap().public.remove(0);
+        let revoked = parse_keys(&fixture("carol-revoked-public.asc")).unwrap().public.remove(0);
+        assert_eq!(check(&carol, now()), None);
+        let merged = merge(&carol, &revoked).expect("the revocation is new");
+        assert_eq!(check(&merged, now()), Some(Unusable::Revoked));
+        assert!(merge(&merged, &revoked).is_none(), "nothing new the second time");
+        assert!(merge(&merged, &carol).is_none(), "an older copy adds nothing and can't undo it");
+        let mallory = parse_keys(&fixture("mallory-public.asc")).unwrap().public.remove(0);
+        assert!(merge(&carol, &mallory).is_none(), "a different key is never merged");
     }
 
     #[test]

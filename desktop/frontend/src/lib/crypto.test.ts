@@ -111,3 +111,13 @@ test('a decrypted message is never quoted into an unencrypted reply', () => {
   expect(mayQuoteInto({ crypto: null }, false)).toBe(true)
   expect(mayQuoteInto(undefined, false)).toBe(true)
 })
+
+test('a signature by a revoked or expired key is danger, never verified', () => {
+  expect(indicatorFor({ ...base, signed: true, trust: 'verified', problem: 'key_revoked' })?.tone).toBe('danger')
+  expect(indicatorFor({ ...base, signed: true, problem: 'key_expired' })?.tone).toBe('danger')
+  expect(stripFor({ ...base, signed: true, problem: 'key_revoked' })).toEqual({
+    kind: 'problem',
+    problem: 'key_revoked',
+    danger: true,
+  })
+})
