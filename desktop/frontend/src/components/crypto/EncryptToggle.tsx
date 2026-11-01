@@ -155,7 +155,7 @@ export function EncryptToggle({
   )
 }
 
-/** One line for the full composer when recipients lack keys. */
+/** One line for the full composer when recipients lack keys (the lock looks them up). */
 export function EncryptRecipientsNote({ keys, on }: { keys: RecipientKeys | null; on: boolean }) {
   const { t } = useTranslation()
   if (!keys?.enabled || keys.missing.length === 0) return null
@@ -166,13 +166,6 @@ export function EncryptRecipientsNote({ keys, on }: { keys: RecipientKeys | null
       className={`flex items-center gap-2 px-1 text-[0.6875rem] ${on ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'}`}
     >
       <span>{on ? t('crypto.toggle.blocked', { addresses }) : t('crypto.toggle.noKey', { addresses })}</span>
-      <button
-        type="button"
-        onClick={() => crypto$.lookup.set({ addrs: keys.missing.map((m) => m.addr) })}
-        className="shrink-0 rounded-md px-1.5 py-0.5 font-semibold text-accent hover:bg-accent/10 cursor-pointer"
-      >
-        {t('crypto.lookup.action')}
-      </button>
     </p>
   )
 }
