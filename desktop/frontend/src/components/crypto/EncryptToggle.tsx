@@ -82,6 +82,16 @@ export function EncryptToggle({
 }) {
   const { t } = useTranslation()
   const missing = useMemo(() => keys?.missing.map((m) => m.addr).join(', ') ?? '', [keys])
+  // A lookup opened from this lock: once every recipient has a key (the user
+  // picked "Use this key"), encryption switches on by itself.
+  const [lookingUp, setLookingUp] = useState(false)
+  useEffect(() => {
+    if (!lookingUp || !keys) return
+    if (keys.enabled && !keys.own_key_unusable && keys.missing.length === 0) {
+      setLookingUp(false)
+      if (!on) onChange(true)
+    }
+  }, [lookingUp, keys, on, onChange])
   if (!keys) return null
   if (!keys.enabled) {
     // Answering encrypted mail from an account without encryption: say why
@@ -101,7 +111,10 @@ export function EncryptToggle({
   const unavailable = keys.own_key_unusable || keys.missing.length > 0
   // Missing keys can be looked up from here, on this click only.
   const canLookUp = !on && !keys.own_key_unusable && keys.missing.length > 0
-  const lookUp = () => crypto$.lookup.set({ addrs: keys.missing.map((m) => m.addr) })
+  const lookUp = () => {
+    setLookingUp(true)
+    crypto$.lookup.set({ addrs: keys.missing.map((m) => m.addr) })
+  }
   const locked = on && sensitive === 'forward'
   let title = on ? t('crypto.toggle.on') : t('crypto.toggle.off')
   if (keys.own_key_unusable) title = t('crypto.toggle.ownKeyUnusable')

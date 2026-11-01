@@ -221,6 +221,30 @@ describe('EncryptToggle', () => {
     expect(crypto$.lookup.get()).toEqual({ addrs: ['bob@example.net'] })
   })
 
+  test('picking a key in the lookup it opened turns encryption on', () => {
+    let value = false
+    const missing = keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })
+    const { getByRole, rerender } = render(<EncryptToggle keys={missing} on={false} onChange={(on) => (value = on)} />)
+    fireEvent.click(getByRole('switch'))
+    expect(value).toBe(false)
+    // The key check refreshes after "Use this key": nobody is missing a key now.
+    rerender(<EncryptToggle keys={keys()} on={false} onChange={(on) => (value = on)} />)
+    expect(value).toBe(true)
+  })
+
+  test('a key appearing without a lookup from the lock leaves encryption off', () => {
+    let value = false
+    const { rerender } = render(
+      <EncryptToggle
+        keys={keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })}
+        on={false}
+        onChange={(on) => (value = on)}
+      />,
+    )
+    rerender(<EncryptToggle keys={keys()} on={false} onChange={(on) => (value = on)} />)
+    expect(value).toBe(false)
+  })
+
   test('while on, the click still turns encryption off', () => {
     let value = true
     const { getByRole } = render(
