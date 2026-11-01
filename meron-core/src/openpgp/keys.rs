@@ -367,11 +367,56 @@ fn primary_expiry(key: &SignedPublicKey) -> Option<i64> {
         .map(|d| created + i64::from(d.as_secs()))
 }
 
-fn is_revoked(key: &SignedPublicKey) -> bool {
-    key.details
-        .revocation_signatures
-        .iter()
-        .any(|s| s.verify_key(&key.primary_key).is_ok())
+/// Looks up public keys by primary fingerprint (designated revokers).
+pub type Resolver<'a> = &'a dyn Fn(&str) -> Option<SignedPublicKey>;
+
+/// The default resolver: the user's own and stored peer keys.
+pub fn stored_key(fingerprint: &str) -> Option<SignedPublicKey> {
+    super::keyring::current().key_by_fingerprint(fingerprint)
+}
+
+/// Fingerprints `key` names as designated revokers (RFC 4880 §5.2.3.15), read
+/// only from its valid self-signatures (direct-key signatures and user-ID
+/// self-certifications), so nobody else can add a revoker.
+pub fn designated_revokers(key: &SignedPublicKey) -> Vec<String> {
+    let direct = key.details.direct_signatures.iter().filter(|s| s.verify_key(&key.primary_key).is_ok());
+    let certs = key.details.users.iter().flat_map(|u| {
+        u.signatures
+            .iter()
+            .filter(move |s| s.verify_certification(&key.primary_key, pgp::types::Tag::UserId, &u.id).is_ok())
+    });
+    let mut out: Vec<String> = direct
+        .chain(certs)
+        .filter_map(|s| s.revocation_key())
+        .map(|r| hex_upper(&r.fingerprint))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Whether `rev` is a genuine revocation of `key`: made by the key itself, or
+/// a key revocation made by one of its designated revokers whose key we have.
+fn revocation_valid(key: &SignedPublicKey, rev: &Signature, resolve: Resolver<'_>) -> bool {
+    if rev.verify_key(&key.primary_key).is_ok() {
+        return true;
+    }
+    if rev.typ() != Some(pgp::packet::SignatureType::KeyRevocation) {
+        return false;
+    }
+    designated_revokers(key).iter().any(|fpr| {
+        resolve(fpr).is_some_and(|revoker| {
+            keys_match(&revoker, fpr) && rev.verify_key_third_party(&key.primary_key, &revoker.primary_key).is_ok()
+        })
+    })
+}
+
+fn keys_match(key: &SignedPublicKey, fingerprint: &str) -> bool {
+    fingerprint_hex(&key.primary_key) == fingerprint
+}
+
+fn is_revoked_with(key: &SignedPublicKey, resolve: Resolver<'_>) -> bool {
+    key.details.revocation_signatures.iter().any(|s| revocation_valid(key, s, resolve))
 }
 
 /// Why a key could not make a valid signature at a given time.
@@ -400,11 +445,15 @@ fn revocation_applies_at(rev: &Signature, when: u32) -> bool {
 /// Whether `key`'s primary could make a valid signature at `when` (the
 /// signature's creation time): not revoked then, not expired then.
 pub fn primary_valid_at(key: &SignedPublicKey, when: u32) -> Result<(), SigningProblem> {
+    primary_valid_at_with(key, when, &stored_key)
+}
+
+pub fn primary_valid_at_with(key: &SignedPublicKey, when: u32, resolve: Resolver<'_>) -> Result<(), SigningProblem> {
     let revoked = key
         .details
         .revocation_signatures
         .iter()
-        .filter(|s| s.verify_key(&key.primary_key).is_ok())
+        .filter(|s| revocation_valid(key, s, resolve))
         .any(|s| revocation_applies_at(s, when));
     if revoked {
         return Err(SigningProblem::Revoked);
@@ -418,7 +467,16 @@ pub fn primary_valid_at(key: &SignedPublicKey, when: u32) -> Result<(), SigningP
 /// The same for a signing subkey: its primary must be valid at `when`, the
 /// subkey not revoked then, and its newest binding not expired then.
 pub fn subkey_valid_at(key: &SignedPublicKey, sub: &SignedPublicSubKey, when: u32) -> Result<(), SigningProblem> {
-    primary_valid_at(key, when)?;
+    subkey_valid_at_with(key, sub, when, &stored_key)
+}
+
+pub fn subkey_valid_at_with(
+    key: &SignedPublicKey,
+    sub: &SignedPublicSubKey,
+    when: u32,
+    resolve: Resolver<'_>,
+) -> Result<(), SigningProblem> {
+    primary_valid_at_with(key, when, resolve)?;
     let valid: Vec<&Signature> = sub
         .signatures
         .iter()
@@ -467,15 +525,17 @@ fn add_signatures(into: &mut Vec<Signature>, from: &[Signature], valid: impl Fn(
 /// key's owner can change it. Returns `None` when nothing changed or the keys
 /// differ. This is how a revocation published later takes effect.
 pub fn merge(stored: &SignedPublicKey, incoming: &SignedPublicKey) -> Option<SignedPublicKey> {
+    merge_with(stored, incoming, &stored_key)
+}
+
+/// [`merge`] with an explicit resolver for designated revokers.
+pub fn merge_with(stored: &SignedPublicKey, incoming: &SignedPublicKey, resolve: Resolver<'_>) -> Option<SignedPublicKey> {
     if fingerprint_hex(&stored.primary_key) != fingerprint_hex(&incoming.primary_key) {
         return None;
     }
     let primary = &stored.primary_key;
     let mut out = stored.clone();
     let mut changed = false;
-    changed |= add_signatures(&mut out.details.revocation_signatures, &incoming.details.revocation_signatures, |s| {
-        s.verify_key(primary).is_ok()
-    });
     changed |= add_signatures(&mut out.details.direct_signatures, &incoming.details.direct_signatures, |s| {
         s.verify_key(primary).is_ok()
     });
@@ -505,6 +565,22 @@ pub fn merge(stored: &SignedPublicKey, incoming: &SignedPublicKey) -> Option<Sig
                 }
             }
         }
+    }
+    // Revocations last: designated revokers come from the (merged) self-signatures.
+    let candidates: Vec<Signature> = incoming
+        .details
+        .revocation_signatures
+        .iter()
+        .filter(|s| !out.details.revocation_signatures.contains(s))
+        .filter(|s| revocation_valid(&out, s, resolve))
+        .cloned()
+        .collect();
+    for sig in candidates {
+        if out.details.revocation_signatures.len() >= MAX_SIGNATURES {
+            break;
+        }
+        out.details.revocation_signatures.push(sig);
+        changed = true;
     }
     changed.then_some(out)
 }
@@ -559,7 +635,12 @@ pub fn supports_seipd_v2(key: &SignedPublicKey) -> bool {
 
 /// Checks a public key against Meron's policy at `now`.
 pub fn check(key: &SignedPublicKey, now: u32) -> Option<Unusable> {
-    if is_revoked(key) {
+    check_with(key, now, &stored_key)
+}
+
+/// [`check`] with an explicit resolver for designated revokers.
+pub fn check_with(key: &SignedPublicKey, now: u32, resolve: Resolver<'_>) -> Option<Unusable> {
+    if is_revoked_with(key, resolve) {
         return Some(Unusable::Revoked);
     }
     if valid_user_ids(key).is_empty() {
@@ -604,7 +685,7 @@ pub fn secret_info(key: &SignedSecretKey, now: u32) -> KeyInfo {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn fixture(name: &str) -> Vec<u8> {
@@ -738,6 +819,60 @@ mod tests {
         assert!(merge(&merged, &carol).is_none(), "an older copy adds nothing and can't undo it");
         let mallory = parse_keys(&fixture("mallory-public.asc")).unwrap().public.remove(0);
         assert!(merge(&carol, &mallory).is_none(), "a different key is never merged");
+    }
+
+    /// A key revocation of `target` signed by `revoker` (what GnuPG's
+    /// `--desig-revoke` makes; it needs a terminal, so tests build it here).
+    pub(crate) fn revoke_by(revoker: &SignedSecretKey, target: &SignedPublicKey) -> SignedPublicKey {
+        use pgp::packet::{SignatureConfig, SignatureType, Subpacket, SubpacketData};
+        let mut config = SignatureConfig::v4(SignatureType::KeyRevocation, revoker.primary_key.algorithm(), HashAlgorithm::Sha256);
+        config.hashed_subpackets = vec![
+            Subpacket::critical(SubpacketData::SignatureCreationTime(pgp::types::Timestamp::now())).unwrap(),
+            Subpacket::regular(SubpacketData::IssuerFingerprint(revoker.primary_key.fingerprint())).unwrap(),
+        ];
+        let sig = config.sign_key(&revoker.primary_key, &Password::empty(), &target.primary_key).unwrap();
+        let mut out = target.clone();
+        out.details.revocation_signatures.push(sig);
+        out
+    }
+
+    fn secret(name: &str) -> SignedSecretKey {
+        let k = parse_keys(&fixture(name)).unwrap().secret.remove(0);
+        match unlock(k, None).unwrap() {
+            Unlock::Ok(k) => k,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_designated_revoker_can_revoke_and_nobody_else_can() {
+        let tess = parse_public(&fixture("tess-public.asc")).unwrap();
+        let dan = secret("dan-secret.asc");
+        let dan_pub = dan.to_public_key();
+        let dan_fpr = fingerprint_hex(&dan.primary_key);
+        assert_eq!(designated_revokers(&tess), vec![dan_fpr.clone()]);
+        let resolve_dan = |f: &str| (f == dan_fpr).then(|| dan_pub.clone());
+        let none = |_: &str| None;
+
+        let revoked = revoke_by(&dan, &tess);
+        assert_eq!(check_with(&revoked, now(), &resolve_dan), Some(Unusable::Revoked));
+        assert_eq!(primary_valid_at_with(&revoked, now(), &resolve_dan), Err(SigningProblem::Revoked));
+        // Without Dan's key the revocation can't be checked, so it doesn't count.
+        assert_eq!(check_with(&revoked, now(), &none), None);
+
+        // Mallory isn't named as a revoker: her "revocation" never counts.
+        let mallory = secret("mallory-secret.asc");
+        let mallory_pub = mallory.to_public_key();
+        let forged = revoke_by(&mallory, &tess);
+        let resolve_both = |f: &str| {
+            if f == dan_fpr { Some(dan_pub.clone()) } else if f == fingerprint_hex(&mallory_pub.primary_key) { Some(mallory_pub.clone()) } else { None }
+        };
+        assert_eq!(check_with(&forged, now(), &resolve_both), None);
+
+        // Merging takes Dan's revocation and drops Mallory's.
+        let merged = merge_with(&tess, &revoked, &resolve_dan).expect("Dan's revocation is new");
+        assert_eq!(check_with(&merged, now(), &resolve_dan), Some(Unusable::Revoked));
+        assert!(merge_with(&tess, &forged, &resolve_both).is_none());
     }
 
     #[test]

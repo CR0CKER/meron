@@ -452,6 +452,26 @@ def build(gpg: Gpg) -> None:
         + "Posted to a list."
         + CRLF,
     )
+    # Designated revoker: Tess's key names Dan's key as allowed to revoke it;
+    # Dan then revokes it. Meron must honour that revocation.
+    dan = gpg.gen("Dan Revoker <dan@example.com>", "ed25519", "cv25519")
+    params = (
+        "Key-Type: eddsa\nKey-Curve: ed25519\nKey-Usage: sign,cert\n"
+        "Subkey-Type: ecdh\nSubkey-Curve: cv25519\nSubkey-Usage: encrypt\n"
+        f"Revoker: 22:{dan}\nName-Real: Tess Target\nName-Email: tess@example.com\n"
+        "Expire-Date: 0\n%no-protection\n%commit\n"
+    )
+    gpg.run("--gen-key", stdin=params.encode())
+    tess = gpg.fingerprints("tess@example.com")[-1]
+    write("dan-public.asc", gpg.run("--armor", "--export", dan))
+    write("tess-public.asc", gpg.run("--armor", "--export", tess))
+    tess_part = 'Content-Type: text/plain; charset="utf-8"' + CRLF + CRLF + "Signed by Tess." + CRLF
+    write("signed-by-tess.eml", signed_mime(gpg, headers("Tess Target <tess@example.com>", ALICE, "From Tess", msgid="signed-tess"), tess_part, tess))
+    # gpg's --desig-revoke needs a terminal; the tests sign Dan's revocation of
+    # Tess's key with rPGP instead, so Dan's (made-up) secret key is a fixture.
+    write("dan-secret.asc", gpg.run("--armor", "--export-secret-keys", dan))
+    write("mallory-secret.asc", gpg.run("--armor", "--export-secret-keys", mallory))
+
     # Carol revokes her key: the revoked copy must update the stored one (G2).
     carol_rev = (gpg.home / "openpgp-revocs.d" / f"{carol}.rev").read_text()
     gpg.run("--import", stdin=carol_rev.replace(":-----BEGIN", "-----BEGIN").encode())

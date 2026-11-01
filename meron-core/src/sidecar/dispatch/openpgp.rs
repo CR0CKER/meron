@@ -154,7 +154,23 @@ pub(crate) async fn dispatch(engine: &Arc<Engine>, req: &Request, _out: &Writer)
                 let addr = req_str(&p, "addr")?;
                 let sources = meron_core::openpgp::lookup::sources(&conn);
                 drop(conn);
-                Ok(json!(meron_core::openpgp::lookup::lookup(&addr, &sources)?))
+                let result = meron_core::openpgp::lookup::lookup(&addr, &sources)?;
+                // Copies of keys we already store (a revocation, a renewal) are
+                // merged right away: only changes signed by the key itself or
+                // its designated revoker are taken.
+                let conn = engine.db.lock().unwrap();
+                let mut updated = Vec::new();
+                for key in &result.all_keys {
+                    if pgp_store::merge_into_stored(&conn, key)? {
+                        updated.push(meron_core::openpgp::keys::info(key, false, meron_core::openpgp::keys::now()));
+                    }
+                }
+                if !updated.is_empty() {
+                    pgp_store::reload(&conn)?;
+                }
+                let mut value = json!(result);
+                value["updated"] = json!(updated);
+                Ok(value)
             }
             "pgp.lookup.add" => {
                 let addr = req_str(&p, "addr")?;

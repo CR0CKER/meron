@@ -302,7 +302,7 @@ fn verify_signed(part: &ParsedMail<'_>, from: &str, ring: &Keyring, extra: &[Sig
     let sig = signature.get_body_raw().ok()?;
     let mut verifiers: Vec<&SignedPublicKey> = ring.verifiers_for(from);
     verifiers.extend(extra.iter());
-    Some(crypt::verify_detached(content.raw_bytes, &sig, &verifiers))
+    Some(crypt::verify_detached_with(content.raw_bytes, &sig, &verifiers, &|f| ring.key_by_fingerprint(f)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -321,7 +321,7 @@ fn open_encrypted(
     let outer_keys: Vec<SignedPublicKey> = announced.iter().filter(|a| !a.gossip).map(|a| a.key.clone()).collect();
     let mut verifiers: Vec<&SignedPublicKey> = ring.verifiers_for(from);
     verifiers.extend(outer_keys.iter());
-    let decrypted = match crypt::decrypt(data, &secrets, &verifiers) {
+    let decrypted = match crypt::decrypt_with(data, &secrets, &verifiers, &|f| ring.key_by_fingerprint(f)) {
         Ok(d) => d,
         Err(e) => {
             status.problem = Some(match e {
@@ -365,7 +365,7 @@ fn open_encrypted(
         if !inner_keys.is_empty() && !checks.iter().any(|c| c.valid) && !checks.is_empty() {
             let mut all = verifiers.clone();
             all.extend(inner_keys.iter());
-            if let Ok(again) = crypt::decrypt(data, &secrets, &all) {
+            if let Ok(again) = crypt::decrypt_with(data, &secrets, &all, &|f| ring.key_by_fingerprint(f)) {
                 checks = again.signatures;
             }
         }
@@ -641,6 +641,25 @@ mod tests {
         assert_eq!(c.problem, Some(Problem::KeyRevoked));
         assert_eq!(c.signer, None);
         assert_eq!(c.trust(&ring, &m.from_addr), Trust::Unconfirmed);
+    }
+
+    #[test]
+    fn a_key_revoked_by_its_designated_revoker_no_longer_signs() {
+        let dan = match unlock(parse_keys(&fixture("dan-secret.asc")).unwrap().secret.remove(0), None).unwrap() {
+            Unlock::Ok(k) => k,
+            other => panic!("{other:?}"),
+        };
+        let tess = public("tess-public.asc");
+        let mut ring = with_peer(alice_ring(), "tess@example.com", "tess-public.asc", false);
+        let m = parse("signed-by-tess.eml", &ring);
+        assert_eq!(crypto(&m).problem, None, "valid before the revocation");
+        ring.peers.retain(|p| p.addr != "tess@example.com");
+        let revoked = crate::openpgp::keys::tests::revoke_by(&dan, &tess);
+        ring.peers.push(PeerKey { addr: "tess@example.com".into(), fingerprint: keys::fingerprint_hex(&revoked.primary_key), key: revoked, source: Source::Autocrypt, verified: false, last_seen: 2 });
+        let dan_pub = dan.to_public_key();
+        ring.peers.push(PeerKey { addr: "dan@example.com".into(), fingerprint: keys::fingerprint_hex(&dan_pub.primary_key), key: dan_pub, source: Source::Autocrypt, verified: false, last_seen: 2 });
+        let m = parse("signed-by-tess.eml", &ring);
+        assert_eq!(crypto(&m).problem, Some(Problem::KeyRevoked));
     }
 
     #[test]

@@ -200,6 +200,8 @@ export type LookupResult = {
   found: FoundKey[]
   searched: string[]
   failed: { source: string; error: string }[]
+  /** Stored keys this lookup updated (a revocation or renewal found online). */
+  updated?: KeyInfo[]
 }
 
 /** A source's name for the UI: WKD, or the keyserver's host. */

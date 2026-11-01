@@ -218,8 +218,12 @@ Peer keys and verification marks are not in backups.
 ## 6. Key policy and trust
 
 `keys::check(key, now)` → unusable when:
-1. **Revoked:** any revocation signature on the primary that verifies against the primary (designated revokers are not
-   evaluated).
+1. **Revoked:** a revocation signature on the primary that is genuine (`revocation_valid`): made by the key itself, or
+   a key revocation (type 0x20) made by a **designated revoker** (RFC 4880 §5.2.3.15). Designated revokers are read
+   only from the key's own valid self-signatures (`designated_revokers`: direct-key signatures and user-ID
+   self-certifications, hashed area), so nobody else can add one. A third-party revocation counts only if the named
+   revoker's public key is available (own or stored peer key, looked up by `Resolver`) and the revocation verifies
+   against its primary key (`verify_key_third_party`); otherwise it is ignored.
 2. **Invalid bindings:** no user ID whose newest verifying self-certification passes the binding hash policy
    (`binding_hash_ok`: MD5/RIPEMD-160 never; SHA-1 only if the signature is older than `SHA1_BINDING_CUTOFF`
    = 2023-02-01, Sequoia's standard-policy cutoff).
@@ -243,11 +247,18 @@ Chat's and the Autocrypt v2 draft's rule).
 - `Keyring::encryption_key_for`: a verified usable key wins; if the verified key is unusable and only unverified ones
   remain, encryption is refused (`NewKeyUnverified`); otherwise the most recently seen usable key.
 
+**Resolvers:** functions that need a revoker's key take a `Resolver` (fingerprint → public key): the store resolves
+from its own database (`store::db_key`), the parser from the keyring snapshot it was given
+(`Keyring::key_by_fingerprint`), and calls without context (`keys::check`, `merge`) from the global snapshot
+(`keys::stored_key`).
+
 **Updates to stored keys** (`keys::merge`, `store::merge_into_stored`): whenever a copy of a stored key arrives
 (Autocrypt, gossip, attachment, keyring import, lookup), it is merged into the stored key for every address row:
 revocation signatures, direct-key signatures, user-ID certifications and subkey bindings it adds, plus new user IDs
 and subkeys. Only signatures that verify against the stored primary key are taken (nobody but the key's owner can
-change it), duplicates are skipped, and each component keeps at most 64 signatures. This runs before the usability
+change it), except revocations, which may also come from a designated revoker (checked against the merged
+self-signatures, so a designation and a revocation can arrive together); duplicates are skipped, and each component
+keeps at most 64 signatures. This runs before the usability
 check, so a **revoked copy is merged even though it would never be accepted as a new key**; the merged key then fails
 `check()` (Revoked) and drops out of encryption, and its signatures stop counting (§4).
 
@@ -413,7 +424,10 @@ third-party certifications are not imported.
 - Every request goes through the app-wide proxy (`proxy::agent`), 10 s timeout, response capped at 1 MiB,
   404/410 = none.
 - Only usable keys whose user IDs include the address are offered, deduplicated by fingerprint, with `verified` = WKD
-  or VKS. Nothing is stored until "Use this key" (`pgp.lookup.add`), which re-parses and re-checks the key and stores it
+  or VKS. **Every** key found for the address, usable or not, is also merged at once into a stored copy with the same
+  fingerprint (`LookupResult::all_keys`, merged in the `pgp.lookup` handler): a revocation or renewal found online
+  takes effect, and the dialog says so (`updated`). This adds no trust: only changes signed by the key or its
+  designated revoker are taken. Nothing is stored until "Use this key" (`pgp.lookup.add`), which re-parses and re-checks the key and stores it
   as Known with source `wkd` or `keyserver`.
 - Privacy: a lookup discloses the address to the queried servers (and, for WKD, to the recipient's domain); hence
   click-only.
@@ -468,7 +482,7 @@ message iframe.
 | SHA-1 collisions / downgrade | Data signatures with SHA-1/MD5/RIPEMD never valid; SHA-1 bindings only before 2023-02-01 | `crypt::tests::sha1_detached_signature_is_weak_and_never_valid`, `mime::tests::sha1_signature_is_weak_and_unconfirmed` |
 | Surreptitious forwarding | Protected headers inside the encryption; intended-recipient fingerprints in our signatures (not checked on receive) | `outgoing::tests::wrapped_message_hides_subject_and_body_and_round_trips_through_our_parser` |
 | Autocrypt key injection | `addr` must equal From; gossip never replaces a key; verified keys never replaced; key changes shown | `autocrypt::tests::header_for_another_address_is_ignored`, `store::tests::gossip_never_replaces_a_direct_key`, `verified_key_stays_preferred_over_a_newer_one` |
-| Compromised key still trusted after its owner revoked it | Signatures checked against key validity at signing time; revocations merged into stored keys from every source; stored keys never overwritten by older copies | `keys::tests::validity_at_a_time_respects_expiry_and_revocation`, `merging_a_revoked_copy_revokes_the_stored_key`, `mime::tests::a_signature_by_a_revoked_key_is_not_valid_even_if_made_before`, `a_signature_made_while_the_key_was_valid_stays_valid_after_expiry`, `store::tests::a_revocation_arriving_later_takes_effect_and_an_older_copy_cannot_undo_it`, `importing_a_revoked_copy_updates_the_stored_key` |
+| Compromised key still trusted after its owner (or its designated revoker) revoked it | Signatures checked against key validity at signing time; revocations, including designated-revoker ones, merged into stored keys from every source including lookups; stored keys never overwritten by older copies; forged third-party revocations ignored | `keys::tests::validity_at_a_time_respects_expiry_and_revocation`, `merging_a_revoked_copy_revokes_the_stored_key`, `mime::tests::a_signature_by_a_revoked_key_is_not_valid_even_if_made_before`, `a_signature_made_while_the_key_was_valid_stays_valid_after_expiry`, `store::tests::a_revocation_arriving_later_takes_effect_and_an_older_copy_cannot_undo_it`, `importing_a_revoked_copy_updates_the_stored_key`, `keys::tests::a_designated_revoker_can_revoke_and_nobody_else_can`, `store::tests::a_designated_revocation_arriving_by_mail_takes_effect_and_a_forged_one_does_not`, `mime::tests::a_key_revoked_by_its_designated_revoker_no_longer_signs`, `lookup::tests::hkp_results_are_marked_unverified_and_revoked_keys_dropped` |
 | Bcc disclosure via key IDs | Separate message per Bcc recipient | `outgoing::tests::bcc_recipients_get_their_own_message_without_the_others_keys` |
 | Silent downgrade to plaintext | Core refuses `encrypt` with a missing key | `outgoing::tests::a_recipient_without_a_key_is_refused_not_downgraded` |
 | Keyserver key substitution | Lookup only on click; WKD/VKS marked verified, HKP marked unverified; user confirms each key; stored as Known | `lookup::tests::*` |
@@ -477,14 +491,17 @@ message iframe.
 
 ## 12. Tests
 
-- Core: 74 OpenPGP tests (`openpgp::{keys 15, crypt 13, mime 18, store 14, outgoing 5, lookup 5, autocrypt 4}`); full
-  core suite 814 pass after the G1/G2 fixes (740 before the branch).
+- Core: 77 OpenPGP tests (`openpgp::{keys 16, crypt 13, mime 19, store 15, outgoing 5, lookup 5, autocrypt 4}`); full
+  core suite 817 pass after the G1/G2 fixes (740 before the branch).
 - **Fixtures** (`meron-core/src/openpgp/testdata/`): made-up keys and messages generated by `make_fixtures.py` with
   GnuPG in a throwaway `GNUPGHOME` (Alice = the user, Bob = RSA-3072 passphrase-protected, Carol = peer, Mallory =
   attacker, expired and revoked keys, Carol's second key). Messages cover encrypted+signed, unsigned, wrong recipient,
   tampered, signer mismatch, attachments, inline, signed-only, SHA-1, altered, signed-by-other, list footer, EFAIL,
   Exchange shape, compression bomb, Autocrypt (valid, mismatched, list), a key change, a signature by a key revoked
-afterwards (no reason, so void), a signature by an expired key made while it was valid, and Carol's revoked copy. Marked `binary` in
+afterwards (no reason, so void), a signature by an expired key made while it was valid, Carol's revoked copy, and Tess's
+key naming Dan as designated revoker (Dan's and Mallory's secret keys are fixtures so tests can sign revocations).
+Designated revocations in tests are made with rPGP (`keys::tests::revoke_by`), because GnuPG's `--desig-revoke` needs
+a terminal; a GnuPG-made designated revocation has not been tested. Marked `binary` in
   `.gitattributes` (signatures cover exact CRLF bytes). Regenerating changes all bytes; tests assert structure only.
 - **Interop:** `crypt::tests::gnupg_decrypts_and_verifies_what_we_encrypt` and
   `outgoing::tests::gnupg_reads_our_pgp_mime_payload` run the system `gpg` (skipped with a message if absent); GnuPG
@@ -505,8 +522,8 @@ afterwards (no reason, so void), a signature by an expired key made while it was
 
 | ID | Finding | Impact |
 |---|---|---|
-| ~~G1~~ | **Resolved 2026-11-01.** Signatures by keys revoked or expired at signing time are void (§4, `KeyRevoked`/`KeyExpired`). Remaining: the *superseded/retired* exception is implemented but has no fixture test (GnuPG only makes such revocations interactively); designated revokers are still not evaluated | — |
-| ~~G2~~ | **Resolved 2026-11-01.** Copies of stored keys are merged (§6); revocations take effect from Autocrypt, gossip, attachments, imports and lookups; stored bytes are never replaced (this also closed an unlisted hole: an older copy used to overwrite a newer one). Remaining: `lookup` filters out unusable keys, so a revoked copy found by a lookup is not offered or merged | — |
+| ~~G1~~ | **Resolved 2026-11-01.** Signatures by keys revoked or expired at signing time are void (§4, `KeyRevoked`/`KeyExpired`); designated revokers are evaluated (§6). Remaining: the *superseded/retired* exception is implemented but has no fixture test (GnuPG only makes such revocations interactively); designated-revoker revocations are tested with rPGP-made signatures only | — |
+| ~~G2~~ | **Resolved 2026-11-01.** Copies of stored keys are merged (§6); revocations take effect from Autocrypt, gossip, attachments, imports and lookups (lookups merge every copy they find, including revoked ones); stored bytes are never replaced (this also closed an unlisted hole: an older copy used to overwrite a newer one) | — |
 | G3 | Intended-recipient fingerprints are written but not checked on receive | Surreptitious forwarding of a signed+encrypted message isn't flagged |
 | G4 | The inner `From` (protected header) isn't compared with the outer `From` | A mismatch isn't flagged (the signer check still applies) |
 | G5 | `keys::is_stub` detects GnuPG stubs by matching the debug text of rPGP's S2K parameters | Fragile against rPGP changes; worst case a stub reports "needs passphrase" instead of "on card" |
@@ -527,7 +544,8 @@ afterwards (no reason, so void), a signature by an expired key made while it was
 - rPGP is volunteer-maintained; only its latest release gets fixes (pin must be followed).
 - Metadata (From, To, Date, Message-ID, sizes) is never protected by OpenPGP.
 - Not supported: cleartext-signed messages, inline PGP in HTML, bzip2, SEIPDv2 for Meron's own keys, smartcards,
-  designated revokers, revocation certificates for replaced keys.
+  revocation certificates for replaced keys, naming a designated revoker for Meron's own keys.
+- A designated revocation counts only once the revoker's key is known to Meron; until then the revoked key stays usable.
 
 <sub>[↑ Back to contents](#contents)</sub>
 

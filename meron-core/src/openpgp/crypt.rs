@@ -81,10 +81,21 @@ pub fn decrypt(
     secret_keys: &[&SignedSecretKey],
     verifiers: &[&SignedPublicKey],
 ) -> Result<Decrypted, DecryptError> {
+    decrypt_with(data, secret_keys, verifiers, &keys::stored_key)
+}
+
+/// [`decrypt`] with an explicit resolver for designated revokers (used when
+/// judging whether a signing key was revoked).
+pub fn decrypt_with(
+    data: &[u8],
+    secret_keys: &[&SignedSecretKey],
+    verifiers: &[&SignedPublicKey],
+    resolve: keys::Resolver<'_>,
+) -> Result<Decrypted, DecryptError> {
     if data.len() > MAX_CIPHERTEXT_BYTES {
         return Err(DecryptError::TooLarge);
     }
-    let run = AssertUnwindSafe(|| decrypt_inner(data, secret_keys, verifiers));
+    let run = AssertUnwindSafe(|| decrypt_inner(data, secret_keys, verifiers, resolve));
     match std::panic::catch_unwind(run) {
         Ok(result) => result,
         Err(_) => Err(DecryptError::Unreadable),
@@ -95,6 +106,7 @@ fn decrypt_inner(
     data: &[u8],
     secret_keys: &[&SignedSecretKey],
     verifiers: &[&SignedPublicKey],
+    resolve: keys::Resolver<'_>,
 ) -> Result<Decrypted, DecryptError> {
     let reader = BufReader::new(Cursor::new(data));
     let msg = if is_armored(data) {
@@ -125,7 +137,7 @@ fn decrypt_inner(
         .map(|(k, _)| fingerprint_hex(&k.primary_key));
     let mut msg = msg.decompress().map_err(|_| DecryptError::Integrity)?;
     let plaintext = read_bounded(&mut msg)?;
-    let signatures = check_message_signatures(&msg, verifiers);
+    let signatures = check_message_signatures(&msg, verifiers, resolve);
     Ok(Decrypted { plaintext, signatures, decrypted_with })
 }
 
@@ -175,11 +187,11 @@ enum SigningPart<'a> {
 impl SigningPart<'_> {
     /// Whether this part's key was valid when `sig` was made (G1: signatures
     /// by revoked or expired keys don't count).
-    fn valid_at(&self, key: &SignedPublicKey, sig: &Signature) -> Result<(), keys::SigningProblem> {
+    fn valid_at(&self, key: &SignedPublicKey, sig: &Signature, resolve: keys::Resolver<'_>) -> Result<(), keys::SigningProblem> {
         let when = sig.created().map(|t| t.as_secs()).unwrap_or_else(keys::now);
         match self {
-            SigningPart::Primary(_) => keys::primary_valid_at(key, when),
-            SigningPart::Sub(sub) => keys::subkey_valid_at(key, sub, when),
+            SigningPart::Primary(_) => keys::primary_valid_at_with(key, when, resolve),
+            SigningPart::Sub(sub) => keys::subkey_valid_at_with(key, sub, when, resolve),
         }
     }
 
@@ -215,7 +227,7 @@ fn issuer_matches(issuer: Option<&str>, key: &SignedPublicKey) -> bool {
     signing_keys(key).iter().any(|(fpr, _)| fpr == issuer || fpr.ends_with(issuer))
 }
 
-fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey]) -> Vec<SigCheck> {
+fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey], resolve: keys::Resolver<'_>) -> Vec<SigCheck> {
     let Message::Signed { reader, .. } = msg else { return Vec::new() };
     let mut out = Vec::new();
     for index in 0..reader.num_signatures() {
@@ -228,7 +240,7 @@ fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey]) -
             for (_, vk) in signing_keys(key) {
                 if msg.verify_nested_explicit(index, vk.as_dyn()).is_ok() {
                     check.signer = Some(fingerprint_hex(&key.primary_key));
-                    check.key_problem = vk.valid_at(key, sig).err();
+                    check.key_problem = vk.valid_at(key, sig, resolve).err();
                     check.valid = !weak_hash && check.key_problem.is_none();
                     break 'keys;
                 }
@@ -242,11 +254,26 @@ fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey]) -
 /// Verifies a detached (PGP/MIME `multipart/signed`) signature over `content`,
 /// the exact bytes of the signed MIME part.
 pub fn verify_detached(content: &[u8], signature: &[u8], verifiers: &[&SignedPublicKey]) -> Vec<SigCheck> {
-    let run = AssertUnwindSafe(|| verify_detached_inner(content, signature, verifiers));
+    verify_detached_with(content, signature, verifiers, &keys::stored_key)
+}
+
+/// [`verify_detached`] with an explicit resolver for designated revokers.
+pub fn verify_detached_with(
+    content: &[u8],
+    signature: &[u8],
+    verifiers: &[&SignedPublicKey],
+    resolve: keys::Resolver<'_>,
+) -> Vec<SigCheck> {
+    let run = AssertUnwindSafe(|| verify_detached_inner(content, signature, verifiers, resolve));
     std::panic::catch_unwind(run).unwrap_or_default()
 }
 
-fn verify_detached_inner(content: &[u8], signature: &[u8], verifiers: &[&SignedPublicKey]) -> Vec<SigCheck> {
+fn verify_detached_inner(
+    content: &[u8],
+    signature: &[u8],
+    verifiers: &[&SignedPublicKey],
+    resolve: keys::Resolver<'_>,
+) -> Vec<SigCheck> {
     let parsed = if is_armored(signature) {
         DetachedSignature::from_armor_many(BufReader::new(Cursor::new(signature)))
             .map(|(iter, _)| iter.filter_map(Result::ok).collect::<Vec<_>>())
@@ -268,7 +295,7 @@ fn verify_detached_inner(content: &[u8], signature: &[u8], verifiers: &[&SignedP
                 for (_, vk) in signing_keys(key) {
                     if vk.verify_detached(sig, content) {
                         check.signer = Some(fingerprint_hex(&key.primary_key));
-                        check.key_problem = vk.valid_at(key, sig).err();
+                        check.key_problem = vk.valid_at(key, sig, resolve).err();
                         check.valid = !weak_hash && check.key_problem.is_none();
                         break 'keys;
                     }

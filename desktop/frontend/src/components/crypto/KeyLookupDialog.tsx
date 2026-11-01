@@ -128,6 +128,14 @@ export function KeyLookupDialog() {
                 </div>
               )
             })}
+            {row.result?.updated?.map((key) => (
+              <p
+                key={`updated-${key.fingerprint}`}
+                className={`text-[0.6875rem] ${key.unusable === 'revoked' ? 'text-rose-600 dark:text-rose-400' : 'text-secondary'}`}
+              >
+                {key.unusable === 'revoked' ? t('crypto.lookup.updatedRevoked') : t('crypto.lookup.updatedRenewed')}
+              </p>
+            ))}
             {row.result && row.result.failed.length > 0 && (
               <p className="text-[0.625rem] text-secondary">
                 {t('crypto.lookup.failed', { sources: row.result.failed.map((f) => f.source).join(', ') })}

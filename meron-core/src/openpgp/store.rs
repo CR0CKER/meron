@@ -296,19 +296,35 @@ pub fn delete_own_key(conn: &Connection, account_id: &str, fingerprint: &str) ->
 
 // Peers ---------------------------------------------------------------------
 
+/// A public key from this database by primary fingerprint (designated
+/// revokers are resolved from the store the merge writes to, not the global
+/// snapshot).
+fn db_key(conn: &Connection, fingerprint: &str) -> Option<pgp::composed::SignedPublicKey> {
+    let peer: Option<Vec<u8>> = conn
+        .query_row("SELECT public_key FROM openpgp_peer_keys WHERE fingerprint = ?1 LIMIT 1", [fingerprint], |r| r.get(0))
+        .ok();
+    if let Some(blob) = peer {
+        return keys::parse_public(&blob).ok();
+    }
+    let own: Option<Vec<u8>> = conn
+        .query_row("SELECT secret_key FROM openpgp_own_keys WHERE fingerprint = ?1", [fingerprint], |r| r.get(0))
+        .ok();
+    own.map(zeroize::Zeroizing::new).and_then(|b| keys::parse_secret(&b).ok()).map(|k| k.to_public_key())
+}
+
 /// G2: folds `key` into the stored copy with the same fingerprint (every
 /// address row), so revocations and renewals published later take effect.
 /// Stored key bytes are only ever extended through [`keys::merge`] (which keeps
 /// only signatures made by the key itself), never replaced: an older copy
 /// arriving late can't undo a revocation. Returns whether anything changed.
-fn merge_into_stored(conn: &Connection, key: &pgp::composed::SignedPublicKey) -> Result<bool> {
+pub fn merge_into_stored(conn: &Connection, key: &pgp::composed::SignedPublicKey) -> Result<bool> {
     let fingerprint = fingerprint_hex(&key.primary_key);
     let stored: Option<Vec<u8>> = conn
         .query_row("SELECT public_key FROM openpgp_peer_keys WHERE fingerprint = ?1 LIMIT 1", [&fingerprint], |r| r.get(0))
         .optional()?;
     let Some(blob) = stored else { return Ok(false) };
     let Ok(stored) = keys::parse_public(&blob) else { return Ok(false) };
-    let Some(merged) = keys::merge(&stored, key) else { return Ok(false) };
+    let Some(merged) = keys::merge_with(&stored, key, &|f| db_key(conn, f)) else { return Ok(false) };
     conn.execute(
         "UPDATE openpgp_peer_keys SET public_key = ?1 WHERE fingerprint = ?2",
         params![keys::binary_public(&merged)?, fingerprint],
@@ -332,7 +348,7 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
     let mut put = |addr: &str, key: &pgp::composed::SignedPublicKey, source: Source, only_if_new_addr: bool| -> Result<()> {
         // A copy of a key we already have (revoked, renewed) updates it first.
         changed |= merge_into_stored(conn, key)?;
-        if keys::check(key, keys::now()).is_some_and(|u| u != Unusable::Expired) {
+        if keys::check_with(key, keys::now(), &|f| db_key(conn, f)).is_some_and(|u| u != Unusable::Expired) {
             return Ok(());
         }
         let addr = addr.to_ascii_lowercase();
@@ -855,6 +871,30 @@ mod tests {
         // Old mail fetched late, carrying the unrevoked copy with a newer date.
         ingest(&conn, &[ann(&carol)], &[], 30).unwrap();
         assert_eq!(load(&conn).unwrap().encryption_key_for("carol@example.com").err(), Some(NoKeyReason::Unusable));
+    }
+
+    #[test]
+    fn a_designated_revocation_arriving_by_mail_takes_effect_and_a_forged_one_does_not() {
+        use crate::openpgp::keys::tests::revoke_by;
+        let unlock = |name: &str| match keys::unlock(keys::parse_keys(&fixture(name)).unwrap().secret.remove(0), None).unwrap() {
+            keys::Unlock::Ok(k) => k,
+            other => panic!("{other:?}"),
+        };
+        let ann = |addr: &str, key: &pgp::composed::SignedPublicKey| Announced { addr: addr.into(), key: key.clone(), prefer_mutual: true, gossip: false };
+        let tess = keys::parse_public(&fixture("tess-public.asc")).unwrap();
+        let dan = unlock("dan-secret.asc");
+        let mallory = unlock("mallory-secret.asc");
+
+        let conn = db();
+        ingest(&conn, &[ann("tess@example.com", &tess), ann("dan@example.com", &dan.to_public_key())], &[], 10).unwrap();
+        // A forged revocation (Mallory isn't Tess's revoker) changes nothing.
+        ingest(&conn, &[ann("tess@example.com", &revoke_by(&mallory, &tess))], &[], 20).unwrap();
+        let ring = load(&conn).unwrap();
+        assert!(ring.encryption_key_for("tess@example.com").is_ok());
+        // Dan's revocation is taken.
+        assert!(ingest(&conn, &[ann("tess@example.com", &revoke_by(&dan, &tess))], &[], 30).unwrap());
+        let stored = load(&conn).unwrap().peers_for("tess@example.com")[0].key.clone();
+        assert_eq!(keys::check_with(&stored, keys::now(), &|f| db_key(&conn, f)), Some(Unusable::Revoked));
     }
 
     #[test]

@@ -146,6 +146,15 @@ impl Keyring {
         out
     }
 
+    /// A stored or own public key by primary fingerprint (designated revokers).
+    pub fn key_by_fingerprint(&self, fingerprint: &str) -> Option<SignedPublicKey> {
+        self.peers
+            .iter()
+            .find(|p| p.fingerprint == fingerprint)
+            .map(|p| p.key.clone())
+            .or_else(|| self.own.iter().find(|k| k.fingerprint == fingerprint).map(|k| k.public.clone()))
+    }
+
     /// The trust a signature by `fingerprint` earns for a message from `addr`.
     pub fn trust_of(&self, fingerprint: &str, addr: &str) -> Trust {
         if self.is_own(fingerprint) {

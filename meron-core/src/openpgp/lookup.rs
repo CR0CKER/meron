@@ -120,6 +120,11 @@ pub struct LookupResult {
     /// Sources asked (labels), so "nothing found" can say where.
     pub searched: Vec<String>,
     pub failed: Vec<Failed>,
+    /// Every key found for the address, usable or not (revoked, expired): the
+    /// caller merges them into stored copies, so a revocation found by a
+    /// lookup takes effect. Not sent to the UI.
+    #[serde(skip)]
+    pub all_keys: Vec<pgp::composed::SignedPublicKey>,
 }
 
 /// z-base-32 (RFC 6189 alphabet), as WKD names its files.
@@ -202,7 +207,7 @@ pub fn lookup(addr: &str, sources: &[KeySource]) -> Result<LookupResult> {
 
 pub fn lookup_with(addr: &str, sources: &[KeySource], fetch: &Fetch<'_>) -> LookupResult {
     let addr = addr.trim().to_ascii_lowercase();
-    let mut out = LookupResult { addr: addr.clone(), found: Vec::new(), searched: Vec::new(), failed: Vec::new() };
+    let mut out = LookupResult { addr: addr.clone(), found: Vec::new(), searched: Vec::new(), failed: Vec::new(), all_keys: Vec::new() };
     for source in sources.iter().filter(|s| s.enabled) {
         out.searched.push(source.label());
         let mut last_error = None;
@@ -227,8 +232,13 @@ pub fn lookup_with(addr: &str, sources: &[KeySource], fetch: &Fetch<'_>) -> Look
         let Ok(parsed) = keys::parse_keys(&body) else { continue };
         for key in parsed.public {
             let info = keys::info(&key, false, keys::now());
-            // Only keys for this address, and only usable ones.
-            if !info.emails.contains(&addr) || info.unusable.is_some() {
+            // Only keys for this address; unusable ones are kept for merging
+            // (a revocation) but never offered.
+            if !info.emails.contains(&addr) {
+                continue;
+            }
+            out.all_keys.push(key.clone());
+            if info.unusable.is_some() {
                 continue;
             }
             if out.found.iter().any(|f| f.info.fingerprint == info.fingerprint) {
@@ -296,7 +306,9 @@ mod tests {
         };
         let res = lookup_with("carol@example.com", &[hkp.clone()], &fetch);
         assert!(!res.found[0].verified);
-        assert!(lookup_with("rex@example.com", &[hkp], &fetch).found.is_empty(), "revoked");
+        let rex = lookup_with("rex@example.com", &[hkp], &fetch);
+        assert!(rex.found.is_empty(), "a revoked key is never offered");
+        assert_eq!(rex.all_keys.len(), 1, "but it is kept, so the caller can merge the revocation");
     }
 
     #[test]

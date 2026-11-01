@@ -529,6 +529,8 @@
   "crypto.peers.updates": "{count, plural, one {1 stored key updated (revoked or renewed)} other {{count} stored keys updated (revoked or renewed)}}",
   "crypto.peers.applyUpdates": "Apply updates",
   "crypto.peers.updated": "{count, plural, one {1 key updated} other {{count} keys updated}}",
+  "crypto.lookup.updatedRevoked": "The key Meron had for this address has been revoked by its owner. Meron no longer uses it.",
+  "crypto.lookup.updatedRenewed": "The key Meron had for this address was updated (renewed or changed by its owner).",
   "drawer.inboxes": "受信トレイ",
   "drawer.kanbanSubtitle": "ボードと列",
   "drawer.settingsSubtitle": "外観、ナビゲーション、ストレージ",
