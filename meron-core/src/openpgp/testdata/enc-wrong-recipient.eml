@@ -1,0 +1,41 @@
+From: Carol Example <carol@example.com>
+To: Bob Example <bob@example.net>
+Subject: [...]
+Date: Sun, 01 Nov 2026 10:00:00 +0100
+Message-ID: <wrong-recipient@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="enc-boundary"
+
+--enc-boundary
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--enc-boundary
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+hQGMA718jMcmfnwaAQv+OLo7I8Qg/q5gTTeWAlgB4syzHsxFlVMa5NbhA3jmDQTU
+rTY28VBCoZwEzB8pbCKnjyYL69QPXihJ3SfNPR2Ua6i+cab0CUuKqnUowOBhKylG
+m09yQbCHYFc4DFjrZar+mg8atmEDliTH7CLOCDN+hdzP6TENo0wLG/W9qSVDq+Wc
+arhsbUaskcABs/ALnCckvv7xvinoHUvWjCdwdwHMcPRUbboVDyJ/gREuwvZfa3K3
+CuYcL8DYcbfs9U+nPxPeZWpLId6rh5BypulNFnDb4qHXwY8d3yJrQRaWAESlpUIK
+OEhkhfL3zi6JxL6Etw2+bdponuxLPcv4VEloeeQDYy6Vg124yBtKeJQp0kNylZID
+JMTAkjeeSNMW/CwT9pG6i/sbMhvSLnCxBe3opubEiore2CjJ77zkwwi/yVaHpKZX
+WgHeYc1WfK9bJlWd9zPAJiIh/elhvGCPub8vK+b+15iQRbaNbI6OUpom/IHZU1RJ
+jKlEU/w/OZzKJt8mpGWG0sDYAfFXXsUQ1qIeXRHa6e+YpYHCsLB2hVjIOnx/7PV4
+m5MsacYygNK0UTd5Dkvvn+CEsFo4O1XxtmW7bUnW9/hRGq2fzYJ6ln2xejVE7x9K
+d6G6mxVFrxY+YiWG+pazHNJ5tJf+mP9Kk5JUl8ef5imUwLNIYQkUQmc1fMDtaB5y
+sN5w3dn1I+e59ZKsjhnag8F0o9EjgKmxjT7MR/QN2qQcDXgtLiW+TU2ycOeHkYmq
+EWuODFoRRyMSRGIETnQ8PClCOs/Lu8XzJg5bdqTbmlD8RsncXth/zeeNXhjRQupE
+UP0tRNQekUCWvVzAOxiEzL04Hnj6AZymIPjJbkgonwoeNbPbivVlOqEbivbFnCKp
+mTHh6yFrstGybC4K27DEdJfsZKyuawFDEqQ0DbvvkZzKY1CeH16R2lWbMp2JLjIJ
+Wgke+048BA/FjX2IPlI7bWsF/awah8uW+jfrVXx54S9ChFjpsqaIjsQDcnxBcNDB
+1QfsDIh/nW/Hv3LUMYR7oehnMbpuR70ZL/MyAj3LKDd3eqBhbhmcCZpO
+=U8SC
+-----END PGP MESSAGE-----
+
+--enc-boundary--

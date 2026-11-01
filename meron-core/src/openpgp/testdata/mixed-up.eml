@@ -1,0 +1,36 @@
+From: Carol Example <carol@example.com>
+To: Alice Example <alice@example.org>
+Subject: [...]
+Date: Sun, 01 Nov 2026 10:00:00 +0100
+Message-ID: <mixed-up@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mx"
+
+--mx
+Content-Type: text/plain; charset="us-ascii"
+
+
+--mx
+Content-Type: application/pgp-encrypted
+
+Version: 1
+--mx
+Content-Type: application/octet-stream; name="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+hF4DGPnudEGlImASAQdAlxJt1ay6id0ID6Ga9lF7K6AfaAGYKxaHDc20oPGPGgMw
+wejeEWJ6YMG63/ZCN01NijWWxj3mD2d/YGrjInHIl4nV/5oSINfosPDKvvKXYFiC
+0sDWAfzZhiT54T7yTBuYEF6OWrB5a9A7DjpZ6mPQ3oUS43RUiT2ZHlxsf2cMI7kj
+A6Muxxfo2BF3AgFfgI3z2Fx+4hoIxDBleb7CWxIWfiiDWFBt9LgSPrizxHGvPFHZ
+SgeaCJykcqW/6d6jJXrT3uwM9ZfHKsxKnAG1XjT6RIJtPAZ6Lunf+Z8zxNgXZG5I
+gGWj9VadmfOGyIuJ9wY3w1Kl5MUpCHKfrWtNJ3a9A8YsvmQY4U34XYgGkWXv4llR
+9xmtv5DZp+UJ0aBurinKveD6Ct5jVAV4NpRAh4B8GoOiwozvQcO1Lf2TWQLXkL9a
+BnfGCCGHbxprgzdVmAVSSJGM3O9KIvi7jCgCgmSZlPqnuBkLfpfxDnT5V07Exxhs
+6MtX3B9uK5/3F2rI7A7G/LwJDNqkuqxC1prJok6o9JIkGamYK2GNEWc5BKcgQRNu
+lLo7ryW7+4/9Qzw1K/hVZ1e62n6fDSAQF9CifytkuyBJ5PNGKGkB/c5l+m8EZ6SH
+PQazfkNx36kNoPPDUMOa6HQnIn119OKgUw==
+=ktNv
+-----END PGP MESSAGE-----
+
+--mx--

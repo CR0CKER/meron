@@ -1,0 +1,25 @@
+From: Carol Example <carol@example.com>
+To: Alice Example <alice@example.org>
+Subject: Altered
+Date: Sun, 01 Nov 2026 10:00:00 +0100
+Message-ID: <signed-altered@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha256; protocol="application/pgp-signature"; boundary="sig-boundary"
+
+--sig-boundary
+Content-Type: text/plain; charset="utf-8"
+
+This message is signed, not encrypted!.
+
+--sig-boundary
+Content-Type: application/pgp-signature; name="signature.asc"
+
+-----BEGIN PGP SIGNATURE-----
+
+iHUEABYIAB0WIQSUqPV6u3mBeU5ppK+WotlNIh4vJAUCaudN1AAKCRCWotlNIh4v
+JGakAP90ZLborkLRikEXnptIU+P2fRtrT6AauX0gdgzrr04BhgD/fmYJtEXYwhFJ
+5QvfaC7dXfaznYhhZsz9TNiP7zkJ9gE=
+=G2Gu
+-----END PGP SIGNATURE-----
+
+--sig-boundary--
