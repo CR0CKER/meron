@@ -3,7 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { sendShortcutLabel } from '../../states/settings'
 import { IconButton } from '../button/IconButton'
 import type { RecipientKeys } from '../../lib/crypto'
-import { EncryptRecipientsNote, EncryptToggle } from '../crypto/EncryptToggle'
+import { EncryptToggle } from '../crypto/EncryptToggle'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -81,7 +81,6 @@ export function ComposerFooter({
           <Type size={15} />
           {rich ? t('composer.modes.richText') : t('composer.modes.plainText')}
         </button>
-        {encryption && <EncryptRecipientsNote keys={encryption.keys} on={encryption.on} />}
       </div>
       <div className="flex items-center gap-3">
         {saveStatus === 'saving' && (

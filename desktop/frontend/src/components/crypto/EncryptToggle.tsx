@@ -154,18 +154,3 @@ export function EncryptToggle({
     </button>
   )
 }
-
-/** One line for the full composer when recipients lack keys (the lock looks them up). */
-export function EncryptRecipientsNote({ keys, on }: { keys: RecipientKeys | null; on: boolean }) {
-  const { t } = useTranslation()
-  if (!keys?.enabled || keys.missing.length === 0) return null
-  const addresses = keys.missing.map((m) => m.addr).join(', ')
-  return (
-    <p
-      role={on ? 'alert' : 'status'}
-      className={`flex items-center gap-2 px-1 text-[0.6875rem] ${on ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'}`}
-    >
-      <span>{on ? t('crypto.toggle.blocked', { addresses }) : t('crypto.toggle.noKey', { addresses })}</span>
-    </p>
-  )
-}
