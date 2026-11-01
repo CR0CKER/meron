@@ -71,7 +71,7 @@ export function KeyLookupDialog() {
         : t('crypto.lookup.fromUnverified', { server: sourceLabel(found.source) })
 
   return (
-    <Dialog onClose={close} aria-label={t('crypto.lookup.title')} className="max-w-lg p-6 flex flex-col gap-4">
+    <Dialog onClose={close} aria-label={t('crypto.lookup.title')} className="max-w-lg p-6 flex flex-col gap-5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent">
@@ -82,9 +82,9 @@ export function KeyLookupDialog() {
         <IconButton icon={X} iconSize={15} label={t('buttons.close')} size="sm" onClick={close} />
       </div>
 
-      <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+      <div className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto">
         {rows.map((row) => (
-          <section key={row.addr} className="flex flex-col gap-2" aria-live="polite">
+          <section key={row.addr} className="flex flex-col gap-2.5" aria-live="polite">
             <h3 className="text-[0.75rem] font-semibold">{row.addr}</h3>
             {row.state === 'searching' && (
               <p className="flex items-center gap-2 text-[0.6875rem] text-secondary">
@@ -101,14 +101,14 @@ export function KeyLookupDialog() {
             {row.result?.found.map((found) => {
               const added = row.added === found.info.fingerprint
               return (
-                <div key={found.info.fingerprint} className="flex items-center gap-3 rounded-xl bg-hover px-3.5 py-2.5">
-                  <div className="min-w-0 flex-1">
+                <div key={found.info.fingerprint} className="flex items-center gap-4 rounded-xl bg-hover px-4 py-3.5">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="truncate text-[0.75rem] font-semibold">{found.info.user_ids[0] ?? row.addr}</div>
                     <div className="font-mono text-[0.625rem] text-secondary">
                       {formatFingerprint(found.info.fingerprint)}
                     </div>
                     <div
-                      className={`mt-1 text-[0.65625rem] leading-snug ${
+                      className={`text-[0.65625rem] leading-snug ${
                         found.verified ? 'text-secondary' : 'text-amber-700 dark:text-amber-300'
                       }`}
                     >
