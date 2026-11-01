@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Globe, RefreshCw, Search, X } from 'lucide-react'
+import { Check, RefreshCw, Search, X } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import { formatFingerprint, sourceLabel } from '../../lib/crypto'
@@ -101,22 +101,22 @@ export function KeyLookupDialog() {
             {row.result?.found.map((found) => {
               const added = row.added === found.info.fingerprint
               return (
-                <div key={found.info.fingerprint} className="flex items-start gap-3 rounded-xl bg-hover px-3.5 py-2.5">
+                <div key={found.info.fingerprint} className="flex items-center gap-3 rounded-xl bg-hover px-3.5 py-2.5">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[0.75rem] font-semibold">{found.info.user_ids[0] ?? row.addr}</div>
                     <div className="font-mono text-[0.625rem] text-secondary">
                       {formatFingerprint(found.info.fingerprint)}
                     </div>
                     <div
-                      className={`mt-0.5 flex items-center gap-1 text-[0.65625rem] ${
+                      className={`mt-1 text-[0.65625rem] leading-snug ${
                         found.verified ? 'text-secondary' : 'text-amber-700 dark:text-amber-300'
                       }`}
                     >
-                      <Globe size={11} className="shrink-0" />
                       {sourceLine(found)}
                     </div>
                   </div>
                   <Button
+                    className="shrink-0"
                     variant={added ? 'ghost' : 'primary'}
                     size="sm"
                     disabled={added || !!row.added}
