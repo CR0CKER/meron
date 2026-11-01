@@ -94,7 +94,9 @@ export function QuickReplyComposer() {
           </button>
           {target && (
             <EncryptToggle
+              key={target.thread_id}
               keys={keys}
+              hasRecipients={!!(to || cc).trim()}
               on={encrypt}
               sensitive={sensitive}
               onChange={(on) => compose$.quickReplyEncrypt.set({ threadId: target.thread_id, on })}

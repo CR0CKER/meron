@@ -172,6 +172,7 @@ export function Composer({ tabId }: { tabId: string }) {
                 keys: encryptionKeys,
                 on: !!draft.encrypt,
                 sensitive: draft.sensitiveSource,
+                hasRecipients: !!(draft.to + draft.cc + draft.bcc).trim(),
                 onChange: (on: boolean) => update({ encrypt: on }),
               }
             : undefined

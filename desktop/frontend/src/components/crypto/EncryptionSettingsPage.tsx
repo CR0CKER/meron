@@ -17,6 +17,8 @@ import {
 import type { KeyFile } from '../../states/crypto'
 import { confirmAction, showToast } from '../../states/ui'
 import { Dialog } from '../dialog/Dialog'
+import { SettingsGroup, ToggleRow } from '../dialog/AccountSettingsRows'
+import { settings$ } from '../../states/settings'
 import { KeySourcesSection, LookupRow } from './KeySourcesSection'
 import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
@@ -33,6 +35,7 @@ export function EncryptionSettingsPage() {
   const [filter, setFilter] = useState('')
   const [importing, setImporting] = useState<{ file: KeyFile; preview: ImportPreview } | null>(null)
   const [error, setError] = useState('')
+  const encryptWhenPossible = useValue(settings$.encryptWhenPossible)
 
   const reload = useCallback(() => {
     void listPeers()
@@ -65,6 +68,14 @@ export function EncryptionSettingsPage() {
         <h2 className="text-base font-bold tracking-tight">{t('crypto.peers.title')}</h2>
         <p className="mt-1 text-[0.71875rem] leading-relaxed text-secondary">{t('crypto.peers.intro')}</p>
       </div>
+      <SettingsGroup title={t('crypto.prefs.title')}>
+        <ToggleRow
+          title={t('crypto.prefs.encryptWhenPossible')}
+          hint={t('crypto.prefs.encryptWhenPossibleHint')}
+          checked={encryptWhenPossible}
+          onChange={() => settings$.encryptWhenPossible.set(!encryptWhenPossible)}
+        />
+      </SettingsGroup>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />

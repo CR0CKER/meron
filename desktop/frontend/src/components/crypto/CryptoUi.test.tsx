@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import type { MessageCrypto, RecipientKeys } from '../../lib/crypto'
 import { crypto$ } from '../../states/crypto'
 import { ui$ } from '../../states/ui'
+import { settings$ } from '../../states/settings'
 import { CryptoBadge } from './CryptoBadge'
 import { CryptoStrip } from './CryptoStrip'
 import { EncryptToggle, encryptionBlocksSend, recipientAddresses } from './EncryptToggle'
@@ -30,6 +31,7 @@ beforeEach(() => {
   crypto$.verify.set(null)
   crypto$.enableFor.set(null)
   crypto$.lookup.set(null)
+  settings$.encryptWhenPossible.set(true)
   ui$.selectedThread.set('')
   ;(window as any).go = {
     main: {
@@ -232,7 +234,8 @@ describe('EncryptToggle', () => {
     expect(value).toBe(true)
   })
 
-  test('a key appearing without a lookup from the lock leaves encryption off', () => {
+  test('with the preference off, a key appearing on its own leaves encryption off', () => {
+    settings$.encryptWhenPossible.set(false)
     let value = false
     const { rerender } = render(
       <EncryptToggle
@@ -243,6 +246,27 @@ describe('EncryptToggle', () => {
     )
     rerender(<EncryptToggle keys={keys()} on={false} onChange={(on) => (value = on)} />)
     expect(value).toBe(false)
+  })
+
+  test('encrypts by default when every recipient has a key', () => {
+    let value = false
+    render(<EncryptToggle keys={keys()} on={false} onChange={(on) => (value = on)} />)
+    expect(value).toBe(true)
+  })
+
+  test('not without recipients', () => {
+    let value = false
+    render(<EncryptToggle keys={keys()} on={false} hasRecipients={false} onChange={(on) => (value = on)} />)
+    expect(value).toBe(false)
+  })
+
+  test('switched off by hand, it stays off for this message', () => {
+    let on = true
+    const { getByRole, rerender } = render(<EncryptToggle keys={keys()} on onChange={(v) => (on = v)} />)
+    act(() => fireEvent.click(getByRole('switch')))
+    expect(on).toBe(false)
+    rerender(<EncryptToggle keys={keys()} on={false} onChange={(v) => (on = v)} />)
+    expect(on).toBe(false)
   })
 
   test('a recipient without a key switches encryption off', () => {

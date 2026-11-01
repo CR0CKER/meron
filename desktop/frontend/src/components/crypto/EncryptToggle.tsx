@@ -4,6 +4,7 @@ import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
 import type { RecipientKeys } from '../../lib/crypto'
 import { crypto$, recipientKeys } from '../../states/crypto'
+import { settings$ } from '../../states/settings'
 import { confirmAction } from '../../states/ui'
 
 /** Bare addresses of a comma-separated recipient field (quotes and angle
@@ -71,11 +72,14 @@ export function EncryptToggle({
   on,
   onChange,
   sensitive,
+  hasRecipients = true,
   size = 'sm',
 }: {
   keys: RecipientKeys | null
   on: boolean
   onChange: (on: boolean) => void
+  /** The message has at least one recipient (nothing to encrypt for otherwise). */
+  hasRecipients?: boolean
   /** Carries text from an encrypted message (a reply's quote, a forward). */
   sensitive?: 'reply' | 'forward'
   size?: 'sm' | 'md'
@@ -94,13 +98,19 @@ export function EncryptToggle({
   useEffect(() => {
     if (on && someoneLacksKey && sensitive !== 'forward') onChange(false)
   }, [on, someoneLacksKey, sensitive, onChange])
+  // Encrypt by default when every recipient has a key (preference, on by
+  // default), and after a lookup this lock opened. A user who switched it off
+  // in this message keeps it off.
+  const encryptWhenPossible = useValue(settings$.encryptWhenPossible)
+  const [userOff, setUserOff] = useState(false)
+  const everyoneHasKey = !!keys?.enabled && !keys.own_key_unusable && keys.missing.length === 0 && hasRecipients
   useEffect(() => {
-    if (!lookingUp || !keys) return
-    if (keys.enabled && !keys.own_key_unusable && keys.missing.length === 0) {
+    if (on || !everyoneHasKey) return
+    if (lookingUp || (encryptWhenPossible && !userOff)) {
       setLookingUp(false)
-      if (!on) onChange(true)
+      onChange(true)
     }
-  }, [lookingUp, keys, on, onChange])
+  }, [on, everyoneHasKey, lookingUp, encryptWhenPossible, userOff, onChange])
   if (!keys) return null
   if (!keys.enabled) {
     // Answering encrypted mail from an account without encryption: say why
@@ -139,7 +149,10 @@ export function EncryptToggle({
       return
     }
     if (!on) {
-      if (!unavailable) onChange(true)
+      if (!unavailable) {
+        setUserOff(false)
+        onChange(true)
+      }
       return
     }
     if (sensitive === 'reply') {
@@ -150,6 +163,7 @@ export function EncryptToggle({
       })
       if (!ok) return
     }
+    setUserOff(true)
     onChange(false)
   }
 

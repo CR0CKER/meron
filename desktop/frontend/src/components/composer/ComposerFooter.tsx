@@ -32,6 +32,7 @@ export function ComposerFooter({
     keys: RecipientKeys | null
     on: boolean
     sensitive?: 'reply' | 'forward'
+    hasRecipients?: boolean
     onChange: (on: boolean) => void
   }
   onPickFiles: () => void
@@ -68,6 +69,7 @@ export function ComposerFooter({
             keys={encryption.keys}
             on={encryption.on}
             sensitive={encryption.sensitive}
+            hasRecipients={encryption.hasRecipients}
             onChange={encryption.onChange}
           />
         )}
