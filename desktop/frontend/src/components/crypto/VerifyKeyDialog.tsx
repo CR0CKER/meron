@@ -130,13 +130,13 @@ export function VerifyKeyDialog() {
           )}
         </div>
 
-        <label className="flex cursor-pointer items-start gap-2.5 px-1">
+        <label className="flex cursor-pointer items-center gap-2.5 px-1">
           <input
             type="checkbox"
             checked={compared}
             disabled={pastedWrong}
             onChange={(event) => setCompared(event.target.checked)}
-            className="mt-0.5 cursor-pointer accent-accent"
+            className="m-0 shrink-0 cursor-pointer accent-accent"
           />
           <span className="text-[0.75rem] font-semibold">{t('crypto.verify.compared')}</span>
         </label>
