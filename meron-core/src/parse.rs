@@ -615,6 +615,14 @@ pub(crate) fn parse_message_with(
     if opened.status.as_ref().is_some_and(|s| s.signed && s.signer.is_some()) {
         attachments.retain(|a| !a.mime.eq_ignore_ascii_case("application/pgp-signature"));
     }
+    // The sender's own key, attached so we can record it (Thunderbird does this
+    // on every signed message): recorded, so not shown as a file.
+    if let Some(part) = content {
+        let own_keys = crate::openpgp::mime::sender_key_files(part, &from_addr);
+        if !own_keys.is_empty() {
+            attachments.retain(|a| !(a.mime.eq_ignore_ascii_case("application/pgp-keys") && own_keys.contains(&a.filename)));
+        }
+    }
     // Prefer the MIME text/plain alternative for the conversation and Plain
     // reader view. Keep HTML separately for the HTML reader; when a message is
     // HTML-only, fall back to converting HTML so there is still readable text.

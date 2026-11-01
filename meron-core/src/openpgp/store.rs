@@ -59,7 +59,29 @@ pub fn init_main(conn: &Connection) -> Result<()> {
     if let Some(path) = conn.path().filter(|p| !p.is_empty()) {
         let _ = MAIN_DB.set(path.to_string());
     }
+    reparse_key_attachments_once(conn)?;
     reload(conn)
+}
+
+const REPARSE_MARK: &str = "openpgp_reparse_key_attachments";
+
+/// One-time: messages cached before attached sender keys were hidden (and
+/// recorded) still list the key file. Their cached bodies are dropped so the
+/// next read fetches and parses them again. Runs once per store.
+fn reparse_key_attachments_once(conn: &Connection) -> Result<usize> {
+    let done = crate::store::settings_get(conn, &[REPARSE_MARK.to_string()])?
+        .get(REPARSE_MARK)
+        .is_some_and(|v| !v.is_null());
+    if done {
+        return Ok(0);
+    }
+    let n = conn.execute(
+        "UPDATE messages SET body = NULL, json = json_remove(json, '$.body_html', '$.attachments', '$.crypto')
+         WHERE files LIKE '%application/pgp-keys%'",
+        [],
+    )?;
+    crate::store::setting_set(conn, REPARSE_MARK, &serde_json::json!(true))?;
+    Ok(n)
 }
 
 /// Whether `conn` is the store keys belong to (true in tests and before the
@@ -908,6 +930,25 @@ mod tests {
         assert!(preview.ready.is_empty(), "revoked keys are never offered as new");
         import_peers(&conn, &data, &[]).unwrap();
         assert_eq!(list_peers(&conn).unwrap()[0].info.unusable, Some(Unusable::Revoked));
+    }
+
+    #[test]
+    fn cached_messages_with_key_attachments_are_reparsed_once() {
+        let conn = crate::store::open_at(":memory:").unwrap();
+        conn.execute(
+            "INSERT INTO messages (account, folder, msg_id, uid, subject, from_name, from_addr, date, body, json, files)
+             VALUES ('a', 'INBOX', 1, 1, 's', 'n', 'x@y.z', 0, 'body', '{\"body_html\":\"<p>x</p>\"}',
+                     '[{\"filename\":\"OpenPGP_0x1.asc\",\"mime\":\"application/pgp-keys\"}]'),
+                    ('a', 'INBOX', 2, 2, 's', 'n', 'x@y.z', 0, 'other', '{}', NULL)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(reparse_key_attachments_once(&conn).unwrap(), 1);
+        let body: Option<String> = conn.query_row("SELECT body FROM messages WHERE uid = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(body, None);
+        let other: Option<String> = conn.query_row("SELECT body FROM messages WHERE uid = 2", [], |r| r.get(0)).unwrap();
+        assert_eq!(other.as_deref(), Some("other"));
+        assert_eq!(reparse_key_attachments_once(&conn).unwrap(), 0, "only once");
     }
 
     #[test]

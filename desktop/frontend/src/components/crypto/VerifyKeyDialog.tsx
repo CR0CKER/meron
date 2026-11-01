@@ -58,6 +58,8 @@ export function VerifyKeyDialog() {
   const close = () => crypto$.verify.set(null)
   const pastedMatches = pasted.trim() !== '' && fingerprintsMatch(pasted, target.fingerprint)
   const pastedWrong = pasted.trim().length >= 8 && !pastedMatches
+  // The easy mix-up: pasting one's own fingerprint from the block above.
+  const pastedOwn = pastedWrong && !!own && fingerprintsMatch(pasted, own)
   const canConfirm = !busy && !pastedWrong && (pastedMatches || compared)
 
   const confirm = async () => {
@@ -125,7 +127,7 @@ export function VerifyKeyDialog() {
           )}
           {pastedWrong && (
             <p role="alert" className="px-1 text-[0.6875rem] font-semibold text-rose-600 dark:text-rose-400">
-              {t('crypto.verify.mismatch')}
+              {pastedOwn ? t('crypto.verify.pastedOwn', { sender: target.name }) : t('crypto.verify.mismatch')}
             </p>
           )}
         </div>

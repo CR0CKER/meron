@@ -228,6 +228,42 @@ fn attached_keys(part: &ParsedMail<'_>, from: &str, out: &mut Vec<(String, Signe
     }
 }
 
+/// Filenames of attached key parts (`application/pgp-keys`) that hold only
+/// the sender's own keys. Those are recorded automatically (Thunderbird
+/// attaches the sender's key to every signed message), so they are hidden
+/// from the attachment list. A key file with anyone else's key stays: there
+/// the key may be what the mail is about.
+pub fn sender_key_files(part: &ParsedMail<'_>, from_addr: &str) -> Vec<String> {
+    let from = from_addr.trim().to_ascii_lowercase();
+    let mut out = Vec::new();
+    collect_sender_key_files(part, &from, &mut out);
+    out
+}
+
+fn collect_sender_key_files(part: &ParsedMail<'_>, from: &str, out: &mut Vec<String>) {
+    if !part.subparts.is_empty() {
+        for sub in &part.subparts {
+            collect_sender_key_files(sub, from, out);
+        }
+        return;
+    }
+    if mime(part) != "application/pgp-keys" {
+        return;
+    }
+    let Ok(body) = part.get_body_raw() else { return };
+    let Ok(parsed) = keys::parse_keys(&body) else { return };
+    let all_senders = !parsed.public.is_empty()
+        && parsed.secret.is_empty()
+        && parsed.public.iter().all(|k| keys::info(k, false, keys::now()).emails.iter().any(|e| e == from));
+    if !all_senders {
+        return;
+    }
+    let disposition = part.get_content_disposition();
+    if let Some(name) = disposition.params.get("filename").or_else(|| part.ctype.params.get("name")) {
+        out.push(name.clone());
+    }
+}
+
 /// Opens the OpenPGP layer of `mail` (if any) with the keys in `ring`.
 pub fn open(mail: &ParsedMail<'_>, from_addr: &str, ring: &Keyring) -> Opened {
     let from = from_addr.trim().to_ascii_lowercase();
@@ -670,6 +706,33 @@ mod tests {
         assert_eq!(c.problem, None);
         assert!(c.signer.is_some());
         assert_eq!(c.trust(&ring, &m.from_addr), Trust::Known);
+    }
+
+    /// A message shaped like Thunderbird's: text plus the sender's key attached.
+    fn with_key_attachment(key_file: &str) -> Vec<u8> {
+        let key = String::from_utf8(fixture(key_file)).unwrap().replace('\n', "\r\n");
+        format!(
+            "From: Carol Example <carol@example.com>\r\nTo: alice@example.org\r\nSubject: Testing this\r\nMIME-Version: 1.0\r\n\
+             Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n\
+             --b\r\nContent-Type: application/pgp-keys; name=\"OpenPGP_0x1234.asc\"\r\n\
+             Content-Disposition: attachment; filename=\"OpenPGP_0x1234.asc\"\r\n\r\n{key}\r\n--b--\r\n"
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn the_senders_attached_key_is_recorded_and_not_shown_as_a_file() {
+        let m = parse_message_with(&with_key_attachment("carol-public.asc"), None, &alice_ring());
+        assert!(m.attachments.is_empty(), "{:?}", m.attachments.iter().map(|a| &a.filename).collect::<Vec<_>>());
+        assert_eq!(m.found_keys.attached.len(), 1);
+        assert!(m.body.contains("Hello"));
+    }
+
+    #[test]
+    fn someone_elses_key_stays_a_visible_attachment() {
+        let m = parse_message_with(&with_key_attachment("mallory-public.asc"), None, &alice_ring());
+        assert_eq!(m.attachments.len(), 1);
+        assert!(m.found_keys.attached.is_empty(), "never recorded for an address other than the sender's");
     }
 
     #[test]

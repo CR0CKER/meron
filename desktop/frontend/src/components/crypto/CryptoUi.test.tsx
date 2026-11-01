@@ -159,7 +159,7 @@ describe('VerifyKeyDialog', () => {
     const { getByText, getByLabelText, getByRole } = open()
     const confirm = getByText('Mark as verified').closest('button')!
     expect(confirm.disabled).toBe(true)
-    fireEvent.change(getByLabelText(/paste the fingerprint/i), {
+    fireEvent.change(getByLabelText(/paste/i), {
       target: { value: '8e9b ce86 4756 4e25 7a41 1b71 969b c97d 064d 88d5' },
     })
     expect(getByRole('status').textContent).toBe('Matches')
@@ -172,9 +172,17 @@ describe('VerifyKeyDialog', () => {
 
   test('a wrong paste blocks verification, even with the checkbox', () => {
     const { getByText, getByLabelText, getByRole } = open()
-    fireEvent.change(getByLabelText(/paste the fingerprint/i), { target: { value: '0000 1111 2222 3333 4444' } })
+    fireEvent.change(getByLabelText(/paste/i), { target: { value: '0000 1111 2222 3333 4444' } })
     expect(getByRole('alert').textContent).toContain("Doesn't match")
     expect((getByText('Mark as verified').closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  test('pasting your own fingerprint says so', async () => {
+    const { getByLabelText, findByText } = open()
+    // The account's own fingerprint comes from pgp.account.state (stubbed as AAAA×10).
+    await findByText('Your fingerprint')
+    fireEvent.change(getByLabelText(/paste/i), { target: { value: 'AAAA '.repeat(10) } })
+    expect(await findByText(/That's your own fingerprint/)).toBeTruthy()
   })
 
   test('reading aloud: the checkbox alone enables it', () => {

@@ -338,6 +338,11 @@ sequenceDiagram
   resolves the prefix. After a reboot the files are gone, `missing_media_count` reports them, and the message is
   fetched and decrypted again.
 - A verified `signature.asc` (`application/pgp-signature`) is dropped from the attachment list.
+- Attached key files (`application/pgp-keys`) that hold only the sender's own keys (`mime::sender_key_files`; what
+  Thunderbird attaches to every signed message) are dropped from the attachment list; the keys are recorded (§9). Key
+  files with anyone else's key stay visible. A one-time cleanup in `store::init_main`
+  (`reparse_key_attachments_once`, marker setting `openpgp_reparse_key_attachments`) drops the cached bodies of
+  messages that list such a file, so they are fetched and parsed again.
 - Header sync (`store::upsert_messages`) keeps the stored subject for rows whose `$.crypto.encrypted` is true and whose
   body exists, so the outer placeholder (`[...]`) never overwrites the decrypted subject.
 - Remote content: `engine::read::attach_html` forces `allowed = false` for encrypted messages (the CSP built by
