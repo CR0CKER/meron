@@ -92,10 +92,6 @@ export function QuickReplyComposer() {
           >
             <Maximize2 size={14} />
           </button>
-          <QuickReplyFrom />
-          <div className="ml-auto flex min-w-0 shrink items-center">
-            <QuickReplyRecipients />
-          </div>
           {target && (
             <EncryptToggle
               keys={keys}
@@ -104,6 +100,10 @@ export function QuickReplyComposer() {
               onChange={(on) => compose$.quickReplyEncrypt.set({ threadId: target.thread_id, on })}
             />
           )}
+          <QuickReplyFrom />
+          <div className="ml-auto flex min-w-0 shrink items-center">
+            <QuickReplyRecipients />
+          </div>
           <button
             onClick={handleSendReply}
             disabled={!canSend}

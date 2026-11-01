@@ -28,7 +28,7 @@ export function trustSentence(crypto: MessageCrypto, sender: string, t: T): stri
 /**
  * The end-to-end encryption indicator in a message header: a padlock for
  * encrypted mail, a signature mark for signed-only mail, coloured by how far
- * the sender's key is trusted (emerald verified, neutral known, amber not
+ * the sender's key is trusted (muted green verified, neutral known, amber not
  * confirmed, rose a problem). Drawn by the app, never inside the message,
  * so a message can't fake it. Ordinary mail renders nothing.
  */
@@ -105,7 +105,7 @@ export function CryptoBadge({
           </div>
           {canVerify && (
             <MenuItem
-              icon={<BadgeCheck size={13} className="text-emerald-600 dark:text-emerald-400" />}
+              icon={<BadgeCheck size={13} className="text-verified" />}
               label={t('crypto.verifyKeyOf', { sender })}
               onClick={() => {
                 setAnchor(null)

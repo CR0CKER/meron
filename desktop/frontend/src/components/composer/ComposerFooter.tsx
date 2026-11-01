@@ -62,6 +62,15 @@ export function ComposerFooter({
             onClick={onPickInlineImages}
           />
         )}
+        {encryption && (
+          <EncryptToggle
+            size="md"
+            keys={encryption.keys}
+            on={encryption.on}
+            sensitive={encryption.sensitive}
+            onChange={encryption.onChange}
+          />
+        )}
         <button
           onClick={onToggleRich}
           className={`flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[0.6875rem] font-semibold transition-colors cursor-pointer ${
@@ -72,6 +81,7 @@ export function ComposerFooter({
           <Type size={15} />
           {rich ? t('composer.modes.richText') : t('composer.modes.plainText')}
         </button>
+        {encryption && <EncryptRecipientsNote keys={encryption.keys} on={encryption.on} />}
       </div>
       <div className="flex items-center gap-3">
         {saveStatus === 'saving' && (
@@ -101,18 +111,6 @@ export function ComposerFooter({
         >
           {t('buttons.discard')}
         </button>
-        {encryption && (
-          <>
-            <EncryptRecipientsNote keys={encryption.keys} on={encryption.on} />
-            <EncryptToggle
-              size="md"
-              keys={encryption.keys}
-              on={encryption.on}
-              sensitive={encryption.sensitive}
-              onChange={encryption.onChange}
-            />
-          </>
-        )}
         <button
           onClick={onSubmit}
           disabled={!canSend}

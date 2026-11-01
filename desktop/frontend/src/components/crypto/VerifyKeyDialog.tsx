@@ -86,7 +86,7 @@ export function VerifyKeyDialog() {
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-verified/10 text-verified">
             <BadgeCheck size={17} />
           </div>
           <div className="min-w-0">
@@ -119,7 +119,7 @@ export function VerifyKeyDialog() {
             className="w-full rounded-xl border border-transparent bg-hover px-3.5 py-2.5 font-mono text-[0.75rem] text-primary placeholder-secondary transition-all duration-150 focus:bg-chats focus:ring-1 focus:ring-accent"
           />
           {pastedMatches && (
-            <p role="status" className="px-1 text-[0.6875rem] font-semibold text-emerald-600 dark:text-emerald-400">
+            <p role="status" className="px-1 text-[0.6875rem] font-semibold text-verified">
               {t('crypto.verify.matches')}
             </p>
           )}
