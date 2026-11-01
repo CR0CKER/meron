@@ -85,6 +85,15 @@ export function EncryptToggle({
   // A lookup opened from this lock: once every recipient has a key (the user
   // picked "Use this key"), encryption switches on by itself.
   const [lookingUp, setLookingUp] = useState(false)
+  // Encryption is only on when every recipient has a key (Nils): a recipient
+  // without one switches it off, so the lock shows open and the mail can go out
+  // unencrypted (a reply then loses its quote of the encrypted original). A
+  // forward of encrypted mail is the exception: its body is the decrypted text,
+  // so it stays encrypted and Send waits for the keys.
+  const someoneLacksKey = !!keys?.enabled && !keys.own_key_unusable && keys.missing.length > 0
+  useEffect(() => {
+    if (on && someoneLacksKey && sensitive !== 'forward') onChange(false)
+  }, [on, someoneLacksKey, sensitive, onChange])
   useEffect(() => {
     if (!lookingUp || !keys) return
     if (keys.enabled && !keys.own_key_unusable && keys.missing.length === 0) {

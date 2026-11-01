@@ -245,18 +245,43 @@ describe('EncryptToggle', () => {
     expect(value).toBe(false)
   })
 
-  test('while on, the click still turns encryption off', () => {
+  test('a recipient without a key switches encryption off', () => {
     let value = true
-    const { getByRole } = render(
+    render(
       <EncryptToggle
         keys={keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })}
         on
         onChange={(on) => (value = on)}
       />,
     )
-    fireEvent.click(getByRole('switch'))
     expect(value).toBe(false)
-    expect(crypto$.lookup.get()).toBeNull()
+  })
+
+  test('a reply to encrypted mail switches off too (its quote is then dropped)', () => {
+    let value = true
+    render(
+      <EncryptToggle
+        keys={keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })}
+        on
+        sensitive="reply"
+        onChange={(on) => (value = on)}
+      />,
+    )
+    expect(value).toBe(false)
+  })
+
+  test('a forward of encrypted mail stays encrypted and keeps Send blocked', () => {
+    let value = true
+    const missing = keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })
+    render(<EncryptToggle keys={missing} on sensitive="forward" onChange={(on) => (value = on)} />)
+    expect(value).toBe(true)
+    expect(encryptionBlocksSend(true, missing)).toBe(true)
+  })
+
+  test('with keys for everyone, encryption stays on', () => {
+    let value = true
+    render(<EncryptToggle keys={keys()} on onChange={(on) => (value = on)} />)
+    expect(value).toBe(true)
   })
 
   test('a forward of encrypted mail stays encrypted', () => {
