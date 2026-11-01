@@ -136,23 +136,15 @@ export function KeySourcesSection() {
         <Button variant="secondary" disabled={!adding.trim()} onClick={() => void add()}>
           {t('crypto.sources.add')}
         </Button>
-      </div>
-      <div className="flex items-center justify-between gap-2 px-1">
-        {error ? (
-          <p role="alert" className="text-[0.6875rem] text-rose-500">
-            {error}
-          </p>
-        ) : (
-          <span />
-        )}
-        <button
-          type="button"
-          onClick={() => void save(defaults)}
-          className="text-[0.6875rem] font-semibold text-secondary hover:text-primary cursor-pointer"
-        >
+        <Button variant="ghost" onClick={() => void save(defaults)}>
           {t('crypto.sources.reset')}
-        </button>
+        </Button>
       </div>
+      {error && (
+        <p role="alert" className="px-1 text-[0.6875rem] text-rose-500">
+          {error}
+        </p>
+      )}
     </section>
   )
 }
