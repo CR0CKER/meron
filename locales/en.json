@@ -520,6 +520,8 @@
   "crypto.prefs.title": "Composing",
   "crypto.prefs.encryptWhenPossible": "Encrypt when every recipient has a key",
   "crypto.prefs.encryptWhenPossibleHint": "New messages and replies are encrypted by default once Meron has a key for every recipient. You can still turn it off per message.",
+  "crypto.sources.why.wkd": "WKD (Web Key Directory) asks the recipient's own mail domain for the key, at a fixed address on that domain's website. Only whoever runs the domain can publish there, so it's the most trustworthy source. Proton, Posteo, mailbox.org and GnuPG use it.",
+  "crypto.sources.why.vks": "keys.openpgp.org only publishes a key's address after its owner confirmed it by email, so nobody can upload a key in someone else's name. Thunderbird searches it by default.",
   "drawer.inboxes": "Inboxes",
   "drawer.kanbanSubtitle": "Boards and columns",
   "drawer.settingsSubtitle": "Appearance, navigation, storage",

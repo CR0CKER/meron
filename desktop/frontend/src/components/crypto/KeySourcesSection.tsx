@@ -6,6 +6,7 @@ import type { KeySource } from '../../lib/crypto'
 import { crypto$, keySources, setKeySources } from '../../states/crypto'
 import { Button } from '../button/Button'
 import { IconButton } from '../button/IconButton'
+import { InfoTip } from '../tooltip/InfoTip'
 
 const input =
   'flex-1 rounded-xl border border-transparent bg-hover px-3 py-2 text-[0.75rem] text-primary placeholder-secondary focus:bg-chats focus:ring-1 focus:ring-accent'
@@ -96,7 +97,10 @@ export function KeySourcesSection() {
                 className="cursor-pointer accent-accent"
               />
               <span className="min-w-0">
-                <span className="block truncate text-[0.75rem] font-semibold">{sourceLabel(source)}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[0.75rem] font-semibold">{sourceLabel(source)}</span>
+                  {isDefault(source) && <InfoTip hint={t(`crypto.sources.why.${source.kind}`)} />}
+                </span>
                 <span
                   className={`block text-[0.625rem] ${
                     source.kind === 'hkp' ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'
