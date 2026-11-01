@@ -195,3 +195,25 @@ export function buildReplyThreading(target: Message): {
   const refs = parentRefs.includes(parentId) ? parentRefs : [...parentRefs, parentId]
   return { in_reply_to: parentId, references: refs.join(' ') }
 }
+
+/** The message the quick reply answers, or null (no thread, or an account
+ * that can't send). Reactive. */
+export function quickReplyTarget(): Message | null {
+  const thread = getActiveThread()
+  if (!thread) return null
+  const accounts = accounts$.get()
+  const acc = accounts.find((a) => a.id === (thread.account_id || ui$.selectedAccount.get())) ?? accounts[0] ?? null
+  if (!isSendableAccount(acc)) return null
+  return pickReplyTarget(thread)
+}
+
+/** Whether the quick reply is encrypted: the user's choice for this thread,
+ * or by default on when the message answered was itself encrypted (sticky:
+ * an encrypted conversation stays encrypted unless the user says otherwise). */
+export function quickReplyEncrypts(): boolean {
+  const target = quickReplyTarget()
+  if (!target) return false
+  const choice = compose$.quickReplyEncrypt.get()
+  if (choice && choice.threadId === target.thread_id) return choice.on
+  return !!target.crypto?.encrypted
+}

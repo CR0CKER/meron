@@ -19,6 +19,8 @@ export type PendingSend = {
   from: string
   message_id: string
   attachments: { filename: string; mime: string; data: string; inline_id: string }[]
+  /** End-to-end encrypt (the core refuses to send it unencrypted). */
+  encrypt?: boolean
 }
 
 /** Prefix of the synthetic id given to optimistically-rendered sent messages.

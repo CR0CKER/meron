@@ -27,7 +27,14 @@ import {
   textToHtml,
 } from './compose'
 import { inlineRichStyles, prepareInlineImages } from '../components/composer/composerHelpers'
-import { buildReplyRecipients, buildReplyThreading, pickReplyTarget, resolveQuickReplyFrom } from './composeReply'
+import {
+  buildReplyRecipients,
+  buildReplyThreading,
+  pickReplyTarget,
+  quickReplyEncrypts,
+  resolveQuickReplyFrom,
+} from './composeReply'
+import { mayQuoteInto } from '../lib/crypto'
 import { allocateMessageIdentity, compose$, newDraftMessageId } from './composeState'
 import {
   cancelQuickReplyDraftSave,
@@ -270,6 +277,7 @@ export async function sendReply() {
           references: addressed.references,
           draftMessageId: rescueDraftId || claim.unconfirmedDraftId || newDraftMessageId(),
           attachments: box.attachments,
+          encrypt: quickReplyEncrypts(),
         })
         unconfirmedDraftIds.delete(normalizeMessageId(savedDraftId))
       }
@@ -368,7 +376,10 @@ export async function sendReply() {
   // The quote goes out with the mail but stays out of the box and the bubble:
   // the conversation already shows the message it answers.
   let outgoing = { body: text, html, attachments: sendAttachments }
-  const quote = replyQuote(addressed.target)
+  const encrypt = quickReplyEncrypts()
+  // A decrypted original is never quoted into an unencrypted reply ("Re:
+  // What's up Johnny?"): its text would go out in the clear.
+  const quote = mayQuoteInto(addressed.target, encrypt) ? replyQuote(addressed.target) : undefined
   // A saved quoted reply carried back into the box already holds its quote.
   if (quote && !bodyHasReplyQuote(text, quote)) {
     const body = text.trim() ? `${text.replace(/\n+$/, '')}\n\n${quote.text}` : quote.text
@@ -402,6 +413,7 @@ export async function sendReply() {
     references: addressed.references,
     from: addressed.from,
     message_id: messageId,
+    encrypt,
     attachments: outgoing.attachments.map((a) => ({
       filename: a.filename,
       mime: a.mime,

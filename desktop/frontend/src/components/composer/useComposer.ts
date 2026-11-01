@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { encryptionBlocksSend, recipientAddresses, useRecipientKeys } from '../crypto/EncryptToggle'
 import { Extension, useEditor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -347,6 +348,7 @@ export function useComposer(tabId: string) {
           references: current.references,
           draftMessageId,
           attachments,
+          encrypt: !!current.encrypt,
         })
         // A tab closed mid-save lands here too (no latest draft): nothing will
         // adopt the id, so a freshly allocated copy has to go now.
@@ -640,7 +642,14 @@ export function useComposer(tabId: string) {
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }
 
-  const canSend = !sending && !!draft?.accountId && !!draft?.to.trim()
+  // End-to-end encryption: the key check for the recipients as typed. An
+  // encrypted message never goes out while a recipient has no key.
+  const encryptionKeys = useRecipientKeys(
+    draft?.accountId ?? '',
+    recipientAddresses(draft?.to ?? '', draft?.cc ?? '', draft?.bcc ?? ''),
+  )
+  const encryptionBlocked = encryptionBlocksSend(!!draft?.encrypt, encryptionKeys)
+  const canSend = !sending && !!draft?.accountId && !!draft?.to.trim() && !encryptionBlocked
 
   const submit = async () => {
     if (!canSend || !draft) return
@@ -716,6 +725,7 @@ export function useComposer(tabId: string) {
         inReplyTo: current.inReplyTo,
         references: current.references,
         attachments,
+        encrypt: !!current.encrypt,
       })
       // When this tab is a reply to the open conversation, drop the sent message
       // into the thread immediately so it shows without waiting for the next sync.
@@ -762,6 +772,7 @@ export function useComposer(tabId: string) {
     saveStatus,
     saveError,
     canSend,
+    encryptionKeys,
     update,
     toggleRich,
     expandQuote,

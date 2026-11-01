@@ -1,0 +1,252 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import type { MessageCrypto, RecipientKeys } from '../../lib/crypto'
+import { crypto$ } from '../../states/crypto'
+import { ui$ } from '../../states/ui'
+import { CryptoBadge } from './CryptoBadge'
+import { CryptoStrip } from './CryptoStrip'
+import { EncryptToggle, encryptionBlocksSend, recipientAddresses } from './EncryptToggle'
+import { VerifyKeyDialog } from './VerifyKeyDialog'
+
+const FPR = '8E9BCE8647564E257A411B71969BC97D064D88D5'
+const base: MessageCrypto = {
+  encrypted: false,
+  signed: false,
+  trust: 'unconfirmed',
+  partial: false,
+  weak_hash: false,
+  key_changed: false,
+  verified_conflict: false,
+  on_list: false,
+  own: false,
+  signer_stored: false,
+  offer: false,
+}
+
+let calls: { command: string; payload: any }[]
+beforeEach(() => {
+  calls = []
+  crypto$.verify.set(null)
+  crypto$.enableFor.set(null)
+  ui$.selectedThread.set('')
+  ;(window as any).go = {
+    main: {
+      App: {
+        Invoke: async (command: string, payload: any) => {
+          calls.push({ command, payload })
+          if (command === 'pgp.account.state')
+            return { enabled: true, key: { fingerprint: 'AAAA'.repeat(10) }, previous: [] }
+          return { ok: true }
+        },
+      },
+    },
+  }
+})
+afterEach(() => cleanup())
+
+const badge = (crypto: MessageCrypto | null) =>
+  render(<CryptoBadge crypto={crypto} accountId="acc" senderName="Carol" senderAddress="carol@example.com" />)
+
+describe('CryptoBadge', () => {
+  test('ordinary mail shows nothing', () => {
+    expect(badge(null).container.innerHTML).toBe('')
+    expect(badge({ ...base, offer: true }).container.innerHTML).toBe('')
+  })
+
+  test('encrypted and verified: an emerald lock with the full state as its label', () => {
+    const { getByRole } = badge({ ...base, encrypted: true, signed: true, trust: 'verified', signer: FPR })
+    const button = getByRole('button')
+    expect(button.getAttribute('data-tone')).toBe('verified')
+    expect(button.getAttribute('aria-label')).toContain('End-to-end encrypted')
+    expect(button.getAttribute('aria-label')).toContain('which you verified')
+  })
+
+  test('signed only with an unknown key: amber, and no verify action', () => {
+    const { getByRole, queryByText } = badge({ ...base, signed: true, issuer: FPR })
+    const button = getByRole('button')
+    expect(button.getAttribute('data-tone')).toBe('unconfirmed')
+    fireEvent.click(button)
+    expect(queryByText(/Verify Carol/)).toBeNull()
+  })
+
+  test('a known key offers to verify it and opens the dialog for that fingerprint', () => {
+    const { getByRole, getByText } = badge({
+      ...base,
+      encrypted: true,
+      signed: true,
+      trust: 'known',
+      signer: FPR,
+      signer_stored: true,
+    })
+    fireEvent.click(getByRole('button'))
+    fireEvent.click(getByText("Verify Carol's key…"))
+    expect(crypto$.verify.get()).toEqual({
+      addr: 'carol@example.com',
+      name: 'Carol',
+      fingerprint: FPR,
+      accountId: 'acc',
+    })
+  })
+
+  test('a bad signature is rose', () => {
+    expect(
+      badge({ ...base, signed: true, problem: 'invalid_signature' })
+        .getByRole('button')
+        .getAttribute('data-tone'),
+    ).toBe('danger')
+  })
+})
+
+describe('CryptoStrip', () => {
+  const strip = (crypto: MessageCrypto) =>
+    render(
+      <CryptoStrip
+        crypto={crypto}
+        accountId="acc"
+        accountAddress="me@example.org"
+        senderName="Carol"
+        senderAddress="carol@example.com"
+      />,
+    )
+
+  test('a failed decryption is an alert with a way to bring the key', () => {
+    const { getByRole, getByText } = strip({ ...base, encrypted: true, problem: 'no_key' })
+    expect(getByRole('alert').textContent).toContain("a key Meron doesn't have")
+    fireEvent.click(getByText('Use an existing key…'))
+    expect(crypto$.enableFor.get()).toEqual({ accountId: 'acc', address: 'me@example.org' })
+  })
+
+  test('the offer is a quiet status with turn on, not now and never', async () => {
+    const { getByRole, getByText } = strip({ ...base, offer: true })
+    expect(getByRole('status').textContent).toContain('Carol uses end-to-end encryption')
+    await act(async () => fireEvent.click(getByText('Not now')))
+    expect(calls).toContainEqual({
+      command: 'pgp.offer.dismiss',
+      payload: { account: 'acc', addr: 'carol@example.com' },
+    })
+    await act(async () => fireEvent.click(getByText("Don't ask again")))
+    expect(calls).toContainEqual({ command: 'pgp.offer.dismiss', payload: { account: 'acc', addr: '*' } })
+  })
+
+  test('a new key for a verified contact is an alert', () => {
+    const { getByRole } = strip({
+      ...base,
+      encrypted: true,
+      signed: true,
+      key_changed: true,
+      verified_conflict: true,
+      signer: FPR,
+    })
+    expect(getByRole('alert').textContent).toContain('different key than the one you verified')
+  })
+
+  test('nothing to say, nothing shown', () => {
+    expect(strip({ ...base, encrypted: true, signed: true, trust: 'known' }).container.innerHTML).toBe('')
+  })
+})
+
+describe('VerifyKeyDialog', () => {
+  const open = () => {
+    crypto$.verify.set({ addr: 'carol@example.com', name: 'Carol', fingerprint: FPR, accountId: 'acc' })
+    return render(<VerifyKeyDialog />)
+  }
+
+  test('confirming needs a matching paste or the ticked checkbox', async () => {
+    const { getByText, getByLabelText, getByRole } = open()
+    const confirm = getByText('Mark as verified').closest('button')!
+    expect(confirm.disabled).toBe(true)
+    fireEvent.change(getByLabelText(/paste the fingerprint/i), {
+      target: { value: '8e9b ce86 4756 4e25 7a41 1b71 969b c97d 064d 88d5' },
+    })
+    expect(getByRole('status').textContent).toBe('Matches')
+    expect(confirm.disabled).toBe(false)
+    await act(async () => fireEvent.click(confirm))
+    await waitFor(() => expect(calls.some((c) => c.command === 'pgp.peers.setVerified')).toBe(true))
+    const call = calls.find((c) => c.command === 'pgp.peers.setVerified')!
+    expect(call.payload).toMatchObject({ addr: 'carol@example.com', fingerprint: FPR, verified: true })
+  })
+
+  test('a wrong paste blocks verification, even with the checkbox', () => {
+    const { getByText, getByLabelText, getByRole } = open()
+    fireEvent.change(getByLabelText(/paste the fingerprint/i), { target: { value: '0000 1111 2222 3333 4444' } })
+    expect(getByRole('alert').textContent).toContain("Doesn't match")
+    expect((getByText('Mark as verified').closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  test('reading aloud: the checkbox alone enables it', () => {
+    const { getByText, getByLabelText } = open()
+    fireEvent.click(getByLabelText('I compared them, and they match'))
+    expect((getByText('Mark as verified').closest('button') as HTMLButtonElement).disabled).toBe(false)
+  })
+})
+
+describe('EncryptToggle', () => {
+  const keys = (over: Partial<RecipientKeys> = {}): RecipientKeys => ({
+    enabled: true,
+    own_key_unusable: false,
+    missing: [],
+    ...over,
+  })
+
+  test('hidden when the account has no encryption', () => {
+    expect(
+      render(<EncryptToggle keys={keys({ enabled: false })} on={false} onChange={() => {}} />).container.innerHTML,
+    ).toBe('')
+  })
+
+  test('turns on, and reports its state as a switch', () => {
+    let value = false
+    const { getByRole } = render(<EncryptToggle keys={keys()} on={false} onChange={(on) => (value = on)} />)
+    const sw = getByRole('switch')
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(sw)
+    expect(value).toBe(true)
+  })
+
+  test("can't be turned on while a recipient has no key", () => {
+    let value = false
+    const { getByRole } = render(
+      <EncryptToggle
+        keys={keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })}
+        on={false}
+        onChange={(on) => (value = on)}
+      />,
+    )
+    const sw = getByRole('switch') as HTMLButtonElement
+    expect(sw.disabled).toBe(true)
+    expect(sw.title).toContain('bob@example.net')
+    fireEvent.click(sw)
+    expect(value).toBe(false)
+  })
+
+  test('a forward of encrypted mail stays encrypted', () => {
+    let value = true
+    const { getByRole } = render(<EncryptToggle keys={keys()} on sensitive="forward" onChange={(on) => (value = on)} />)
+    fireEvent.click(getByRole('switch'))
+    expect(value).toBe(true)
+  })
+
+  test('Send is blocked while encrypting to someone without a key', () => {
+    expect(encryptionBlocksSend(true, keys({ missing: [{ addr: 'x@y.z', reason: 'none' }] }))).toBe(true)
+    expect(encryptionBlocksSend(true, keys())).toBe(false)
+    expect(encryptionBlocksSend(false, keys({ missing: [{ addr: 'x@y.z', reason: 'none' }] }))).toBe(false)
+    expect(encryptionBlocksSend(true, null)).toBe(true)
+  })
+})
+
+test('recipientAddresses splits like the core', () => {
+  expect(recipientAddresses('"Doe, Jane" <Jane@Example.com>, bob@x.org', '', 'Carol <c@d.e>')).toEqual([
+    'jane@example.com',
+    'bob@x.org',
+    'c@d.e',
+  ])
+})
+
+test('an encrypted original is quoted only into an encrypted reply', async () => {
+  const { composedContent } = await import('../../states/compose')
+  const quote = { html: '<blockquote>secret</blockquote>', text: '> secret' }
+  const draft = { rich: false, html: '', text: 'Thanks!', quote, sensitiveSource: 'reply' as const }
+  expect(composedContent({ ...draft, encrypt: true })).toContain('> secret')
+  expect(composedContent({ ...draft, encrypt: false })).toBe('Thanks!')
+  expect(composedContent({ ...draft, sensitiveSource: undefined, encrypt: false })).toContain('> secret')
+})

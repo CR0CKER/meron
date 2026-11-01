@@ -9,6 +9,8 @@ import { useQuickReply } from './useQuickReply'
 import { QuickReplyAttachments } from './QuickReplyAttachments'
 import { QuickReplyFrom } from './QuickReplyFrom'
 import { QuickReplyRecipients } from './QuickReplyRecipients'
+import { quickReplyEncrypts, quickReplyRecipients, quickReplyTarget } from '../../states/composeReply'
+import { EncryptToggle, encryptionBlocksSend, recipientAddresses, useRecipientKeys } from '../crypto/EncryptToggle'
 
 export function QuickReplyComposer() {
   const { t } = useTranslation()
@@ -28,7 +30,13 @@ export function QuickReplyComposer() {
   // A box holding only its seeded signature counts as empty. The check peeks
   // rather than subscribing, but `composer` is rendered below, so every
   // keystroke re-renders this and re-evaluates it.
-  const canSend = !sendingReply && !isQuickReplyBlank()
+  const target = useValue(quickReplyTarget)
+  const { to, cc } = useValue(quickReplyRecipients)
+  const encrypt = useValue(quickReplyEncrypts)
+  const keys = useRecipientKeys(target?.account_id ?? '', recipientAddresses(to, cc))
+  const sensitive = target?.crypto?.encrypted ? ('reply' as const) : undefined
+  const blocked = encryptionBlocksSend(encrypt, keys)
+  const canSend = !sendingReply && !isQuickReplyBlank() && !blocked
 
   return (
     // The footer floats over the message list (MessagePane) and paints nothing
@@ -88,6 +96,14 @@ export function QuickReplyComposer() {
           <div className="ml-auto flex min-w-0 shrink items-center">
             <QuickReplyRecipients />
           </div>
+          {target && (
+            <EncryptToggle
+              keys={keys}
+              on={encrypt}
+              sensitive={sensitive}
+              onChange={(on) => compose$.quickReplyEncrypt.set({ threadId: target.thread_id, on })}
+            />
+          )}
           <button
             onClick={handleSendReply}
             disabled={!canSend}

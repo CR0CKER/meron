@@ -2,6 +2,8 @@ import { Paperclip, Image as ImageIcon, RefreshCw, Send, Type } from 'lucide-rea
 import { useTranslation } from '../../lib/i18n'
 import { sendShortcutLabel } from '../../states/settings'
 import { IconButton } from '../button/IconButton'
+import type { RecipientKeys } from '../../lib/crypto'
+import { EncryptRecipientsNote, EncryptToggle } from '../crypto/EncryptToggle'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -13,6 +15,7 @@ export function ComposerFooter({
   saveStatus,
   saveError,
   canSend,
+  encryption,
   onPickFiles,
   onPickInlineImages,
   onToggleRich,
@@ -24,6 +27,13 @@ export function ComposerFooter({
   saveStatus: SaveStatus
   saveError?: string
   canSend: boolean
+  /** The end-to-end encryption toggle, when the account can encrypt. */
+  encryption?: {
+    keys: RecipientKeys | null
+    on: boolean
+    sensitive?: 'reply' | 'forward'
+    onChange: (on: boolean) => void
+  }
   onPickFiles: () => void
   onPickInlineImages: () => void
   onToggleRich: () => void
@@ -91,6 +101,18 @@ export function ComposerFooter({
         >
           {t('buttons.discard')}
         </button>
+        {encryption && (
+          <>
+            <EncryptRecipientsNote keys={encryption.keys} on={encryption.on} />
+            <EncryptToggle
+              size="md"
+              keys={encryption.keys}
+              on={encryption.on}
+              sensitive={encryption.sensitive}
+              onChange={encryption.onChange}
+            />
+          </>
+        )}
         <button
           onClick={onSubmit}
           disabled={!canSend}

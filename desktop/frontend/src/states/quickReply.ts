@@ -18,7 +18,13 @@ import {
   resolveSignatureFor,
   saveComposedDraft,
 } from './compose'
-import { buildReplyRecipients, buildReplyThreading, pickReplyTarget, resolveQuickReplyFrom } from './composeReply'
+import {
+  buildReplyRecipients,
+  buildReplyThreading,
+  pickReplyTarget,
+  quickReplyEncrypts,
+  resolveQuickReplyFrom,
+} from './composeReply'
 import { compose$, newDraftMessageId } from './composeState'
 
 // Quick-reply draft lifecycle: signature seeding, autosave, hydration from a
@@ -184,6 +190,7 @@ async function performQuickReplyDraftSave() {
       references,
       draftMessageId: draftId,
       attachments,
+      encrypt: quickReplyEncrypts(),
     })
     // Only when the box still points at the placeholder this save started from:
     // a send (or a thread switch) that cleared it in the meantime has moved on,

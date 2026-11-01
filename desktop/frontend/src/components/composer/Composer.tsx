@@ -26,6 +26,7 @@ export function Composer({ tabId }: { tabId: string }) {
     saveStatus,
     saveError,
     canSend,
+    encryptionKeys,
     update,
     toggleRich,
     expandQuote,
@@ -165,6 +166,16 @@ export function Composer({ tabId }: { tabId: string }) {
         saveStatus={error ? 'idle' : saveStatus}
         saveError={saveError}
         canSend={canSend}
+        encryption={
+          draft.encrypt !== undefined || encryptionKeys?.enabled
+            ? {
+                keys: encryptionKeys,
+                on: !!draft.encrypt,
+                sensitive: draft.sensitiveSource,
+                onChange: (on: boolean) => update({ encrypt: on }),
+              }
+            : undefined
+        }
         onPickFiles={() => void pickAttachmentFiles()}
         onPickInlineImages={() => void pickInlineImages()}
         onToggleRich={toggleRich}

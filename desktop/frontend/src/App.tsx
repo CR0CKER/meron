@@ -29,6 +29,8 @@ import { AppToast } from './components/toast/AppToast'
 import { EmlExportProgress } from './components/toast/EmlExportProgress'
 import { McpApprovalDialog } from './components/dialog/McpApprovalDialog'
 import { AppConfirm } from './components/dialog/AppConfirm'
+import { EnableEncryptionDialog } from './components/crypto/EnableEncryptionDialog'
+import { VerifyKeyDialog } from './components/crypto/VerifyKeyDialog'
 import { CertificateTrustDialog } from './components/dialog/CertificateTrustDialog'
 import { TitleBar, useTitleBar } from './components/titlebar/TitleBar'
 import { ConnectivityBanner } from './components/banner/ConnectivityBanner'
@@ -161,6 +163,9 @@ export default function App() {
         {setupOpen && <AccountDialog />}
         {addFeedAccount && <AddFeedDialog />}
         {editFeed && <FeedEditDialog />}
+        {/* End-to-end encryption: opened from messages, the composer and Settings. */}
+        <EnableEncryptionDialog />
+        <VerifyKeyDialog />
 
         <AppToast />
         <EmlExportProgress />

@@ -1,0 +1,163 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Lock, LockOpen } from 'lucide-react'
+import { useValue } from '@legendapp/state/react'
+import { useTranslation } from '../../lib/i18n'
+import type { RecipientKeys } from '../../lib/crypto'
+import { crypto$, recipientKeys } from '../../states/crypto'
+import { confirmAction } from '../../states/ui'
+
+/** Bare addresses of a comma-separated recipient field (quotes and angle
+ * brackets respected, like the core's `split_recipients`). */
+export function recipientAddresses(...fields: string[]): string[] {
+  const out: string[] = []
+  for (const field of fields) {
+    let current = ''
+    let quoted = false
+    let bracket = false
+    for (const ch of field) {
+      if (ch === '"') quoted = !quoted
+      else if (ch === '<' && !quoted) bracket = true
+      else if (ch === '>' && !quoted) bracket = false
+      if (ch === ',' && !quoted && !bracket) {
+        out.push(current)
+        current = ''
+      } else current += ch
+    }
+    out.push(current)
+  }
+  return out
+    .map((entry) => {
+      const m = entry.match(/<([^>]+)>/)
+      return (m ? m[1] : entry).trim().replace(/^"|"$/g, '').toLowerCase()
+    })
+    .filter((addr) => addr.includes('@'))
+}
+
+/** The composer's key check for these recipients, debounced while typing. */
+export function useRecipientKeys(accountId: string, addrs: string[]): RecipientKeys | null {
+  const version = useValue(crypto$.version)
+  const key = addrs.join(',')
+  const [state, setState] = useState<RecipientKeys | null>(null)
+  useEffect(() => {
+    let live = true
+    const timer = setTimeout(() => {
+      void recipientKeys(accountId, key ? key.split(',') : [])
+        .then((res) => live && setState(res))
+        .catch(() => live && setState(null))
+    }, 250)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [accountId, key, version])
+  return state
+}
+
+/** Why the composer may not send as it stands, or null. */
+export function encryptionBlocksSend(on: boolean, keys: RecipientKeys | null): boolean {
+  if (!on) return false
+  if (!keys) return true
+  return !keys.enabled || keys.own_key_unusable || keys.missing.length > 0
+}
+
+/**
+ * The composer's end-to-end encryption toggle, left of Send (Nils: a toggle,
+ * sticky on replies). Shown only when the From account has encryption on.
+ * Never downgrades silently: with a recipient who has no key it stays on and
+ * Send is blocked until the user removes them or turns encryption off.
+ */
+export function EncryptToggle({
+  keys,
+  on,
+  onChange,
+  sensitive,
+  size = 'sm',
+}: {
+  keys: RecipientKeys | null
+  on: boolean
+  onChange: (on: boolean) => void
+  /** Carries text from an encrypted message (a reply's quote, a forward). */
+  sensitive?: 'reply' | 'forward'
+  size?: 'sm' | 'md'
+}) {
+  const { t } = useTranslation()
+  const missing = useMemo(() => keys?.missing.map((m) => m.addr).join(', ') ?? '', [keys])
+  if (!keys) return null
+  if (!keys.enabled) {
+    // Answering encrypted mail from an account without encryption: say why
+    // the quote is gone and how to reply encrypted, without a toggle.
+    if (!sensitive) return null
+    return (
+      <span
+        className="flex h-7 w-7 shrink-0 items-center justify-center text-amber-600 dark:text-amber-400"
+        title={t('crypto.toggle.accountOff')}
+        aria-label={t('crypto.toggle.accountOff')}
+      >
+        <LockOpen size={15} />
+      </span>
+    )
+  }
+
+  const unavailable = keys.own_key_unusable || keys.missing.length > 0
+  const locked = on && sensitive === 'forward'
+  let title = on ? t('crypto.toggle.on') : t('crypto.toggle.off')
+  if (keys.own_key_unusable) title = t('crypto.toggle.ownKeyUnusable')
+  else if (unavailable && on) title = t('crypto.toggle.blocked', { addresses: missing })
+  else if (unavailable) title = t('crypto.toggle.noKey', { addresses: missing })
+  else if (locked) title = t('crypto.toggle.forwardLocked')
+
+  const click = async () => {
+    if (locked) return
+    if (!on) {
+      if (!unavailable) onChange(true)
+      return
+    }
+    if (sensitive === 'reply') {
+      const ok = await confirmAction({
+        title: t('crypto.toggle.offTitle'),
+        message: t('crypto.toggle.offMessage'),
+        confirmLabel: t('crypto.toggle.offConfirm'),
+      })
+      if (!ok) return
+    }
+    onChange(false)
+  }
+
+  const box = size === 'md' ? 'h-8 w-8' : 'h-7 w-7'
+  const tone = on
+    ? unavailable
+      ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
+      : 'text-accent bg-accent/10'
+    : unavailable
+      ? 'text-secondary/50 cursor-not-allowed'
+      : 'text-secondary hover:bg-active hover:text-primary'
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={title}
+      title={title}
+      disabled={!on && unavailable}
+      onClick={() => void click()}
+      className={`flex ${box} shrink-0 items-center justify-center rounded-lg transition-colors cursor-pointer ${tone}`}
+    >
+      {on ? <Lock size={15} strokeWidth={2.4} /> : <LockOpen size={15} />}
+    </button>
+  )
+}
+
+/** One line for the full composer when recipients lack keys. */
+export function EncryptRecipientsNote({ keys, on }: { keys: RecipientKeys | null; on: boolean }) {
+  const { t } = useTranslation()
+  if (!keys?.enabled || keys.missing.length === 0) return null
+  const addresses = keys.missing.map((m) => m.addr).join(', ')
+  return (
+    <p
+      role={on ? 'alert' : 'status'}
+      className={`px-1 text-[0.6875rem] ${on ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'}`}
+    >
+      {on ? t('crypto.toggle.blocked', { addresses }) : t('crypto.toggle.noKey', { addresses })}
+    </p>
+  )
+}
