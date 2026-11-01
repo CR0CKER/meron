@@ -243,7 +243,9 @@ def build(gpg: Gpg) -> None:
         carol_new_home.run("--import", stdin=gpg.run("--armor", "--export", alice))
         part = inner_part("New laptop", "Hi Alice, I'm writing from my new laptop.")
         armored = carol_new_home.run("--local-user", carol_new, "--recipient", alice, "--armor", "--sign", "--encrypt", stdin=part.encode())
-        write("key-change.eml", pgp_mime(headers(CAROL, ALICE, "[...]", msgid="key-change"), armored))
+        # The new key arrives the way it would in practice: in the Autocrypt header.
+        ac = autocrypt_header(carol_new_home, "carol@example.com", carol_new)
+        write("key-change.eml", pgp_mime(headers(CAROL, ALICE, "[...]", [ac], msgid="key-change"), armored))
     finally:
         subprocess.run(["gpgconf", "--homedir", str(carol_new_home.home), "--kill", "all"], check=False, capture_output=True)
         shutil.rmtree(carol_new_home.home, ignore_errors=True)

@@ -63,7 +63,11 @@ pub fn upsert_messages(
             "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, starred, thread_key, json, recipients, files)
              VALUES(?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(account, folder, msg_id) DO UPDATE SET
-               subject    = excluded.subject,
+               -- A decrypted body knows the real subject (RFC 9788 protected
+               -- headers); the envelope only has a placeholder such as [...].
+               subject    = CASE WHEN json_extract(messages.json, '$.crypto.encrypted') = 1
+                                  AND messages.body IS NOT NULL
+                             THEN messages.subject ELSE excluded.subject END,
                from_name  = excluded.from_name,
                from_addr  = excluded.from_addr,
                date       = excluded.date,
@@ -1058,6 +1062,11 @@ pub fn get_cached_message(
             .get("invite")
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok()),
+        crypto: extra
+            .get("crypto")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
+        found_keys: Default::default(),
         preview: String::new(),
         attachments,
     }))
@@ -1141,6 +1150,7 @@ pub fn save_cached_message(
         "body_is_rendered": message.body_is_rendered,
         "attachments": attachments_json,
         "invite": message.invite,
+        "crypto": message.crypto,
     })
     .to_string();
 
@@ -1174,6 +1184,22 @@ pub fn save_cached_message(
             files_json(message)
         ],
     )?;
+
+    // Keys announced in (or attached to) the message: every body fetch lands
+    // here, so Autocrypt works whichever path read it. Recorded before the
+    // calendar step; a failure must not lose the message.
+    if !message.found_keys.is_empty() {
+        let changed = crate::openpgp::store::ingest(
+            conn,
+            &message.found_keys.announced,
+            &message.found_keys.attached,
+            message.date,
+        )
+        .unwrap_or(false);
+        if changed {
+            let _ = crate::openpgp::store::reload(conn);
+        }
+    }
 
     // Every body fetch lands here, so an organizer's update reaches the
     // calendar whichever path read it. A calendar failure must not lose the

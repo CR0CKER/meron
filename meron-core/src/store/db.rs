@@ -686,6 +686,9 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
     if version < 21 {
         migrate_v21(&tx)?;
     }
+    if version < 22 {
+        migrate_v22(&tx)?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -1357,5 +1360,13 @@ fn migrate_v21(conn: &Connection) -> Result<()> {
         "ALTER TABLE events ADD COLUMN alerts TEXT;
          PRAGMA user_version = 21;",
     )?;
+    Ok(())
+}
+
+/// OpenPGP keys (nonbili/meron#46): own and peer keys, per-account switch,
+/// dismissed encryption offers. See `openpgp::store`.
+fn migrate_v22(conn: &Connection) -> Result<()> {
+    conn.execute_batch(crate::openpgp::store::DDL)?;
+    conn.execute_batch("PRAGMA user_version = 22;")?;
     Ok(())
 }

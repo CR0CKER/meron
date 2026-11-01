@@ -4,6 +4,15 @@ Subject: [...]
 Date: Sun, 01 Nov 2026 10:00:00 +0100
 Message-ID: <key-change@example.com>
 MIME-Version: 1.0
+Autocrypt: addr=carol@example.com; prefer-encrypt=mutual; keydata=
+ mDMEaudSpxYJKwYBBAHaRw8BAQdA12IWLOz4CYxYrOOB1u/rE6zqMOIOrQA+TftXv9+PtKy0IUNh
+ cm9sIEV4YW1wbGUgPGNhcm9sQGV4YW1wbGUuY29tPoiTBBMWCgA7FiEEC9sffkK8TfYvoJY9y/Ib
+ T9Zvxx4FAmrnUqcCGwMFCwkIBwICIgIGFQoJCAsCBBYCAwECHgcCF4AACgkQy/IbT9Zvxx7j7AEA
+ xU8p0bG9GVKmvcj6Rb7yvRA5sONaIviBukEwndIh4tQBAIFkC0mihITrsR0ffIWor730V2VNWeLv
+ 8ENVhHIpTN8NuDgEaudSpxIKKwYBBAGXVQEFAQEHQPJhvgFI1dAKISoAqXheBkb3MnxUZetmO496
+ LcTVMQEgAwEIB4h4BBgWCgAgFiEEC9sffkK8TfYvoJY9y/IbT9Zvxx4FAmrnUqcCGwwACgkQy/Ib
+ T9Zvxx4KwwEA4OSvnaq81u7iRJYQX51FH0ZGcDFvbkBuUTzUhgH5LtkA/3tkJbUk5nlk+lSgTmTN
+ JDLSoaLjUATrF6+uaHvHJ14E
 Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="enc-boundary"
 
 --enc-boundary
@@ -18,18 +27,18 @@ Content-Disposition: inline; filename="encrypted.asc"
 
 -----BEGIN PGP MESSAGE-----
 
-hF4DGPnudEGlImASAQdAbfHaDWDiq4bRiWzhIrgBA184mbUL3kj3MXDrepzMTkkw
-vJgeXiLMzPdk6G/J2lT66tuujATTuFxNTP2Fs1RCryEqHbuEbxgeRq7xSH2/Qgnj
-0sDHAXGLD+9pgFBPpjg7fYgp6MV+AUBO3Cf7ZhsOna1rJSN2vRAuHi9CDashDM3b
-+SPsCGYu1umVwXDSP/AlfbJU0KDI81aSFTI8Cd42FmnjnZNj1yUD8klu0CVMvmW6
-I8jWFp8vLKQhq89cgXFrvt0cjbqDQKyZobPHMFBqOiNK+HgclxWL0R/tt9FneI3D
-OkTTBz3xp3i0BB5g4cmPbGlYfyXw1xIrYjnSQex2XiS80ELLf4azw+IY3OAh9b4S
-Ludh+R+Q+t76e9CJarYvM57Q3eHXS9VNPKBbvE9iSGccW+9yD1BcqDXMtTRoUZyo
-gVps+e7uYfFykOMSyR9G323rFRU0n2tWswuFBa4gAustKLg61aEbjUUTmeczQujS
-xH4+tJeB658DiqDCTvY6DPFWMY3HdrjtlKMUpoejjBxOcwBhUWvJ3MkkZZXysu5M
-6ZgAWv2e+hkJYUAsDvF8jCX2AhBfuCU+MOwpQ1QBMj/42IL0miHY0ooknbeFfnMw
-y244OLQnWUVMGA==
-=3LrU
+hF4Dw+SvfiYTj4gSAQdAew9CZ57lRlLHzBLfimA7n+IaS47GwYDxNfH1Dk3FhSsw
+rDHhk15+vhklc3Jae8jF5JsZ+bLTQNfo8qPVtwuRUi3fOhCg/HhVqXEDbqusSKQF
+0sDGAcPPbWAK1QjW72G+ojI7pzV7mEKzCzz/peTLzTlZtlpQsCOFk0nnz147K11D
+tvTv9rEhKK6C8XMP+0Hd2MtXxqZWAUAxTI4+Cu5Y1F3y5iN8LldAO+AjrezxwOXd
+/UyVNT0aWS4TKVoHl52SWJA0v1HkrZOXy6xfPxEDehJZhtPzmZUMpmfmwZlKvAXY
+EOBJzconE0iVY5GeUZmu+0u66AkiE0Y2XkPQsKh0bXIgdbrFMn8xPdl6Lns6rB+E
+8Gy0IGJdNROJ+iDIWyOH11SUqsnke0GpMAu8jl1t2h6CwDw944UewQP4qG/kjpvL
+8CaibYgbWQcRzWnYKU7WuSVLM368vvaJSuyDSrgaR/W0aSUngpMPstPxgSZQ5qZK
+l7ynS3nvdJyfVGqvEuioOToybRGsRDQNxvxzEqnVYBWfGX9ON5E6g7FGiG7EN+xb
+YufrPDRQY0t+sHbl7sP8+PYVAFRe0byHbXRAT37XeQDBj/FXxcjH5FJkYrP9N8jr
+1kEwvcWuy0B8
+=pZcg
 -----END PGP MESSAGE-----
 
 --enc-boundary--
