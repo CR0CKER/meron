@@ -92,7 +92,6 @@ export function EncryptionSettingsPage() {
           <span>{t('crypto.peers.import')}</span>
         </Button>
       </div>
-      <p className="px-1 text-[0.65625rem] leading-relaxed text-secondary">{t('crypto.peers.importHint')}</p>
       {error && (
         <p role="alert" className="px-1 text-[0.6875rem] text-rose-500">
           {error}

@@ -422,7 +422,6 @@
   "crypto.peers.import": "Import keys…",
   "crypto.peers.importAction": "{count, plural, one {Import 1 key} other {Import {count} keys}}",
   "crypto.peers.imported": "{count, plural, one {1 key imported} other {{count} keys imported}}",
-  "crypto.peers.importHint": "From GnuPG: gpg --export --armor > contacts.asc. From Thunderbird: Key Manager → File → Export Public Keys.",
   "crypto.peers.importTitle": "Import keys",
   "crypto.peers.intro": "Keys of the people you exchange encrypted mail with. They arrive by themselves with their mail; verify a key by comparing its fingerprint with its owner.",
   "crypto.peers.known": "Known",
