@@ -116,6 +116,23 @@ fn refetch_encrypted_cached_without_openpgp_once(conn: &Connection) -> Result<us
     Ok(n)
 }
 
+/// Messages in `folder` still titled with the protected-headers placeholder
+/// and without a cached body, whatever their age: encrypted mail never
+/// decrypted. The prefetcher adds them to its 14-day window so their real
+/// subject arrives without the user opening each one.
+pub fn undecrypted_placeholder_uids(conn: &Connection, account: &str, folder: &str) -> Result<Vec<u32>> {
+    let mut stmt = conn.prepare(
+        "SELECT uid FROM messages
+         WHERE account = ?1 AND folder = ?2 AND uid <> 0 AND body IS NULL
+           AND trim(subject) IN ('...', '[...]')
+         ORDER BY uid",
+    )?;
+    let uids = stmt
+        .query_map(params![account, folder], |r| r.get::<_, u32>(0))?
+        .collect::<rusqlite::Result<Vec<u32>>>()?;
+    Ok(uids)
+}
+
 /// Whether `conn` is the store keys belong to (true in tests and before the
 /// main engine registered, so in-memory stores keep working).
 fn is_main(conn: &Connection) -> bool {
@@ -1021,6 +1038,26 @@ mod tests {
             }
         }
         assert_eq!(refetch_encrypted_cached_without_openpgp_once(&conn).unwrap(), 0, "only once");
+    }
+
+    #[test]
+    fn placeholder_rows_without_a_body_are_listed_for_prefetch() {
+        let conn = crate::store::open_at(":memory:").unwrap();
+        let insert = |folder: &str, uid: u32, subject: &str, body: Option<&str>| {
+            conn.execute(
+                "INSERT INTO messages (account, folder, msg_id, uid, subject, from_name, from_addr, date, body, json)
+                 VALUES ('a', ?1, ?2, ?2, ?3, 'n', 'x@y.z', 0, ?4, '{}')",
+                params![folder, uid, subject, body],
+            )
+            .unwrap();
+        };
+        insert("INBOX", 3, "...", None);
+        insert("INBOX", 1, " [...] ", None);
+        insert("INBOX", 2, "...", Some("decrypted already"));
+        insert("INBOX", 4, "Lunch", None);
+        insert("Archive", 5, "...", None);
+        assert_eq!(undecrypted_placeholder_uids(&conn, "a", "INBOX").unwrap(), vec![1, 3]);
+        assert!(undecrypted_placeholder_uids(&conn, "b", "INBOX").unwrap().is_empty());
     }
 
     #[test]
