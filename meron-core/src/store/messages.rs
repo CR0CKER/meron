@@ -1129,6 +1129,29 @@ pub fn backfill_files_batch(conn: &Connection, batch: u32) -> Result<bool> {
     Ok(false)
 }
 
+/// The UID of a message in `folder` with Message-ID `message_id` and no cached
+/// body yet: the Sent copy a tail refresh stored as an envelope.
+pub fn sent_copy_uid_without_body(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    message_id: &str,
+) -> Result<Option<u32>> {
+    if message_id.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(conn
+        .query_row(
+            "SELECT uid FROM messages
+             WHERE account = ?1 AND folder = ?2 AND uid <> 0 AND body IS NULL
+               AND lower(json_extract(json, '$.message_id')) = lower(?3)
+             ORDER BY uid DESC LIMIT 1",
+            params![account, folder, message_id.trim()],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
 pub fn save_cached_message(
     conn: &Connection,
     account: &str,

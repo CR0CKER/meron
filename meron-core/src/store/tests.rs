@@ -5596,3 +5596,26 @@ fn placeholder_reply_subjects_are_repaired_in_every_account() {
         .unwrap();
     assert_eq!(repaired, 2);
 }
+
+// After an encrypted send, the engine caches its own Sent copy's body at once;
+// it finds the row the tail refresh just stored by Message-ID.
+#[test]
+fn a_sent_copy_without_a_body_is_found_by_message_id() {
+    let conn = test_conn();
+    let insert = |folder: &str, uid: u32, mid: &str, body: Option<&str>| {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr, date, seen, body, json)
+             VALUES('acct', ?1, ?2, ?3, '[...]', 'Me', 'me@example.com', 100, 1, ?4, json_object('message_id', ?5))",
+            params![folder, uid.to_string(), uid, body, mid],
+        )
+        .unwrap();
+    };
+    insert("Sent", 7, "<new@example.com>", None);
+    insert("Sent", 6, "<old@example.com>", Some("cached"));
+    insert("INBOX", 9, "<new@example.com>", None);
+    let find = |folder: &str, mid: &str| sent_copy_uid_without_body(&conn, "acct", folder, mid).unwrap();
+    assert_eq!(find("Sent", "<NEW@example.com>"), Some(7));
+    assert_eq!(find("Sent", "<old@example.com>"), None, "already has a body");
+    assert_eq!(find("Sent", "<other@example.com>"), None);
+    assert_eq!(find("Sent", ""), None);
+}
