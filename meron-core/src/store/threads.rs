@@ -786,6 +786,77 @@ pub(super) fn effective_thread_key(message: &MessageHeader) -> String {
     }
 }
 
+/// Whether a grouping subject is nothing but an encrypted message's
+/// placeholder: `[...]` strips to nothing (a bracket tag), `...` stays.
+fn is_placeholder_group(group: &str) -> bool {
+    group.is_empty() || group == "..."
+}
+
+/// Encrypted replies whose protected subject is only the placeholder (written
+/// by a client that had not decrypted the thread: `Re: [...]`) take the
+/// thread's real subject as `Re: <subject>`, from the oldest message that has
+/// one. Left as they were, they group under an empty subject and form a
+/// branch of their own, out of the thread. Only encrypted rows are touched: a
+/// plain mail really titled `[...]` keeps it. `thread_key` limits the repair to
+/// one thread. Returns how many rows changed.
+pub fn repair_placeholder_reply_subjects(
+    conn: &Connection,
+    account: &str,
+    thread_key: Option<&str>,
+) -> Result<usize> {
+    let mut stmt = conn.prepare(
+        "SELECT folder, msg_id, thread_key, subject FROM messages
+         WHERE account = ?1 AND (?2 IS NULL OR thread_key = ?2)
+           AND thread_key IS NOT NULL AND thread_key <> ''
+           AND json_extract(json, '$.crypto.encrypted') = 1",
+    )?;
+    let rows: Vec<(String, String, String, String)> = stmt
+        .query_map(params![account, thread_key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut real: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+    let mut changed = 0;
+    for (folder, msg_id, key, subject) in rows {
+        if !should_branch_thread_by_subject(&key) || !is_placeholder_group(&thread_grouping_subject(&subject)) {
+            continue;
+        }
+        if !real.contains_key(&key) {
+            let mut oldest = conn.prepare(
+                "SELECT subject FROM messages WHERE account = ?1 AND thread_key = ?2
+                 ORDER BY date = 0, date, uid",
+            )?;
+            let found = oldest
+                .query_map(params![account, key], |r| r.get::<_, String>(0))?
+                .filter_map(|s| s.ok())
+                .map(|s| thread_grouping_subject(&s))
+                .find(|group| !is_placeholder_group(group));
+            real.insert(key.clone(), found);
+        }
+        if let Some(Some(group)) = real.get(&key) {
+            changed += conn.execute(
+                "UPDATE messages SET subject = ?4 WHERE account = ?1 AND folder = ?2 AND msg_id = ?3",
+                params![account, folder, msg_id, format!("Re: {group}")],
+            )?;
+        }
+    }
+    Ok(changed)
+}
+
+/// [`repair_placeholder_reply_subjects`] for every account.
+pub fn repair_placeholder_reply_subjects_everywhere(conn: &Connection) -> Result<usize> {
+    let accounts: Vec<String> = conn
+        .prepare(
+            "SELECT DISTINCT account FROM messages
+             WHERE json_extract(json, '$.crypto.encrypted') = 1",
+        )?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut changed = 0;
+    for account in accounts {
+        changed += repair_placeholder_reply_subjects(conn, &account, None)?;
+    }
+    Ok(changed)
+}
+
 /// The branch-aware thread key a list card for `message` carries: the root
 /// thread key joined with the message's grouping subject for branchable
 /// threads, or the bare root for uid:/gmthrid: keys. Every path that mints a

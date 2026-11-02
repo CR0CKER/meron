@@ -1185,6 +1185,22 @@ pub fn save_cached_message(
         ],
     )?;
 
+    // A decrypted message can be the reply titled with the placeholder or the
+    // thread start that knows the real subject: repair its thread either way.
+    if message.crypto.as_ref().is_some_and(|c| c.encrypted) {
+        let thread_key: Option<String> = conn
+            .query_row(
+                "SELECT thread_key FROM messages WHERE account = ?1 AND folder = ?2 AND uid = ?3",
+                params![account, folder, uid],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        if let Some(thread_key) = thread_key.filter(|k| !k.is_empty()) {
+            let _ = super::repair_placeholder_reply_subjects(conn, account, Some(&thread_key));
+        }
+    }
+
     // Keys announced in (or attached to) the message: every body fetch lands
     // here, so Autocrypt works whichever path read it. Recorded before the
     // calendar step; a failure must not lose the message.

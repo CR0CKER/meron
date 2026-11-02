@@ -5503,3 +5503,96 @@ fn grouped_card_title_skips_the_placeholder_of_an_encrypted_message_never_decryp
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].header.subject, "Re: Secret plans");
 }
+
+// A reply written by a client that had not decrypted the thread carries the
+// placeholder as its protected subject ("Re: [...]"). It would form a subject
+// branch of its own (an empty grouping subject) and drop out of the thread.
+#[test]
+fn an_encrypted_reply_titled_with_the_placeholder_takes_the_threads_subject() {
+    let conn = test_conn();
+    let insert = |uid: u32, subject: &str, encrypted: bool, thread: &str| {
+        let json = if encrypted { r#"{"crypto":{"encrypted":true}}"# } else { "{}" };
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr,
+                                  date, seen, thread_key, body, json)
+             VALUES('acct', 'INBOX', ?1, ?2, ?3, 'Aki', 'aki@example.com', ?4, 1, ?5, 'b', ?6)",
+            params![uid.to_string(), uid, subject, 100 * uid as i64, thread, json],
+        )
+        .unwrap();
+    };
+    let subject = |uid: u32| -> String {
+        conn.query_row("SELECT subject FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    insert(1, "Testing This", true, "root@example.com");
+    insert(2, "Re: [...]", true, "root@example.com");
+    insert(3, "...", true, "root@example.com");
+    // Not encrypted: a subject really written as "[...]" stays.
+    insert(4, "Re: [...]", false, "root@example.com");
+    // No real subject anywhere in its thread: nothing to take.
+    insert(5, "Re: [...]", true, "other@example.com");
+
+    assert_eq!(repair_placeholder_reply_subjects(&conn, "acct", None).unwrap(), 2);
+    assert_eq!(subject(2), "Re: Testing This");
+    assert_eq!(subject(3), "Re: Testing This");
+    assert_eq!(subject(4), "Re: [...]");
+    assert_eq!(subject(5), "Re: [...]");
+    assert_eq!(repair_placeholder_reply_subjects(&conn, "acct", None).unwrap(), 0, "idempotent");
+}
+
+// Saving a body repairs its thread either way round: the placeholder reply
+// decrypted after the thread start, or the thread start after the reply.
+#[test]
+fn saving_a_decrypted_body_repairs_placeholder_replies_in_its_thread() {
+    let conn = test_conn();
+    let header = |uid: u32, subject: &str| {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr,
+                                  date, seen, thread_key, json)
+             VALUES('acct', 'INBOX', ?1, ?2, ?3, 'Aki', 'aki@example.com', ?4, 1, 'root@example.com', '{}')",
+            params![uid.to_string(), uid, subject, 100 * uid as i64],
+        )
+        .unwrap();
+    };
+    let decrypted = |subject: &str| crate::parse::Message {
+        subject: subject.to_string(),
+        from_name: "Aki".to_string(),
+        from_addr: "aki@example.com".to_string(),
+        body: "text".to_string(),
+        crypto: Some(crate::openpgp::mime::CryptoStatus { encrypted: true, ..Default::default() }),
+        ..Default::default()
+    };
+    let subject = |uid: u32| -> String {
+        conn.query_row("SELECT subject FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    header(1, "[...]");
+    header(2, "[...]");
+    // The reply decrypts first: its thread has no real subject yet.
+    save_cached_message(&conn, "acct", "INBOX", 2, &decrypted("Re: [...]")).unwrap();
+    assert_eq!(subject(2), "Re: [...]");
+    // Then the thread start: the reply takes its subject.
+    save_cached_message(&conn, "acct", "INBOX", 1, &decrypted("Testing This")).unwrap();
+    assert_eq!(subject(2), "Re: Testing This");
+}
+
+// Rows cached before the repair existed are fixed at startup, in every account.
+#[test]
+fn placeholder_reply_subjects_are_repaired_in_every_account() {
+    let conn = test_conn();
+    for account in ["one", "two"] {
+        for (uid, subject) in [(1u32, "Topic"), (2, "Re: [...]")] {
+            conn.execute(
+                "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr,
+                                      date, seen, thread_key, body, json)
+                 VALUES(?1, 'INBOX', ?2, ?3, ?4, 'Aki', 'aki@example.com', ?5, 1, 'root@example.com', 'b',
+                        '{\"crypto\":{\"encrypted\":true}}')",
+                params![account, uid.to_string(), uid, subject, 100 * uid as i64],
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(repair_placeholder_reply_subjects_everywhere(&conn).unwrap(), 2);
+    let repaired: i64 = conn
+        .query_row("SELECT COUNT(*) FROM messages WHERE subject = 'Re: Topic'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(repaired, 2);
+}

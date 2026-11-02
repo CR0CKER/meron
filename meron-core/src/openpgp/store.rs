@@ -61,6 +61,9 @@ pub fn init_main(conn: &Connection) -> Result<()> {
     }
     reparse_key_attachments_once(conn)?;
     refetch_encrypted_cached_without_openpgp_once(conn)?;
+    // Cheap and idempotent, so every start: rows cached before it existed, and
+    // any a failed save left behind.
+    crate::store::repair_placeholder_reply_subjects_everywhere(conn)?;
     reload(conn)
 }
 
