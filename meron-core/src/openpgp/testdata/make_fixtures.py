@@ -162,6 +162,13 @@ def signed_mime(gpg: Gpg, outer_headers: str, part: str, signer: str, digest: st
     )
 
 
+def two_layer(gpg: Gpg, signer: str, recipient: str, text: str) -> str:
+    """Sign-then-encrypt as two MIME layers: multipart/signed, encrypted unsigned."""
+    signed = signed_mime(gpg, "", inner_part("Layered secret", text, frm=MALLORY), signer)
+    armored = gpg.run("--recipient", recipient, "--armor", "--encrypt", stdin=signed.encode())
+    return pgp_mime(headers(MALLORY, ALICE, "...", msgid="enc-two-layer"), armored)
+
+
 def crc24(data: bytes) -> int:
     crc = 0xB704CE
     for byte in data:
@@ -296,6 +303,9 @@ def build(gpg: Gpg) -> None:
     write("enc-wrong-recipient.eml", pgp_mime(headers(CAROL, BOB, "[...]", msgid="wrong-recipient"), enc(inner_part("For Bob", secret), to=bob)))
     write("enc-tampered.eml", pgp_mime(headers(CAROL, ALICE, "[...]", msgid="tampered"), tamper(enc(inner_part("Tampered", secret)))))
     write("enc-signer-mismatch.eml", pgp_mime(headers(CAROL, ALICE, "[...]", msgid="signer-mismatch"), enc(inner_part("From Carol?", secret), sign_as=mallory)))
+    # Sign-then-encrypt as two MIME layers (older Enigmail, K-9): the protected
+    # Subject sits on the signed part, one level below the decrypted top.
+    write("enc-two-layer.eml", two_layer(gpg, mallory, alice, secret))
 
     with_attachment = CRLF.join(
         [

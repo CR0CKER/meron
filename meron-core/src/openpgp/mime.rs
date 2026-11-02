@@ -414,6 +414,14 @@ fn open_encrypted(
                 signed_inside = true;
             }
         }
+        // There the protected headers sit on the signed part, one level down.
+        if signed_inside && inner_subject.is_none() && !inline {
+            inner_subject = inner
+                .subparts
+                .first()
+                .and_then(|part| part.headers.get_first_value("Subject"))
+                .filter(|s| !s.trim().is_empty());
+        }
     }
     let mut extra = outer_keys;
     extra.extend(inner_keys);
@@ -531,6 +539,18 @@ mod tests {
         assert_eq!(c.problem, None);
         assert_eq!(c.trust(&ring, &m.from_addr), Trust::Known);
         assert!(m.attachments.iter().all(|a| a.filename != "encrypted.asc"));
+    }
+
+    #[test]
+    fn sign_then_encrypt_in_two_layers_keeps_the_inner_subject() {
+        // Older Enigmail and K-9: a multipart/signed encrypted as a whole, so the
+        // protected Subject sits on the signed part, not on the decrypted top.
+        let ring = with_peer(alice_ring(), "mallory@example.com", "mallory-public.asc", false);
+        let m = parse("enc-two-layer.eml", &ring);
+        assert!(m.body.contains(SECRET), "{}", m.body);
+        assert_eq!(m.subject, "Layered secret");
+        let c = crypto(&m);
+        assert!(c.encrypted && c.signed, "the inner signature is found");
     }
 
     #[test]
