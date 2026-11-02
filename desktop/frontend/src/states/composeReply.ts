@@ -14,6 +14,34 @@ import { compose$ } from './composeState'
  * notification or a bounce doesn't take the reply (the core decides which, see
  * `accepts_replies`). Falls back to the thread header when no loaded message
  * matches. */
+// An encrypted message's subject until it is decrypted (RFC 9788 protected
+// headers: `[...]`, Thunderbird `...`), reply prefixes aside.
+function isEncryptedPlaceholder(subject: string): boolean {
+  const core = subject.replace(/^\s*((re|aw|sv|wg|antw|fwd?)\s*:\s*)+/i, '').trim()
+  return core === '[...]' || core === '...'
+}
+
+/**
+ * A reply's subject: `Re: ` before `subject` unless it has one. When `subject`
+ * is still an encrypted message's placeholder, the oldest decrypted subject in
+ * the loaded thread stands in, so an encrypted reply never carries `Re: [...]`
+ * inside its encryption: that subject groups as no subject at all and splits
+ * the thread for whoever reads it. With nothing decrypted, the reply has no
+ * subject rather than one made from the placeholder.
+ */
+export function replySubject(subject: string, threadId?: string): string {
+  let base = subject
+  if (isEncryptedPlaceholder(subject)) {
+    const decrypted = mail$.messages
+      .peek()
+      .filter((m) => m.thread_id === threadId && !isEncryptedPlaceholder(m.subject))
+      .sort((a, b) => a.date - b.date)[0]
+    if (!decrypted) return ''
+    base = decrypted.subject
+  }
+  return base.startsWith('Re:') ? base : `Re: ${base}`
+}
+
 export function pickReplyTarget(activeT: Message, excludedId = ''): Message {
   const messages = mail$.messages.get()
   const ownAddrs = ownAddressSet(accounts$.get())

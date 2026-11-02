@@ -33,6 +33,7 @@ import {
   pickReplyTarget,
   quickReplyEncrypts,
   resolveQuickReplyFrom,
+  replySubject,
 } from './composeReply'
 import { mayQuoteInto } from '../lib/crypto'
 import { allocateMessageIdentity, compose$, newDraftMessageId } from './composeState'
@@ -158,7 +159,7 @@ export async function sendReply() {
   const prepared = prepareConversationAttachments(attachments)
   const sendAttachments = prepared.attachments
   const html = prepared.hasInlineImages ? conversationHtmlBody(text, sendAttachments) : ''
-  const subject = activeT.subject.startsWith('Re:') ? activeT.subject : `Re: ${activeT.subject}`
+  const subject = replySubject(activeT.subject, activeT.thread_id)
   const tempId = `${LOCAL_SEND_PREFIX}${Date.now()}`
   // Recipients and threading follow the reply target, which the thread load
   // below can change; the From indicator's pick, else the alias the original

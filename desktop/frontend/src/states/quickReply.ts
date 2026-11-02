@@ -24,6 +24,7 @@ import {
   pickReplyTarget,
   quickReplyEncrypts,
   resolveQuickReplyFrom,
+  replySubject,
 } from './composeReply'
 import { compose$, newDraftMessageId } from './composeState'
 
@@ -163,7 +164,7 @@ async function performQuickReplyDraftSave() {
   const { to, cc } = buildReplyRecipients(target)
   const { in_reply_to, references } = buildReplyThreading(target)
   const fromEmail = resolveQuickReplyFrom(target, activeAcc)
-  const subject = activeT.subject.startsWith('Re:') ? activeT.subject : `Re: ${activeT.subject}`
+  const subject = replySubject(activeT.subject, activeT.thread_id)
   // Whatever is in the box now is a different reply from the one a send took, so
   // it needs a draft of its own: reusing the claimed id would write this text
   // over the copy that send is about to discard, taking the box's safety copy

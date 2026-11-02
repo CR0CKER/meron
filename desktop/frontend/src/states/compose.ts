@@ -34,6 +34,7 @@ import {
   pickReplyTarget,
   quickReplyEncrypts,
   resolveQuickReplyFrom,
+  replySubject,
 } from './composeReply'
 import {
   allocateMessageIdentity,
@@ -572,7 +573,7 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
 export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
   const t = getActiveThread()
   if (!t) return
-  const subject = t.subject.startsWith('Re:') ? t.subject : `Re: ${t.subject}`
+  const subject = replySubject(t.subject, t.thread_id)
   const target = pickReplyTarget(t)
   const accounts = accounts$.get()
   const { to, cc } = buildReplyRecipients(target, options?.replyAll)
@@ -876,7 +877,7 @@ export function replyToMessage(message: Message, replyAll = false) {
   const { to, cc } = buildReplyRecipients(message, replyAll)
   const { in_reply_to, references } = buildReplyThreading(message)
   const acc = accounts.find((a) => a.id === message.account_id)
-  const subject = message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`
+  const subject = replySubject(message.subject, message.thread_id)
   openComposeTab({
     threadId: message.thread_id,
     accountId: message.account_id || undefined,
