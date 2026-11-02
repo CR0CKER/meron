@@ -60,6 +60,7 @@ pub fn init_main(conn: &Connection) -> Result<()> {
         let _ = MAIN_DB.set(path.to_string());
     }
     reparse_key_attachments_once(conn)?;
+    refetch_encrypted_cached_without_openpgp_once(conn)?;
     reload(conn)
 }
 
@@ -81,6 +82,37 @@ fn reparse_key_attachments_once(conn: &Connection) -> Result<usize> {
         [],
     )?;
     crate::store::setting_set(conn, REPARSE_MARK, &serde_json::json!(true))?;
+    Ok(n)
+}
+
+const REFETCH_MARK: &str = "openpgp_refetch_encrypted_cached_without_openpgp";
+
+/// One-time: encrypted messages whose bodies a build without OpenPGP cached.
+/// Such a row has no `crypto` entry, an `encrypted.asc` file (or the PGP/MIME
+/// version part) instead of a body, or an inline PGP block, and keeps the
+/// protected-headers placeholder as its subject. A cached body is never
+/// fetched again, so without this the message would stay undecrypted however
+/// often it is opened. Dropping the body makes the next read (or the prefetch)
+/// fetch and decrypt it, which also writes back the real subject. Runs once
+/// per store; rows the OpenPGP build cached carry `crypto` and are left alone.
+fn refetch_encrypted_cached_without_openpgp_once(conn: &Connection) -> Result<usize> {
+    let done = crate::store::settings_get(conn, &[REFETCH_MARK.to_string()])?
+        .get(REFETCH_MARK)
+        .is_some_and(|v| !v.is_null());
+    if done {
+        return Ok(0);
+    }
+    let n = conn.execute(
+        "UPDATE messages SET body = NULL, json = json_remove(json, '$.body_html', '$.attachments', '$.crypto')
+         WHERE body IS NOT NULL
+           AND json_extract(json, '$.crypto') IS NULL
+           AND (files LIKE '%\"encrypted.asc\"%'
+                OR files LIKE '%application/pgp-encrypted%'
+                OR body LIKE '%-----BEGIN PGP MESSAGE-----%'
+                OR trim(subject) IN ('...', '[...]'))",
+        [],
+    )?;
+    crate::store::setting_set(conn, REFETCH_MARK, &serde_json::json!(true))?;
     Ok(n)
 }
 
@@ -949,6 +981,46 @@ mod tests {
         let other: Option<String> = conn.query_row("SELECT body FROM messages WHERE uid = 2", [], |r| r.get(0)).unwrap();
         assert_eq!(other.as_deref(), Some("other"));
         assert_eq!(reparse_key_attachments_once(&conn).unwrap(), 0, "only once");
+    }
+
+    #[test]
+    fn encrypted_bodies_cached_without_openpgp_are_refetched_once() {
+        let conn = crate::store::open_at(":memory:").unwrap();
+        let insert = |uid: u32, subject: &str, body: Option<&str>, json: &str, files: Option<&str>| {
+            conn.execute(
+                "INSERT INTO messages (account, folder, msg_id, uid, subject, from_name, from_addr, date, body, json, files)
+                 VALUES ('a', 'INBOX', ?1, ?1, ?2, 'n', 'x@y.z', 0, ?3, ?4, ?5)",
+                params![uid, subject, body, json, files],
+            )
+            .unwrap();
+        };
+        let asc = r#"[{"filename":"encrypted.asc","mime":"application/octet-stream"}]"#;
+        // Cached by a build without OpenPGP: never decrypted.
+        insert(1, "...", Some(""), r#"{"attachments":[{"filename":"encrypted.asc"}]}"#, Some(asc));
+        insert(2, "Hi", Some("-----BEGIN PGP MESSAGE-----\nhQEM\n-----END PGP MESSAGE-----"), "{}", None);
+        insert(3, "[...]", Some(""), "{}", None);
+        // Left alone: decrypted, plain, not cached, a plain mail with a .pgp file.
+        insert(4, "Secret", Some("text"), r#"{"crypto":{"encrypted":true}}"#, None);
+        insert(5, "Lunch", Some("hello"), "{}", None);
+        insert(6, "...", None, "{}", None);
+        insert(7, "Report", Some("see file"), "{}", Some(r#"[{"filename":"report.pgp","mime":"application/octet-stream"}]"#));
+
+        assert_eq!(refetch_encrypted_cached_without_openpgp_once(&conn).unwrap(), 3);
+        let bodies: Vec<(u32, Option<String>, Option<String>)> = conn
+            .prepare("SELECT uid, body, json_extract(json, '$.attachments') FROM messages ORDER BY uid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for (uid, body, attachments) in bodies {
+            let cleared = matches!(uid, 1..=3);
+            assert_eq!(body.is_none(), cleared || uid == 6, "uid {uid} body");
+            if cleared {
+                assert!(attachments.is_none(), "uid {uid} keeps no stale attachments");
+            }
+        }
+        assert_eq!(refetch_encrypted_cached_without_openpgp_once(&conn).unwrap(), 0, "only once");
     }
 
     #[test]
