@@ -82,11 +82,11 @@ pub fn group_thread_cards_with_drafts(
     let roots: HashMap<String, RootSubject> = candidates
         .into_iter()
         .filter_map(|(key, candidates)| {
-            let root = pick_root(candidates, default_folder)?;
+            let root = pick_root(candidates.clone(), default_folder)?;
             Some((
                 key,
                 RootSubject {
-                    display: root.subject.trim().to_string(),
+                    display: thread_title(&root, &candidates, default_folder),
                     group: thread_grouping_subject(&root.subject),
                 },
             ))
@@ -333,7 +333,8 @@ pub fn card_root_subjects(
     Ok(candidates
         .into_iter()
         .filter_map(|(root, candidates)| {
-            let subject = pick_root(candidates, folder)?.subject.trim().to_string();
+            let oldest = pick_root(candidates.clone(), folder)?;
+            let subject = thread_title(&oldest, &candidates, folder);
             Some((root, subject))
         })
         .collect())
@@ -699,12 +700,37 @@ fn for_each_card_row(
 }
 
 /// A candidate for a thread's opening message: what [`pick_root`] compares.
+#[derive(Clone)]
 pub(super) struct RootCandidate {
     folder: String,
     uid: u32,
     /// Send time as Unix epoch seconds, 0 when the row carries no usable Date.
     date: i64,
     subject: String,
+}
+
+/// The subject an encrypted message carries outside its encryption (RFC 9788
+/// protected headers: `[...]`, Thunderbird `...`) until its body is decrypted.
+fn is_encrypted_subject_placeholder(subject: &str) -> bool {
+    matches!(subject.trim(), "..." | "[...]")
+}
+
+/// The title of a thread whose oldest message is `root`: its subject, unless
+/// that is still an encrypted message's placeholder, in which case the oldest
+/// message that does know its subject (decrypted, or not encrypted) titles it.
+/// Only the title: grouping keeps keying on the oldest message.
+fn thread_title(root: &RootCandidate, candidates: &[RootCandidate], read_folder: &str) -> String {
+    if is_encrypted_subject_placeholder(&root.subject) {
+        let known: Vec<RootCandidate> = candidates
+            .iter()
+            .filter(|candidate| !is_encrypted_subject_placeholder(&candidate.subject))
+            .cloned()
+            .collect();
+        if let Some(titled) = pick_root(known, read_folder) {
+            return titled.subject.trim().to_string();
+        }
+    }
+    root.subject.trim().to_string()
 }
 
 /// Choose the oldest message of one thread from `candidates`. `read_folder` is

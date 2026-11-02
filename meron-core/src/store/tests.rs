@@ -5420,3 +5420,86 @@ fn rename_folder_keeps_the_rows_and_drops_the_cache() {
     );
     assert_eq!(get_folder_unread(&conn, "acct", "Work/Reports").unwrap(), 0);
 }
+
+// An encrypted thread whose start was never fetched (older than the prefetch
+// window) still carries the protected-headers placeholder "..." as its subject;
+// only the newer, fetched and decrypted message knows the real one. The card
+// must not be titled "...".
+#[test]
+fn card_title_skips_the_placeholder_of_an_encrypted_message_never_decrypted() {
+    let conn = test_conn();
+    let insert = |uid: u32, subject: &str, json: &str| {
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr,
+                                  date, seen, thread_key, json)
+             VALUES('acct', 'INBOX', ?1, ?2, ?3, 'Aki', 'aki@example.com', ?4, 1,
+                    'root@example.com', ?5)",
+            params![uid.to_string(), uid, subject, 100 * uid as i64, json],
+        )
+        .unwrap();
+    };
+    insert(1, "...", "{}");
+    insert(2, "Re: Secret plans", r#"{"crypto":{"encrypted":true}}"#);
+
+    let subjects = card_root_subjects(
+        &conn,
+        "acct",
+        "INBOX",
+        &["root@example.com".to_string()],
+    )
+    .unwrap();
+    // The oldest message that knows its subject titles the card, verbatim.
+    assert_eq!(
+        subjects.get("root@example.com").map(String::as_str),
+        Some("Re: Secret plans")
+    );
+
+    // With nothing decrypted there is no real subject to show: the
+    // placeholder stays (Nils's choice over an "Encrypted message" label).
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, subject, from_name, from_addr,
+                              date, seen, thread_key, json)
+         VALUES('acct', 'INBOX', '9', 9, '[...]', 'Aki', 'aki@example.com', 900, 1,
+                'other@example.com', '{}')",
+        [],
+    )
+    .unwrap();
+    let subjects = card_root_subjects(
+        &conn,
+        "acct",
+        "INBOX",
+        &["other@example.com".to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        subjects.get("other@example.com").map(String::as_str),
+        Some("[...]")
+    );
+}
+
+// The page-grouping path titles cards the same way as the cache path above.
+#[test]
+fn grouped_card_title_skips_the_placeholder_of_an_encrypted_message_never_decrypted() {
+    use crate::imap::MessageHeader;
+    let cards = group_thread_cards(
+        vec![
+            MessageHeader {
+                uid: 2,
+                date: 200,
+                subject: "Re: Secret plans".to_string(),
+                thread_key: "gmthrid:enc".to_string(),
+                ..Default::default()
+            },
+            MessageHeader {
+                uid: 1,
+                date: 100,
+                subject: "...".to_string(),
+                thread_key: "gmthrid:enc".to_string(),
+                ..Default::default()
+            },
+        ],
+        "INBOX",
+    );
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].header.subject, "Re: Secret plans");
+}
