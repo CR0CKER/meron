@@ -85,7 +85,6 @@ export function KeySourcesSection() {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="px-1 text-[0.75rem] font-semibold text-secondary">{t('crypto.sources.title')}</h3>
-      <p className="px-1 text-[0.65625rem] leading-relaxed text-secondary">{t('crypto.sources.intro')}</p>
       <ul className="divide-y divide-border/40 overflow-hidden rounded-2xl border border-border/60 bg-raised/80">
         {sources.map((source, i) => (
           <li key={`${source.kind}:${source.url}`} className="flex items-center gap-3 px-3.5 py-2">

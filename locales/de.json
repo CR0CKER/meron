@@ -506,7 +506,6 @@
   "crypto.lookup.use": "Use this key",
   "crypto.lookup.used": "Added",
   "crypto.sources.add": "Add keyserver",
-  "crypto.sources.intro": "Where Meron looks when you look up a key. The recipient's domain (WKD) and keys.openpgp.org check that a key belongs to its address; other keyservers don't.",
   "crypto.sources.kind.hkp": "Keyserver: doesn't check addresses",
   "crypto.sources.kind.vks": "Keyserver: checks addresses by email",
   "crypto.sources.kind.wkd": "The recipient's own mail domain",
