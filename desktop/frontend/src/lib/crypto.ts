@@ -40,6 +40,31 @@ export type MessageCrypto = {
   offer: boolean
 }
 
+/**
+ * The status the core gives our own encrypted send once its Sent copy is
+ * stored: encryption always signs with the account's own key, which the core
+ * always trusts as verified (`Keyring::trust_of`). The bubble a send shows at
+ * once carries it too, so its lock doesn't wait for the thread to reload.
+ */
+export function ownSentCrypto(): MessageCrypto {
+  return {
+    encrypted: true,
+    signed: true,
+    trust: 'verified',
+    signer: null,
+    issuer: null,
+    partial: false,
+    weak_hash: false,
+    problem: null,
+    key_changed: false,
+    verified_conflict: false,
+    on_list: false,
+    own: true,
+    signer_stored: true,
+    offer: false,
+  }
+}
+
 /** Icon shape says what the message is; tone says how far the key is trusted. */
 export type IndicatorKind = 'lock' | 'signature'
 export type IndicatorTone = 'verified' | 'known' | 'unconfirmed' | 'danger'

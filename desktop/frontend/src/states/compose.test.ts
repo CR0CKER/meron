@@ -859,6 +859,48 @@ describe('quick reply draft sharing', () => {
     expect(compose$.quickReplyDraftSaved.get()).toBe(false)
   })
 
+  it('gives the sent bubble of an encrypted reply our own verified lock at once', async () => {
+    // The stored Sent copy gets it once cached; until the thread reloads the
+    // bubble is all the user sees of the send.
+    for (const on of [true, false]) {
+      const thread = message({
+        id: 'root',
+        account_id: 'acc-1',
+        thread_id: 't-1',
+        folder_id: 'INBOX',
+        from_addr: 'them@example.com',
+        message_id: 'root@example.com',
+        date: 1000,
+      })
+      mail$.threads.set([thread])
+      mail$.messages.set([thread])
+      ui$.selectedThread.set('t-1')
+      compose$.composer.set('Secret reply')
+      compose$.quickReplyEncrypt.set({ threadId: 't-1', on })
+      compose$.quickReplySignature.set(null)
+      settings$.signature.set('')
+      ;(window as any).go.main.App.Invoke = async (command: string, payload: unknown) => {
+        calls.push({ command, payload })
+        if (command === 'mail.allocateIdentity') return { message_id: `sent-${on}@example.com` }
+        if (command === 'mail.folderList') return { folders: [] }
+        if (command === 'mail.threadList') return { threads: [] }
+        return {}
+      }
+
+      await sendReply()
+
+      const bubble = mail$.messages.get().find((m) => m.body === 'Secret reply')
+      expect(bubble).toBeDefined()
+      if (on) {
+        expect(bubble?.crypto).toMatchObject({ encrypted: true, signed: true, own: true, trust: 'verified' })
+        expect(bubble?.crypto?.problem ?? null).toBeNull()
+      } else {
+        expect(bubble?.crypto ?? null).toBeNull()
+      }
+      compose$.quickReplyEncrypt.set(null)
+    }
+  })
+
   it('discards a matching loaded draft when its quick-reply ownership was lost', async () => {
     const thread = message({
       id: 'root',

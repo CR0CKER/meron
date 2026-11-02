@@ -35,7 +35,7 @@ import {
   resolveQuickReplyFrom,
   replySubject,
 } from './composeReply'
-import { mayQuoteInto } from '../lib/crypto'
+import { mayQuoteInto, ownSentCrypto } from '../lib/crypto'
 import { allocateMessageIdentity, compose$, newDraftMessageId } from './composeState'
 import {
   cancelQuickReplyDraftSave,
@@ -201,6 +201,8 @@ export async function sendReply() {
     starred: false,
     has_attachments: sendAttachments.length > 0,
     send_status: 'sending',
+    // An encrypted send shows its lock at once, as its Sent copy will.
+    crypto: quickReplyEncrypts() ? ownSentCrypto() : undefined,
     // Inline the just-sent attachment bytes as a data: URL so the chat bubble
     // can display the image immediately — without waiting for IMAP sync to
     // pull the message back from Sent and assign it a media key. Treated as
