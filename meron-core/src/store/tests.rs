@@ -5619,3 +5619,29 @@ fn a_sent_copy_without_a_body_is_found_by_message_id() {
     assert_eq!(find("Sent", "<other@example.com>"), None);
     assert_eq!(find("Sent", ""), None);
 }
+
+// On Gmail an encrypted reply threads by its References (Gmail's thread id is
+// ignored for the placeholder subject), and still joins the thread its root is
+// cached under, Gmail's id included: a conversation that started unencrypted.
+#[test]
+fn an_encrypted_gmail_reply_joins_the_gmail_thread_of_the_message_it_answers() {
+    use crate::imap::MessageHeader;
+    let conn = test_conn();
+    let header = |uid: u32, subject: &str, message_id: &str, thread_key: &str| MessageHeader {
+        uid,
+        subject: subject.to_string(),
+        message_id: message_id.to_string(),
+        thread_key: thread_key.to_string(),
+        date: 100 * uid as i64,
+        ..Default::default()
+    };
+    upsert_messages(&conn, "acct", "INBOX", &[header(1, "Plans", "root@example.com", "gmthrid:42")]).unwrap();
+    upsert_messages(&conn, "acct", "INBOX", &[header(2, "[...]", "reply@example.com", "root@example.com")]).unwrap();
+    // A new encrypted message with no References starts its own thread.
+    upsert_messages(&conn, "acct", "INBOX", &[header(3, "[...]", "new@example.com", "new@example.com")]).unwrap();
+    let key = |uid: u32| -> String {
+        conn.query_row("SELECT thread_key FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    assert_eq!(key(2), "gmthrid:42");
+    assert_eq!(key(3), "new@example.com");
+}

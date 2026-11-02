@@ -367,6 +367,13 @@ sequenceDiagram
   one: in `save_cached_message` for every encrypted body (either save order), and over all accounts on every start
   (`repair_placeholder_reply_subjects_everywhere`, from `openpgp::store::init_main`). Plain mail is never changed
   (`87b31a69`).
+- **Gmail threading**: Meron normally takes Gmail's conversation id (`X-GM-THRID`) as the thread key, and Gmail groups
+  by subject similarity. For encrypted mail Gmail only sees the placeholder, the same for every encrypted message, so
+  it merged unrelated conversations between the same people, even a new message. `imap::thread_key` ignores Gmail's
+  id when the subject is only the placeholder (`is_encrypted_placeholder_subject`; an empty plain subject keeps
+  Gmail's id) and threads by References / In-Reply-To / Message-ID; `resolve_message_thread_key` still joins the thread
+  a referenced message is cached under, Gmail's id included. Rows synced before this keep their merged key until
+  re-synced. Gmail's own web UI stays merged (Nils: encrypted-mail users won't use Gmail's UI).
 - Remote content: `engine::read::attach_html` forces `allowed = false` for encrypted messages (the CSP built by
   `prepare_message_html` then blocks all remote loads); the frontend never offers a reveal for them.
 - After importing an own key, rows with problem `no_key` lose their body and crypto status
