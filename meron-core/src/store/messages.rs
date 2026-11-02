@@ -644,7 +644,7 @@ pub fn newest_thread_uids(
     let newest = get_thread_headers(conn, account, folder, thread_key)?
         .into_iter()
         .filter(|header| match subject_filter {
-            Some(filter) => thread_grouping_subject(&header.subject) == filter,
+            Some(filter) => subject_in_branch(&header.subject, filter),
             None => true,
         })
         .next_back();
@@ -689,7 +689,7 @@ pub fn thread_uids_by_folder(
     let mut by_folder = std::collections::BTreeMap::<String, Vec<u32>>::new();
     for row in rows {
         let (folder, uid, subject) = row?;
-        if subject_filter.is_some_and(|filter| thread_grouping_subject(&subject) != filter) {
+        if subject_filter.is_some_and(|filter| !subject_in_branch(&subject, filter)) {
             continue;
         }
         by_folder.entry(folder).or_default().push(uid);
@@ -743,7 +743,7 @@ pub fn resolve_message_uids(
     }
     let mut headers = get_thread_headers(conn, account, folder, thread_key)?;
     if let Some(filter) = subject_filter {
-        headers.retain(|header| thread_grouping_subject(&header.subject) == filter);
+        headers.retain(|header| subject_in_branch(&header.subject, filter));
     }
     Ok(headers.into_iter().map(|header| header.uid).collect())
 }

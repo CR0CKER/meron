@@ -83,13 +83,11 @@ pub fn group_thread_cards_with_drafts(
         .into_iter()
         .filter_map(|(key, candidates)| {
             let root = pick_root(candidates.clone(), default_folder)?;
-            Some((
-                key,
-                RootSubject {
-                    display: thread_title(&root, &candidates, default_folder),
-                    group: thread_grouping_subject(&root.subject),
-                },
-            ))
+            let display = thread_title(&root, &candidates, default_folder);
+            // The title's branch, not the oldest message's: a thread start not
+            // yet decrypted would otherwise make every reply a "changed subject".
+            let group = thread_grouping_subject(&display);
+            Some((key, RootSubject { display, group }))
         })
         .collect();
 
@@ -109,12 +107,22 @@ pub fn group_thread_cards_with_drafts(
         }
         let base_key = effective_thread_key(&message);
         let branch = should_branch_thread_by_subject(&base_key);
-        let group_subject = if branch {
+        // A message not yet decrypted joins its thread's titled branch rather
+        // than forming a card under the placeholder.
+        let titled_group = (branch && is_encrypted_placeholder_subject(&message.subject))
+            .then(|| roots.get(&group_key(&message, &base_key)).map(|root| root.group.clone()))
+            .flatten();
+        let group_subject = if let Some(group) = &titled_group {
+            group.clone()
+        } else if branch {
             thread_grouping_subject(&message.subject)
         } else {
             String::new()
         };
-        let compound_key = card_thread_key(&message);
+        let compound_key = match &titled_group {
+            Some(group) => branch_compound_key(&base_key, group),
+            None => card_thread_key(&message),
+        };
         let slot = group_key(&message, &compound_key);
         let fold_key =
             (!message.message_id.is_empty()).then(|| (slot.clone(), message.message_id.clone()));
@@ -855,6 +863,22 @@ pub fn repair_placeholder_reply_subjects_everywhere(conn: &Connection) -> Result
         changed += repair_placeholder_reply_subjects(conn, &account, None)?;
     }
     Ok(changed)
+}
+
+/// Whether `subject` is only an encrypted message's protected-headers
+/// placeholder (`[...]`, Thunderbird `...`), reply prefixes aside: a message
+/// not yet decrypted. An empty subject is not one.
+pub fn is_encrypted_placeholder_subject(subject: &str) -> bool {
+    let group = thread_grouping_subject(subject);
+    group == "..." || (group.is_empty() && subject.contains("[...]"))
+}
+
+/// Whether a message with `subject` belongs to the subject branch `filter`. A
+/// message not yet decrypted hasn't shown its subject, so it belongs to every
+/// branch of its thread: on Gmail our own Sent copies stay like that until
+/// fetched, and a branch filter dropped them all from the conversation.
+pub fn subject_in_branch(subject: &str, filter: &str) -> bool {
+    is_encrypted_placeholder_subject(subject) || thread_grouping_subject(subject) == filter
 }
 
 /// The branch-aware thread key a list card for `message` carries: the root

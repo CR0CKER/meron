@@ -2581,14 +2581,6 @@ async fn supports_condstore(session: &mut Session) -> bool {
     }
 }
 
-/// Whether `subject` is only an encrypted message's protected-headers
-/// placeholder (`[...]`, Thunderbird `...`), reply prefixes aside. An empty
-/// subject is not: plain mail without one keeps Gmail's threading.
-fn is_encrypted_placeholder_subject(subject: &str) -> bool {
-    let group = crate::store::thread_grouping_subject(subject);
-    group == "..." || (group.is_empty() && subject.contains("[...]"))
-}
-
 fn thread_key(
     gmail_thrid: Option<u64>,
     subject: &str,
@@ -2604,7 +2596,7 @@ fn thread_key(
     // Not for encrypted mail: Gmail only sees the placeholder subject, the same
     // for every encrypted message, so it merges unrelated conversations between
     // the same people (even a new message). Those thread by their own headers.
-    let gmail_thrid = gmail_thrid.filter(|_| !is_encrypted_placeholder_subject(subject));
+    let gmail_thrid = gmail_thrid.filter(|_| !crate::store::is_encrypted_placeholder_subject(subject));
     if let Some(thrid) = gmail_thrid {
         return format!("gmthrid:{thrid}");
     }

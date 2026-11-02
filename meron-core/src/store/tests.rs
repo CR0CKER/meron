@@ -5645,3 +5645,33 @@ fn an_encrypted_gmail_reply_joins_the_gmail_thread_of_the_message_it_answers() {
     assert_eq!(key(2), "gmthrid:42");
     assert_eq!(key(3), "new@example.com");
 }
+
+// On Gmail our sent messages are copies Gmail files itself, so until their body
+// is fetched they carry the placeholder subject. They are still part of the
+// thread: neither the thread view nor the list may treat them as a different
+// subject branch (the Mac's chat lost every message it had sent).
+#[test]
+fn an_undecrypted_message_stays_in_its_threads_branch() {
+    use crate::imap::MessageHeader;
+    let header = |uid: u32, folder: &str, subject: &str, date: i64| MessageHeader {
+        uid,
+        folder: folder.to_string(),
+        subject: subject.to_string(),
+        thread_key: "root@example.com".to_string(),
+        date,
+        ..Default::default()
+    };
+    let sent = header(5, "[Gmail]/Sent Mail", "[...]", 100);
+    let reply = header(9, "INBOX", "Re: Hopefully the last test", 200);
+    let later = header(6, "[Gmail]/Sent Mail", "...", 300);
+
+    assert!(subject_in_branch(&sent.subject, "Hopefully the last test"));
+    assert!(subject_in_branch(&later.subject, "Hopefully the last test"));
+    assert!(subject_in_branch(&reply.subject, "Hopefully the last test"));
+    assert!(!subject_in_branch("Lunch", "Hopefully the last test"));
+
+    let cards = group_thread_cards(vec![later, reply, sent], "INBOX");
+    assert_eq!(cards.len(), 1, "one card, not a branch per subject");
+    assert_eq!(cards[0].original_thread_key, None, "no 'changed subject' banner");
+    assert_eq!(cards[0].message_count, 3);
+}

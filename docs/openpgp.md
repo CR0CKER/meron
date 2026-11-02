@@ -374,6 +374,13 @@ sequenceDiagram
   Gmail's id) and threads by References / In-Reply-To / Message-ID; `resolve_message_thread_key` still joins the thread
   a referenced message is cached under, Gmail's id included. Rows synced before this keep their merged key until
   re-synced. Gmail's own web UI stays merged (Nils: encrypted-mail users won't use Gmail's UI).
+- **Branches and messages not yet decrypted**: Message-ID-keyed threads split into subject branches. A message not yet
+  decrypted shows only the placeholder, which groups as no subject, so branch filters dropped it; on Gmail, where our
+  Sent copies are filed by Gmail (not appended and cached by us) and stay undecrypted until fetched, the Mac's chat
+  lost every message it had sent. `store::subject_in_branch` keeps such messages in every branch of their thread (thread
+  view, thread actions, newest-message lookups), and `group_thread_cards` puts them in the branch of the thread's title,
+  which also decides `original_thread_key`. One shared `store::is_encrypted_placeholder_subject` serves this and the
+  Gmail threading rule.
 - Remote content: `engine::read::attach_html` forces `allowed = false` for encrypted messages (the CSP built by
   `prepare_message_html` then blocks all remote loads); the frontend never offers a reveal for them.
 - After importing an own key, rows with problem `no_key` lose their body and crypto status
