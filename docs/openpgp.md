@@ -2,7 +2,7 @@
 
 Status: **local test build, not upstream.** Branch `feat/openpgp`, based on `upstream/main` `4cc646b7`
 (nonbili/meron#46). Written 2026-11-01 from the code at `60dad7c1` for security review and future audits; updated 2026-11-02 at
-`b526b496` (encrypted subjects, reply subjects, the sent bubble's lock). Every
+`26dbc2d9` (encrypted subjects, reply subjects, the sent bubble's lock, our Sent copy cached at once). Every
 statement here names the code it describes; where the code and this document disagree, the code is right and this
 document is a bug.
 
@@ -425,13 +425,21 @@ flowchart TD
 - MCP `create_draft` sends no `encrypt` flag (plain drafts).
 - **Reply subject** (`states/composeReply.ts replySubject`, used by the full editor, reply-to-message, the quick reply
   and its draft matching): `Re: ` before the subject as before, except when that subject is still an encrypted
-  message's placeholder (`[...]`, `...`, after reply prefixes): then the oldest decrypted subject in the loaded thread
-  stands in, and with none the reply has no subject. So our encrypted replies never carry `Re: [...]` inside the
-  encryption (`5b95326a`; see §7 for the receive-side repair).
+  message's placeholder (`[...]`, `...`, after reply prefixes): then the decrypted subject of the message being
+  answered (`pickReplyTarget`) stands in, and with that undecrypted too the reply has no subject. So our encrypted
+  replies never carry `Re: [...]` inside the encryption (`5b95326a`; see §7 for the receive-side repair). The first
+  version scanned all loaded messages and, on macOS, took another thread's subject (`Re: Testing This`), which split
+  the thread; fixed to the answered message only (`26dbc2d9`).
 - **The sent bubble's lock**: the quick reply shows an optimistic bubble at once. For an encrypted send it now carries
   `lib/crypto.ts ownSentCrypto()`: encrypted, signed, `own`, trust `verified`, which is what the core reports for the
   stored Sent copy (encryption always signs with the account's own key, and `Keyring::trust_of` trusts own keys as
-  verified). Before, the lock appeared only once the thread reloaded from the Sent copy (`b526b496`).
+  verified). Before, the lock appeared only once the thread reloaded from the Sent copy (`b526b496`). The full
+  composer's bubble (`appendSentMessage`, `encrypt` passed by `useComposer`) does the same (`26dbc2d9`).
+- **Our Sent copy is cached at once** (`engine::append::cache_encrypted_sent_copy`, `ea41583f`): after an APPEND the
+  tail refresh stores only the envelope (outer `[...]`, no crypto status), and the thread re-read a second after a
+  send replaced the bubble with that row, losing the lock. For copies Meron appended itself (not provider-filed),
+  the bytes just sent are parsed with the account's media context (decrypted with our own key) and cached as the
+  row's body (`store::sent_copy_uid_without_body` finds it by Message-ID). Plain mail keeps the normal fetch.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
