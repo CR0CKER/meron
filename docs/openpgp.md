@@ -1,7 +1,8 @@
 # OpenPGP end-to-end encryption: technical record
 
 Status: **local test build, not upstream.** Branch `feat/openpgp`, based on `upstream/main` `4cc646b7`
-(nonbili/meron#46). Written 2026-11-01 from the code at `60dad7c1` for security review and future audits. Every
+(nonbili/meron#46). Written 2026-11-01 from the code at `60dad7c1` for security review and future audits; updated 2026-11-02 at
+`b526b496` (encrypted subjects, reply subjects, the sent bubble's lock). Every
 statement here names the code it describes; where the code and this document disagree, the code is right and this
 document is a bug.
 
@@ -345,6 +346,27 @@ sequenceDiagram
   messages that list such a file, so they are fetched and parsed again.
 - Header sync (`store::upsert_messages`) keeps the stored subject for rows whose `$.crypto.encrypted` is true and whose
   body exists, so the outer placeholder (`[...]`) never overwrites the decrypted subject.
+- **Bodies cached by a build without OpenPGP** (no `$.crypto`, plus an `encrypted.asc` / `application/pgp-encrypted`
+  file, an inline `-----BEGIN PGP MESSAGE-----` body or a placeholder subject) would never be fetched again, so stayed
+  undecrypted however often opened. A one-time cleanup in `store::init_main`
+  (`refetch_encrypted_cached_without_openpgp_once`, marker `openpgp_refetch_encrypted_cached_without_openpgp`) drops
+  them so the next read or prefetch decrypts them (`f0e428c7`).
+- **Prefetch** (`engine::prefetch`) adds rows still titled `...` / `[...]` without a cached body to its 14-day window,
+  whatever their age (`store::undecrypted_placeholder_uids`, `aa83ffdd`), so old encrypted mail gets its real subject
+  without being opened.
+- **Two-layer sign-then-encrypt** (older Enigmail, K-9): the protected Subject sits on the signed part, one level below
+  the decrypted top; `mime::decrypt_part` reads it there when `signed_inside` (`87488a47`, fixture `enc-two-layer.eml`).
+- **Thread titles**: a card is titled by its thread's oldest message (`store::pick_root`). When that is an encrypted
+  message not yet decrypted, `threads::thread_title` takes the oldest message that knows its subject instead; with none,
+  the placeholder stays (Nils's choice over an "Encrypted message" label). Display only; grouping is unchanged
+  (`4ebda5c1`).
+- **Replies titled with the placeholder**: a client that had not decrypted a thread writes `Re: [...]` as its reply's
+  protected subject. That groups as an empty subject (`thread_grouping_subject` strips the bracket tag) and forms a
+  subject branch of its own, so the chat view loses the reply. `store::repair_placeholder_reply_subjects` gives
+  encrypted rows whose subject is only the placeholder `Re: <subject>` from the oldest message in their thread that has
+  one: in `save_cached_message` for every encrypted body (either save order), and over all accounts on every start
+  (`repair_placeholder_reply_subjects_everywhere`, from `openpgp::store::init_main`). Plain mail is never changed
+  (`87b31a69`).
 - Remote content: `engine::read::attach_html` forces `allowed = false` for encrypted messages (the CSP built by
   `prepare_message_html` then blocks all remote loads); the frontend never offers a reveal for them.
 - After importing an own key, rows with problem `no_key` lose their body and crypto status
@@ -401,6 +423,15 @@ flowchart TD
   (`composedContent`, `lib/crypto.ts mayQuoteInto`, quick reply in `quickReplySend.ts`); turning encryption off on such a
   reply asks first and drops the quote.
 - MCP `create_draft` sends no `encrypt` flag (plain drafts).
+- **Reply subject** (`states/composeReply.ts replySubject`, used by the full editor, reply-to-message, the quick reply
+  and its draft matching): `Re: ` before the subject as before, except when that subject is still an encrypted
+  message's placeholder (`[...]`, `...`, after reply prefixes): then the oldest decrypted subject in the loaded thread
+  stands in, and with none the reply has no subject. So our encrypted replies never carry `Re: [...]` inside the
+  encryption (`5b95326a`; see §7 for the receive-side repair).
+- **The sent bubble's lock**: the quick reply shows an optimistic bubble at once. For an encrypted send it now carries
+  `lib/crypto.ts ownSentCrypto()`: encrypted, signed, `own`, trust `verified`, which is what the core reports for the
+  stored Sent copy (encryption always signs with the account's own key, and `Keyring::trust_of` trusts own keys as
+  verified). Before, the lock appeared only once the thread reloaded from the Sent copy (`b526b496`).
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -497,7 +528,9 @@ message iframe.
 ## 12. Tests
 
 - Core: 77 OpenPGP tests (`openpgp::{keys 16, crypt 13, mime 19, store 15, outgoing 5, lookup 5, autocrypt 4}`); full
-  core suite 817 pass after the G1/G2 fixes (740 before the branch).
+  core suite 817 pass after the G1/G2 fixes (740 before the branch). 2026-11-02, encrypted subjects: 8 more tests
+  (`openpgp::store` cleanup and prefetch list, `openpgp::mime` two-layer subject, `store::tests` title fallback ×2,
+  placeholder repair ×3), each seen failing before its fix; full core suite 828 + 4 pass on the branch.
 - **Fixtures** (`meron-core/src/openpgp/testdata/`): made-up keys and messages generated by `make_fixtures.py` with
   GnuPG in a throwaway `GNUPGHOME` (Alice = the user, Bob = RSA-3072 passphrase-protected, Carol = peer, Mallory =
   attacker, expired and revoked keys, Carol's second key). Messages cover encrypted+signed, unsigned, wrong recipient,
@@ -515,13 +548,23 @@ a terminal; a GnuPG-made designated revocation has not been tested. Marked `bina
   `ABAF11C65A2970B130ABE3C479BE3E4300411886`.
 - Go: `secure_media_test.go` (e2ee keys resolve inside the secure dir; traversal clamped; env passed). Frontend: 30
   component tests (`components/crypto/CryptoUi.test.tsx`) and 11 logic tests (`lib/crypto.test.ts`); full suite 1320
-  pass with five `AppHotkeys` failures that also fail on pristine `4cc646b7`.
+  pass with five `AppHotkeys` failures that also fail on pristine `4cc646b7`. 2026-11-02: `states/replySubject.test.ts`
+  (3) and the sent-bubble lock test in `states/compose.test.ts`; full suite 1325 pass, 1 skip, the same five failures.
 - **Not tested:** interop with Thunderbird/RNP, Delta Chat, Proton, OpenKeychain by hand; macOS and Windows; mobile;
   fuzzing (`cargo-fuzz`) of the MIME↔PGP glue.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
 ## 13. Open findings and residual risks
+
+**Encrypted subjects, residual (2026-11-02):** a message not yet decrypted still forms its own subject branch until it
+decrypts (prefetch makes that short); the reply-subject repair runs a `json_extract` scan over `messages` at every start
+(cheap on a ~25 MB store, linear in its size); Local Folders (`archive.db`) rows cached before OpenPGP keep their stale
+body (they can't be refetched from a server; the raw original in `archive_raw` could be reparsed, not done).
+
+**Migration number:** upstream took store migration v22 for tags and rules (`d1f312e3`) while this branch still uses
+v22 for the OpenPGP tables. The local merge (`local/daily`) renumbers OpenPGP to v23 with a repair step for stores that
+reached v22 the old way. Before an upstream PR: rebase onto upstream, take the next free number, drop the repair.
 
 **Open findings (to fix before an upstream PR):**
 
