@@ -11,6 +11,7 @@ import { mail$ } from './mailState'
 import { isDraftFolder } from './mailFolders'
 import { discardSavedDraftCopy } from './mailMoves'
 import { LOCAL_SEND_PREFIX } from './pendingSends'
+import { ownSentCrypto } from '../lib/crypto'
 import { htmlToText, resolveInlineCids } from '../lib/html'
 import { parseMailto } from '../lib/mailto'
 import {
@@ -573,8 +574,8 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
 export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
   const t = getActiveThread()
   if (!t) return
-  const subject = replySubject(t.subject, t.thread_id)
   const target = pickReplyTarget(t)
+  const subject = replySubject(t.subject, target)
   const accounts = accounts$.get()
   const { to, cc } = buildReplyRecipients(target, options?.replyAll)
   const { in_reply_to, references } = buildReplyThreading(target)
@@ -877,7 +878,7 @@ export function replyToMessage(message: Message, replyAll = false) {
   const { to, cc } = buildReplyRecipients(message, replyAll)
   const { in_reply_to, references } = buildReplyThreading(message)
   const acc = accounts.find((a) => a.id === message.account_id)
-  const subject = replySubject(message.subject, message.thread_id)
+  const subject = replySubject(message.subject, message)
   openComposeTab({
     threadId: message.thread_id,
     accountId: message.account_id || undefined,
@@ -1165,6 +1166,8 @@ export function appendSentMessage(args: {
   content: string // HTML when rich, plaintext otherwise
   references?: string
   attachments: ComposerAttachment[]
+  /** Sent encrypted: the bubble shows the lock its Sent copy will have. */
+  encrypt?: boolean
 }) {
   if (!args.threadId || ui$.selectedThread.get() !== args.threadId) return
   const activeT = getActiveThread()
@@ -1195,6 +1198,7 @@ export function appendSentMessage(args: {
     starred: false,
     has_attachments: args.attachments.length > 0,
     send_status: 'sent',
+    crypto: args.encrypt ? ownSentCrypto() : undefined,
     attachments: args.attachments.map((a) => ({
       filename: a.filename,
       mime: a.mime,

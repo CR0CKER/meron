@@ -742,6 +742,7 @@ export function useComposer(tabId: string) {
           content,
           references: current.references,
           attachments,
+          encrypt: !!current.encrypt,
         })
       }
       // The message is out, so the tab closes now rather than after the draft

@@ -159,7 +159,7 @@ export async function sendReply() {
   const prepared = prepareConversationAttachments(attachments)
   const sendAttachments = prepared.attachments
   const html = prepared.hasInlineImages ? conversationHtmlBody(text, sendAttachments) : ''
-  const subject = replySubject(activeT.subject, activeT.thread_id)
+  const subject = replySubject(activeT.subject, pickReplyTarget(activeT))
   const tempId = `${LOCAL_SEND_PREFIX}${Date.now()}`
   // Recipients and threading follow the reply target, which the thread load
   // below can change; the From indicator's pick, else the alias the original

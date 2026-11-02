@@ -23,21 +23,19 @@ function isEncryptedPlaceholder(subject: string): boolean {
 
 /**
  * A reply's subject: `Re: ` before `subject` unless it has one. When `subject`
- * is still an encrypted message's placeholder, the oldest decrypted subject in
- * the loaded thread stands in, so an encrypted reply never carries `Re: [...]`
- * inside its encryption: that subject groups as no subject at all and splits
- * the thread for whoever reads it. With nothing decrypted, the reply has no
- * subject rather than one made from the placeholder.
+ * is still an encrypted message's placeholder, the decrypted subject of the
+ * message being answered (`target`, from `pickReplyTarget`) stands in, so an
+ * encrypted reply never carries `Re: [...]` inside its encryption: that subject
+ * groups as no subject at all and splits the thread for whoever reads it. Only
+ * that message: scanning loaded messages once took another thread's subject.
+ * With it undecrypted too, the reply has no subject rather than one made from
+ * the placeholder.
  */
-export function replySubject(subject: string, threadId?: string): string {
+export function replySubject(subject: string, target?: Message): string {
   let base = subject
   if (isEncryptedPlaceholder(subject)) {
-    const decrypted = mail$.messages
-      .peek()
-      .filter((m) => m.thread_id === threadId && !isEncryptedPlaceholder(m.subject))
-      .sort((a, b) => a.date - b.date)[0]
-    if (!decrypted) return ''
-    base = decrypted.subject
+    if (!target || isEncryptedPlaceholder(target.subject)) return ''
+    base = target.subject
   }
   return base.startsWith('Re:') ? base : `Re: ${base}`
 }

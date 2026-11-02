@@ -26,25 +26,26 @@ describe('replySubject', () => {
   afterEach(() => mail$.messages.set([]))
 
   it('prefixes a plain subject once, as before', () => {
-    expect(replySubject('Topic', 't1')).toBe('Re: Topic')
-    expect(replySubject('Re: Topic', 't1')).toBe('Re: Topic')
-    expect(replySubject('', 't1')).toBe('Re: ')
+    expect(replySubject('Topic')).toBe('Re: Topic')
+    expect(replySubject('Re: Topic')).toBe('Re: Topic')
+    expect(replySubject('')).toBe('Re: ')
   })
 
-  it("takes a decrypted subject from the thread instead of an encrypted message's placeholder", () => {
-    mail$.messages.set([
-      message({ id: 'a', subject: '[...]', date: 50 }),
-      message({ id: 'b', subject: 'Testing This', date: 100 }),
-      message({ id: 'c', subject: 'Re: Testing This', date: 200 }),
-      message({ id: 'x', thread_id: 'other', subject: 'Elsewhere', date: 10 }),
-    ])
-    expect(replySubject('[...]', 't1')).toBe('Re: Testing This')
-    expect(replySubject('...', 't1')).toBe('Re: Testing This')
-    expect(replySubject('Re: [...]', 't1')).toBe('Re: Testing This')
+  it('takes the decrypted subject of the message being answered instead of a placeholder', () => {
+    expect(replySubject('[...]', message({ subject: 'Testing This' }))).toBe('Re: Testing This')
+    expect(replySubject('...', message({ subject: 'Re: Testing This' }))).toBe('Re: Testing This')
+    expect(replySubject('Re: [...]', message({ subject: 'Testing This' }))).toBe('Re: Testing This')
   })
 
-  it('sends no subject made from the placeholder when nothing in the thread is decrypted', () => {
-    mail$.messages.set([message({ subject: 'Re: [...]' })])
-    expect(replySubject('[...]', 't1')).toBe('')
+  it('never takes a subject from another loaded thread', () => {
+    // On the Mac a reply in one thread went out as "Re: Testing This", the
+    // subject of a different thread.
+    mail$.messages.set([message({ id: 'x', subject: 'Testing This', date: 10 })])
+    expect(replySubject('[...]', message({ id: 'y', subject: '[...]', date: 200 }))).toBe('')
+  })
+
+  it('sends no subject made from the placeholder when the answered message is not decrypted', () => {
+    expect(replySubject('[...]', message({ subject: 'Re: [...]' }))).toBe('')
+    expect(replySubject('[...]')).toBe('')
   })
 })
