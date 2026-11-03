@@ -242,6 +242,20 @@ describe('EncryptToggle', () => {
     expect(value).toBe(true)
   })
 
+  test('the open lock is the same grey as the composer icons beside it, with or without keys', () => {
+    // The attachment and full-editor buttons are text-secondary, hover text-primary;
+    // a dimmed lock looked paler than them in light mode (Nils).
+    const missing = keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })
+    for (const k of [missing, keys()]) {
+      const { getByRole, unmount } = render(<EncryptToggle keys={k} on={false} onChange={() => {}} />)
+      const classes = getByRole('switch').className.split(' ')
+      expect(classes).toContain('text-secondary')
+      expect(classes).toContain('hover:text-primary')
+      expect(classes.some((c) => c.startsWith('text-secondary/'))).toBe(false)
+      unmount()
+    }
+  })
+
   test('with the preference off, a key appearing on its own leaves encryption off', () => {
     settings$.encryptWhenPossible.set(false)
     let value = false

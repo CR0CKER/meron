@@ -172,9 +172,9 @@ export function EncryptToggle({
     ? unavailable
       ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
       : 'text-accent bg-accent/10'
-    : unavailable
-      ? 'text-secondary/50 hover:bg-active hover:text-secondary'
-      : 'text-secondary hover:bg-active hover:text-primary'
+    : // Off, with or without keys: the same grey as the attachment and full-editor
+      // buttons beside it (a dimmed lock looked paler than them in light mode).
+      'text-secondary hover:bg-active hover:text-primary'
   return (
     <button
       type="button"
