@@ -5675,3 +5675,78 @@ fn an_undecrypted_message_stays_in_its_threads_branch() {
     assert_eq!(cards[0].original_thread_key, None, "no 'changed subject' banner");
     assert_eq!(cards[0].message_count, 3);
 }
+
+// On Gmail, encrypted messages thread by their own headers (Gmail's thread id
+// is ignored for the placeholder subject). A plain reply in such a thread —
+// encryption turned off — has a real subject, so Gmail files it in a new
+// conversation and gives it a new thread id. It must still join the thread of
+// the message it answers, or the conversation splits in two.
+#[test]
+fn a_plain_gmail_reply_joins_the_encrypted_thread_it_answers() {
+    use crate::imap::MessageHeader;
+    let header = |uid: u32, subject: &str, message_id: &str, in_reply_to: &str, thread_key: &str, gmail: bool| {
+        MessageHeader {
+            uid,
+            subject: subject.to_string(),
+            message_id: message_id.to_string(),
+            in_reply_to: in_reply_to.to_string(),
+            gmail_msg_id: gmail.then_some(1000 + uid as u64),
+            thread_key: thread_key.to_string(),
+            date: 100 * uid as i64,
+            ..Default::default()
+        }
+    };
+    let key = |conn: &rusqlite::Connection, uid: u32| -> String {
+        conn.query_row("SELECT thread_key FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    let root = header(1, "[...]", "root@example.com", "", "root@example.com", true);
+    let enc_reply = header(2, "[...]", "enc@example.com", "root@example.com", "root@example.com", true);
+    let plain = header(3, "Re: Plans", "plain@example.com", "enc@example.com", "gmthrid:99", true);
+    let plain_again = header(4, "Re: Plans", "plain2@example.com", "plain@example.com", "gmthrid:99", true);
+
+    // In order: each reply finds the message it answers already cached.
+    let conn = test_conn();
+    upsert_messages(&conn, "acct", "INBOX", &[root.clone(), enc_reply.clone()]).unwrap();
+    upsert_messages(&conn, "acct", "INBOX", &[plain.clone()]).unwrap();
+    upsert_messages(&conn, "acct", "INBOX", &[plain_again.clone()]).unwrap();
+    assert_eq!(key(&conn, 3), "root@example.com");
+    assert_eq!(key(&conn, 4), "root@example.com");
+
+    // Out of order: the plain replies sync before the message they answer.
+    let conn = test_conn();
+    upsert_messages(&conn, "acct", "INBOX", &[plain.clone(), plain_again.clone()]).unwrap();
+    upsert_messages(&conn, "acct", "INBOX", &[root, enc_reply]).unwrap();
+    assert_eq!(key(&conn, 3), "root@example.com");
+    assert_eq!(key(&conn, 4), "root@example.com");
+}
+
+// Plain Gmail mail keeps Gmail's threading: a reply to a message cached from
+// our own bytes (no Gmail id, so keyed by Message-ID) stays in its Gmail
+// conversation.
+#[test]
+fn a_plain_gmail_reply_to_a_locally_cached_message_keeps_gmails_thread() {
+    use crate::imap::MessageHeader;
+    let conn = test_conn();
+    let local = MessageHeader {
+        uid: 1,
+        subject: "Plans".to_string(),
+        message_id: "local@example.com".to_string(),
+        thread_key: "local@example.com".to_string(),
+        date: 100,
+        ..Default::default()
+    };
+    let reply = MessageHeader {
+        uid: 2,
+        subject: "Re: Plans".to_string(),
+        message_id: "reply@example.com".to_string(),
+        in_reply_to: "local@example.com".to_string(),
+        gmail_msg_id: Some(1002),
+        thread_key: "gmthrid:99".to_string(),
+        date: 200,
+        ..Default::default()
+    };
+    upsert_messages(&conn, "acct", "Sent", &[local]).unwrap();
+    upsert_messages(&conn, "acct", "INBOX", &[reply]).unwrap();
+    let key: String = conn.query_row("SELECT thread_key FROM messages WHERE uid = 2", [], |r| r.get(0)).unwrap();
+    assert_eq!(key, "gmthrid:99");
+}

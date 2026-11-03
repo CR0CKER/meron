@@ -52,7 +52,13 @@ pub fn upsert_messages(
             extra.insert("attachment_metadata".to_string(), json!(true));
         }
         let extra_json = Value::Object(extra).to_string();
-        let thread_key = resolve_message_thread_key(&tx, account, &m.thread_key)?;
+        let mut thread_key = resolve_message_thread_key(&tx, account, &m.thread_key)?;
+        let parent_id = m.in_reply_to.trim().to_lowercase();
+        if thread_key.starts_with("gmthrid:")
+            && let Some(key) = encrypted_gmail_thread_of(&tx, account, &parent_id)?
+        {
+            thread_key = key;
+        }
         let message_id = m.message_id.trim().to_lowercase();
         if !message_id.is_empty() {
             upserted_ids.insert(message_id);
@@ -146,6 +152,39 @@ pub(super) fn cached_thread_key_of(
         .optional()?)
 }
 
+/// The thread key of the cached Gmail message with this (lowercased)
+/// Message-ID when that thread is keyed by headers rather than Gmail's thread
+/// id: encrypted mail, whose placeholder subject makes `imap::thread_key` skip
+/// `X-GM-THRID`. A plain reply in such a thread (encryption turned off) has a
+/// real subject, so Gmail files it in a conversation of its own; it joins the
+/// thread it answers instead. Rows without a Gmail id (cached from our own
+/// bytes) don't count: on Gmail they are keyed by Message-ID for any mail, and
+/// following them would pull plain replies out of their Gmail conversation.
+pub(super) fn encrypted_gmail_thread_of(
+    conn: &rusqlite::Transaction<'_>,
+    account: &str,
+    message_id: &str,
+) -> Result<Option<String>> {
+    if message_id.is_empty() {
+        return Ok(None);
+    }
+    Ok(conn
+        .query_row(
+            "SELECT thread_key FROM messages
+             WHERE account = ?1
+               AND lower(COALESCE(json_extract(json, '$.message_id'), '')) = ?2
+               AND json_extract(json, '$.gmail_msg_id') IS NOT NULL
+               AND COALESCE(thread_key, '') <> ''
+               AND thread_key NOT LIKE 'uid:%'
+               AND thread_key NOT LIKE 'gmthrid:%'
+             ORDER BY date ASC, uid ASC
+             LIMIT 1",
+            params![account, message_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?)
+}
+
 /// Hand the canonical thread key down to rows that named a message we only just
 /// cached.
 ///
@@ -168,6 +207,32 @@ pub(super) fn reconcile_thread_keys_from(
     while !pending.is_empty() {
         let mut next: Vec<String> = Vec::new();
         for parent_id in pending.drain(..) {
+            // Plain Gmail replies that synced before the encrypted message
+            // they answer (see `encrypted_gmail_thread_of`).
+            if let Some(encrypted) = encrypted_gmail_thread_of(conn, account, &parent_id)? {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT id, lower(COALESCE(json_extract(json, '$.message_id'), ''))
+                       FROM messages
+                      WHERE account = ?1
+                        AND uid <> 0
+                        AND thread_key LIKE 'gmthrid:%'
+                        AND lower(COALESCE(json_extract(json, '$.in_reply_to'), '')) = ?2",
+                )?;
+                let replies = stmt
+                    .query_map(params![account, parent_id], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                for (id, reply_message_id) in replies {
+                    conn.execute(
+                        "UPDATE messages SET thread_key = ?1 WHERE id = ?2",
+                        params![encrypted, id],
+                    )?;
+                    if !reply_message_id.is_empty() && seen.insert(reply_message_id.clone()) {
+                        next.push(reply_message_id);
+                    }
+                }
+            }
             let Some(canonical) = cached_thread_key_of(conn, account, &parent_id)? else {
                 continue;
             };
