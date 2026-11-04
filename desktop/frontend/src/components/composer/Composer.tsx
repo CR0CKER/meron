@@ -143,6 +143,9 @@ export function Composer({ tabId }: { tabId: string }) {
             />
           )}
           {draft.quote && <ComposerQuote onExpand={expandQuote} onRemove={removeQuote} />}
+          {!draft.quote && draft.quoteWithheld && (
+            <p className="mt-2 text-xs leading-snug text-secondary">{t('crypto.quoteWithheld')}</p>
+          )}
         </div>
         {showInlineDrop && <DropOverlay kind="inline" className="inset-2" passThrough />}
       </div>

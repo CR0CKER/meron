@@ -95,6 +95,16 @@ describe('Composer', () => {
     expect(body?.className).toContain('var(--me-message-scale)')
   })
 
+  it('explains why a reply to unconfirmed decrypted mail has no quote', () => {
+    const withheld = openComposeTab({ to: 'x@example.com', subject: 'Re: Hi', rich: false, quoteWithheld: true })!
+    const view = render(<Composer tabId={withheld} />)
+    expect(view.getByText(/isn't quoted/)).toBeTruthy()
+    cleanup()
+
+    const plain = openComposeTab({ to: 'x@example.com', subject: 'Re: Hi', rich: false })!
+    expect(render(<Composer tabId={plain} />).queryByText(/isn't quoted/)).toBeNull()
+  })
+
   it('scales the rich-text body with the message text size', () => {
     const tabId = openComposeTab({ to: 'x@example.com', subject: 'Hello', rich: true })!
     render(<Composer tabId={tabId} />)

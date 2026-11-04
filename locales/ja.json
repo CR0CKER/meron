@@ -456,6 +456,7 @@
   "crypto.problem.signer_mismatch": "Signed with a key that doesn't belong to {sender}. It may not be from them.",
   "crypto.problem.too_large": "This encrypted message is too large to open safely.",
   "crypto.problem.unreadable": "This encrypted message can't be read.",
+  "crypto.quoteWithheld": "The original isn't quoted: it isn't signed by its sender, so it could be someone else's encrypted mail, resent to make your reply reveal it.",
   "crypto.toggle.accountOff": "Not encrypted: turn on encryption for this account to reply encrypted. The original text isn't quoted.",
   "crypto.toggle.blocked": "Can't encrypt to {addresses}: remove them or turn off encryption.",
   "crypto.toggle.forwardLocked": "A forwarded encrypted message can only be sent encrypted.",

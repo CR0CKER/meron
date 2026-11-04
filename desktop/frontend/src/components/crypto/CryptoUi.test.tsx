@@ -316,6 +316,14 @@ describe('EncryptToggle', () => {
     expect(value).toBe(false)
   })
 
+  test('the lock says when the quick reply leaves the original unquoted', () => {
+    const { getByRole } = render(<EncryptToggle keys={keys()} on sensitive="reply" quoteWithheld onChange={() => {}} />)
+    expect(getByRole('switch').getAttribute('title')).toStartWith("Encrypted and signed. The original isn't quoted")
+    cleanup()
+    const plain = render(<EncryptToggle keys={keys()} on sensitive="reply" onChange={() => {}} />)
+    expect(plain.getByRole('switch').getAttribute('title')).toBe('Encrypted and signed')
+  })
+
   test('a forward of encrypted mail stays encrypted and keeps Send blocked', () => {
     let value = true
     const missing = keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })

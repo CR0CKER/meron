@@ -1,7 +1,7 @@
 import { Loader2, Maximize2, Paperclip, Send } from 'lucide-react'
 import { useValue } from '@legendapp/state/react'
 import { useTranslation } from '../../lib/i18n'
-import { openReplyInFullEditor } from '../../states/compose'
+import { openReplyInFullEditor, replyQuoteWithheld } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
 import { isQuickReplyBlank } from '../../states/quickReply'
 import { sendShortcutLabel, settings$ } from '../../states/settings'
@@ -35,6 +35,9 @@ export function QuickReplyComposer() {
   const encrypt = useValue(quickReplyEncrypts)
   const keys = useRecipientKeys(target?.account_id ?? '', recipientAddresses(to, cc))
   const sensitive = target?.crypto?.encrypted ? ('reply' as const) : undefined
+  // Subscribed so the tooltip follows the setting; the helper peeks.
+  useValue(settings$.quoteReplies)
+  const quoteWithheld = replyQuoteWithheld(target)
   const blocked = encryptionBlocksSend(encrypt, keys)
   const canSend = !sendingReply && !isQuickReplyBlank() && !blocked
 
@@ -99,6 +102,7 @@ export function QuickReplyComposer() {
               hasRecipients={!!(to || cc).trim()}
               on={encrypt}
               sensitive={sensitive}
+              quoteWithheld={quoteWithheld}
               onChange={(on) => compose$.quickReplyEncrypt.set({ threadId: target.thread_id, on })}
             />
           )}

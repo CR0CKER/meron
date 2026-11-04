@@ -125,6 +125,15 @@ function forwardedHtmlBody(message: Message): string {
  * was HTML. Undefined when quoting is off, the original has no body loaded, or
  * it is decrypted mail its sender isn't shown to have written (`mayQuoteOriginal`).
  */
+/** Whether a reply to `message` would quote it but doesn't, because it is
+ * decrypted mail its sender isn't shown to have written (`mayQuoteOriginal`).
+ * The composer then says why the quote is missing. */
+export function replyQuoteWithheld(message: Message | null | undefined): boolean {
+  if (!message || !settings$.quoteReplies.peek()) return false
+  if (!message.body_html && !(message.body ?? '').trim()) return false
+  return !mayQuoteOriginal(message.crypto)
+}
+
 export function replyQuote(message: Message): ComposeBody | undefined {
   if (!settings$.quoteReplies.peek()) return undefined
   if (!mayQuoteOriginal(message.crypto)) return undefined
@@ -548,6 +557,7 @@ export function openComposeTab(seed?: ComposeSeed): string | undefined {
     quote: quote ? { html: quote.html, text: quote.text } : undefined,
     encrypt: seed?.encrypt,
     sensitiveSource: seed?.sensitiveSource,
+    quoteWithheld: seed?.quoteWithheld || undefined,
     sourceDraft: seed?.sourceDraft,
     attachments: seed?.attachments ?? [],
   }
@@ -621,6 +631,7 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
     // The quick reply's encryption choice carries over.
     encrypt: quickReplyEncrypts() || undefined,
     sensitiveSource: target.crypto?.encrypted ? 'reply' : undefined,
+    quoteWithheld: replyQuoteWithheld(target),
     threadId: t.thread_id,
     quote: quote && !bodyHasReplyQuote(carried.text, quote) ? quote : undefined,
   })
@@ -897,6 +908,7 @@ export function replyToMessage(message: Message, replyAll = false) {
     // which drops the quote).
     encrypt: !!message.crypto?.encrypted || undefined,
     sensitiveSource: message.crypto?.encrypted ? 'reply' : undefined,
+    quoteWithheld: replyQuoteWithheld(message),
   })
 }
 

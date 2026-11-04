@@ -72,6 +72,7 @@ export function EncryptToggle({
   on,
   onChange,
   sensitive,
+  quoteWithheld = false,
   hasRecipients = true,
   size = 'sm',
 }: {
@@ -82,6 +83,9 @@ export function EncryptToggle({
   hasRecipients?: boolean
   /** Carries text from an encrypted message (a reply's quote, a forward). */
   sensitive?: 'reply' | 'forward'
+  /** The quick reply leaves its original unquoted (`replyQuoteWithheld`); the
+   * box shows no quote either way, so the lock's tooltip says why. */
+  quoteWithheld?: boolean
   size?: 'sm' | 'md'
 }) {
   const { t } = useTranslation()
@@ -141,6 +145,7 @@ export function EncryptToggle({
   else if (unavailable)
     title = `${t('crypto.toggle.noKey', { addresses: missing })} ${t('crypto.toggle.clickToLookUp')}`
   else if (locked) title = t('crypto.toggle.forwardLocked')
+  if (quoteWithheld) title = `${/[.!?]$/.test(title) ? title : `${title}.`} ${t('crypto.quoteWithheld')}`
 
   const click = async () => {
     if (locked) return

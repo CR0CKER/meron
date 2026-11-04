@@ -19,6 +19,7 @@ import {
   composedContent,
 } from './compose'
 import { formatFullTimestamp } from '../components/chat/messageHelpers'
+import { ownSentCrypto } from '../lib/crypto'
 import {
   buildReplyRecipients,
   ownAddressSet,
@@ -4228,6 +4229,41 @@ describe('quoting the original in replies', () => {
 
     expect(draft()?.text).toBe('Sounds good')
     expect(composedContent(draft()!)).toBe(`Sounds good\n\n${attribution(m)}\n> Lunch on Friday?\n>\n> Jane`)
+  })
+
+  it('marks a quote withheld from decrypted mail its sender is not shown to have written', () => {
+    const unsigned = { ...ownSentCrypto(), own: false, signed: false, trust: 'unconfirmed' as const }
+    const m = original({ crypto: unsigned })
+
+    replyToMessage(m)
+    expect(draft()?.quote).toBeUndefined()
+    expect(draft()?.quoteWithheld).toBe(true)
+
+    // The quick reply opened in the full editor says so too.
+    compose$.tabs.set([])
+    mail$.threads.set([m])
+    mail$.messages.set([m])
+    ui$.selectedThread.set('t-1')
+    openReplyInFullEditor()
+    expect(draft()?.quoteWithheld).toBe(true)
+
+    // Signed by the sender's key: quoted, nothing to explain.
+    compose$.tabs.set([])
+    replyToMessage(original({ crypto: { ...unsigned, signed: true, trust: 'known' } }))
+    expect(draft()?.quote).toBeDefined()
+    expect(draft()?.quoteWithheld).toBeFalsy()
+
+    // Nothing to quote (a message that failed to decrypt has no body): no note,
+    // whose reason would be wrong.
+    compose$.tabs.set([])
+    replyToMessage(original({ crypto: { ...unsigned, problem: 'integrity' }, body: '', body_html: undefined }))
+    expect(draft()?.quoteWithheld).toBeFalsy()
+
+    // With quoting off nothing is withheld, so there is no note either.
+    compose$.tabs.set([])
+    settings$.quoteReplies.set(false)
+    replyToMessage(m)
+    expect(draft()?.quoteWithheld).toBeFalsy()
   })
 
   it('does not quote a saved quoted reply carried back into a reply twice', async () => {
