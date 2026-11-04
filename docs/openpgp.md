@@ -111,6 +111,13 @@ spin, spki, strsim, tap, twofish, unicode-segmentation, universal-hash, wyz, x25
 Legacy ciphers (IDEA, CAST5, Blowfish, 3DES, Twofish, Camellia) are compiled in by rPGP for reading old mail; Meron
 never encrypts with them.
 
+**Advisories** (`cargo audit` 0.22.2, RustSec database of 2026-11-04, audit M3): the branch adds two, both inside rPGP's
+dependencies and both without a fix it can take, ignored with their reasons in `meron-core/.cargo/audit.toml`:
+RUSTSEC-2023-0071 (`rsa` 0.9.10, Marvin timing attack, no fixed release) and RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5,
+secret-dependent timing, fixed only in 0.7.6, which rPGP 0.21 doesn't use; it sits under the NIST P-256/384/521,
+secp256k1 and X448 curves, while Meron's own keys use `curve25519-dalek`). With that file the branch reports exactly
+upstream `main`'s advisories (17 at `901712bc`, none from this branch). Re-run on every rPGP upgrade.
+
 <sub>[↑ Back to contents](#contents)</sub>
 
 ## 4. Cryptographic profile
@@ -674,7 +681,7 @@ reached v22 the old way. Before an upstream PR: rebase onto upstream, take the n
 | G3 | Intended-recipient fingerprints are written but not checked on receive | Surreptitious forwarding of a signed+encrypted message isn't flagged (the reply-quote leak this enabled is closed by H1's rule) |
 | G4 | The inner `From` (protected header) isn't compared with the outer `From` | A mismatch isn't flagged (the signer check still applies) |
 | G5 | `keys::is_stub` detects GnuPG stubs by matching the debug text of rPGP's S2K parameters | Fragile against rPGP changes; worst case a stub reports "needs passphrase" instead of "on card" |
-| G6 | No `cargo audit`/`cargo deny` gate; Rust sources not run through `rustfmt` (not installed on the build machine) | Supply-chain and style gates missing |
+| G6 | `cargo audit` runs locally (§3, M3) but is no CI gate; upstream `main` itself has 17 advisories, so a gate needs those fixed first (rnons' call). No `cargo deny`; Rust sources not run through `rustfmt` (not installed on the build machine) | Supply-chain and style gates missing in CI |
 | G7 | No `mailto:` regression test (planned) | The `attach=` safety relies on unchanged code |
 | ~~G8~~ | **Resolved 2026-11-04 (audit M2).** Decrypted attachments now go to the per-user temp dir where there is no `XDG_RUNTIME_DIR`, and the secure dir (open copies included) is wiped at start and quit on every platform (§7). Remaining: files survive a crash until the next start | — |
 
@@ -687,7 +694,7 @@ reached v22 the old way. Before an upstream PR: rebase onto upstream, take the n
   until the user verifies.
 - Key lookups disclose recipient addresses to the configured servers.
 - RSA timing side channel (RUSTSEC-2023-0071, `rsa` 0.9.10, no fix): relevant for imported RSA keys only; generated keys
-  are Ed25519/Cv25519.
+  are Ed25519/Cv25519. Likewise `crypto-bigint` 0.5.5 timing (RUSTSEC-2026-0387) for imported NIST/secp256k1/X448 keys.
 - rPGP is volunteer-maintained; only its latest release gets fixes (pin must be followed).
 - Metadata (From, To, Date, Message-ID, sizes) is never protected by OpenPGP.
 - Not supported: cleartext-signed messages, inline PGP in HTML, bzip2, SEIPDv2 for Meron's own keys, smartcards,
