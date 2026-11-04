@@ -202,10 +202,15 @@ export type ImportOwnResult =
 
 export type MissingKey = { addr: string; reason: 'none' | 'unusable' | 'new_key_unverified' }
 
+/** A recipient whose key isn't the one Meron last encrypted to for them. */
+export type KeyChange = { addr: string; previous: string; current: string }
+
 export type RecipientKeys = {
   enabled: boolean
   own_key_unusable: boolean
   missing: MissingKey[]
+  /** Keys that changed since the last encrypted mail to that address (audit H2). */
+  changed?: KeyChange[]
 }
 
 /** Whether a decrypted message's quote may go into an unencrypted reply. It

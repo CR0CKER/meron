@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import type { MessageCrypto, RecipientKeys } from '../../lib/crypto'
-import { crypto$ } from '../../states/crypto'
-import { ui$ } from '../../states/ui'
+import { confirmKeyChanges, crypto$ } from '../../states/crypto'
+import { settleConfirm, ui$ } from '../../states/ui'
 import { settings$ } from '../../states/settings'
 import { CryptoBadge } from './CryptoBadge'
 import { CryptoStrip } from './CryptoStrip'
 import { EncryptToggle, encryptionBlocksSend, recipientAddresses } from './EncryptToggle'
 import { VerifyKeyDialog } from './VerifyKeyDialog'
 import { KeyLookupDialog } from './KeyLookupDialog'
+import { KeyChangeNote } from './KeyChangeNote'
 
 const FPR = '8E9BCE8647564E257A411B71969BC97D064D88D5'
 const base: MessageCrypto = {
@@ -324,6 +325,19 @@ describe('EncryptToggle', () => {
     expect(plain.getByRole('switch').getAttribute('title')).toBe('Encrypted and signed')
   })
 
+  test("a recipient's key that changed since the last mail turns the lock amber and says so", () => {
+    const changed = [{ addr: 'bob@example.net', previous: 'AAAA', current: FPR }]
+    const { getByRole } = render(<EncryptToggle keys={keys({ changed })} on onChange={() => {}} />)
+    const lock = getByRole('switch')
+    expect(lock.className).toContain('text-amber-600')
+    expect(lock.getAttribute('title')).toContain("bob@example.net's key changed")
+    cleanup()
+    // A recipient without a key matters more: that message stays.
+    const blocked = keys({ changed, missing: [{ addr: 'carl@example.net', reason: 'none' }] })
+    const view = render(<EncryptToggle keys={blocked} on sensitive="forward" onChange={() => {}} />)
+    expect(view.getByRole('switch').getAttribute('title')).toContain("Can't encrypt to carl@example.net")
+  })
+
   test('a forward of encrypted mail stays encrypted and keeps Send blocked', () => {
     let value = true
     const missing = keys({ missing: [{ addr: 'bob@example.net', reason: 'none' }] })
@@ -368,6 +382,51 @@ test('an encrypted original is quoted only into an encrypted reply', async () =>
   expect(composedContent({ ...draft, encrypt: true })).toContain('> secret')
   expect(composedContent({ ...draft, encrypt: false })).toBe('Thanks!')
   expect(composedContent({ ...draft, sensitiveSource: undefined, encrypt: false })).toContain('> secret')
+})
+
+describe('key changes before sending', () => {
+  // Another file can leave a dialog open; this block reads `ui$.confirm`.
+  beforeEach(() => settleConfirm(false))
+  afterEach(() => settleConfirm(false))
+
+  test('asks once before sending to a changed key, and not otherwise', async () => {
+    let changed: { addr: string; previous: string; current: string }[] = []
+    ;(window as any).go.main.App.Invoke = async (command: string) =>
+      command === 'pgp.keys.forRecipients' ? { enabled: true, own_key_unusable: false, missing: [], changed } : {}
+    expect(await confirmKeyChanges('acc', ['bob@example.net'])).toBe(true)
+    expect(ui$.confirm.get()).toBeNull()
+
+    changed = [{ addr: 'bob@example.net', previous: 'AAAA', current: FPR }]
+    const asked = confirmKeyChanges('acc', ['bob@example.net'])
+    await waitFor(() => expect(ui$.confirm.get()?.message).toContain("bob@example.net's key changed"))
+    settleConfirm(false)
+    expect(await asked).toBe(false)
+
+    const again = confirmKeyChanges('acc', ['bob@example.net'])
+    await waitFor(() => expect(ui$.confirm.get()).toBeTruthy())
+    settleConfirm(true)
+    expect(await again).toBe(true)
+
+    // A failed check doesn't hold the send back (the core still refuses missing keys).
+    ;(window as any).go.main.App.Invoke = async () => {
+      throw new Error('sidecar down')
+    }
+    expect(await confirmKeyChanges('acc', ['bob@example.net'])).toBe(true)
+  })
+
+  test('the note names the changed address and opens Verify for the new key', () => {
+    const { getByText } = render(
+      <KeyChangeNote accountId="acc" changed={[{ addr: 'bob@example.net', previous: 'AAAA', current: FPR }]} />,
+    )
+    expect(getByText(/bob@example.net's key changed/)).toBeTruthy()
+    fireEvent.click(getByText('Verify…'))
+    expect(crypto$.verify.get()).toEqual({
+      addr: 'bob@example.net',
+      name: 'bob@example.net',
+      fingerprint: FPR,
+      accountId: 'acc',
+    })
+  })
 })
 
 describe('KeyLookupDialog', () => {

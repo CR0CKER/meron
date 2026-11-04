@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { encryptionBlocksSend, recipientAddresses, useRecipientKeys } from '../crypto/EncryptToggle'
+import { confirmKeyChanges } from '../../states/crypto'
 import { Extension, useEditor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -655,6 +656,14 @@ export function useComposer(tabId: string) {
     if (!canSend || !draft) return
     setSending(true)
     setError('')
+    // A recipient's key changed since the last encrypted mail: ask first (audit H2).
+    if (
+      draft.encrypt &&
+      !(await confirmKeyChanges(draft.accountId, recipientAddresses(draft.to, draft.cc, draft.bcc)))
+    ) {
+      setSending(false)
+      return
+    }
     await stopSaving()
     // Re-read after the wait: the fields stay editable while a save drains, and
     // sending this render's copy would silently drop whatever was typed (or the

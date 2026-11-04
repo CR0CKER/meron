@@ -145,6 +145,8 @@ export function EncryptToggle({
   else if (unavailable)
     title = `${t('crypto.toggle.noKey', { addresses: missing })} ${t('crypto.toggle.clickToLookUp')}`
   else if (locked) title = t('crypto.toggle.forwardLocked')
+  const changed = on && !unavailable ? (keys.changed ?? []) : []
+  if (changed.length > 0) title = t('crypto.toggle.keyChanged', { addresses: changed.map((c) => c.addr).join(', ') })
   if (quoteWithheld) title = `${/[.!?]$/.test(title) ? title : `${title}.`} ${t('crypto.quoteWithheld')}`
 
   const click = async () => {
@@ -174,7 +176,7 @@ export function EncryptToggle({
 
   const box = size === 'md' ? 'h-8 w-8' : 'h-7 w-7'
   const tone = on
-    ? unavailable
+    ? unavailable || changed.length > 0
       ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
       : 'text-accent bg-accent/10'
     : // Off, with or without keys: the same grey as the attachment and full-editor

@@ -197,8 +197,11 @@ pub(crate) async fn dispatch(engine: &Arc<Engine>, req: &Request, _out: &Writer)
                     .and_then(Value::as_array)
                     .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
                     .unwrap_or_default();
-                drop(conn);
                 let ring = keyring::current();
+                // Keys that differ from the one last used for that address:
+                // the composer asks before sending (audit H2).
+                let changed = pgp_store::key_changes(&conn, &outgoing::chosen_peer_keys(&ring, &addrs))?;
+                drop(conn);
                 let own = ring.default_key(&account).filter(|_| ring.is_enabled(&account));
                 let own_unusable = own.is_some_and(|k| meron_core::openpgp::keys::check(&k.public, meron_core::openpgp::keys::now()).is_some());
                 let missing = outgoing::missing_keys(&ring, &addrs);
@@ -206,6 +209,7 @@ pub(crate) async fn dispatch(engine: &Arc<Engine>, req: &Request, _out: &Writer)
                     "enabled": own.is_some(),
                     "own_key_unusable": own_unusable,
                     "missing": missing,
+                    "changed": changed,
                 }))
             }
             other => anyhow::bail!("unknown method: {other}"),

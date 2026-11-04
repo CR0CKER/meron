@@ -11,6 +11,7 @@ import { ComposerFooter } from './ComposerFooter'
 import { ComposerQuote } from './ComposerQuote'
 import { closeMessageTab } from '../../states/compose'
 import { DropOverlay } from '../chat/DropOverlay'
+import { KeyChangeNote } from '../crypto/KeyChangeNote'
 import { routeComposerDrop, useFileDrop } from '../../lib/useFileDrop'
 
 export function Composer({ tabId }: { tabId: string }) {
@@ -162,6 +163,8 @@ export function Composer({ tabId }: { tabId: string }) {
       />
 
       {error && <p className="shrink-0 px-4 pb-1 text-[0.6875rem] font-medium text-rose-500">{error}</p>}
+
+      {draft.encrypt && <KeyChangeNote accountId={draft.accountId} changed={encryptionKeys?.changed ?? []} />}
 
       <ComposerFooter
         rich={draft.rich}

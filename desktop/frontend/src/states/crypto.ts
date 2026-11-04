@@ -4,6 +4,7 @@
 
 import { observable } from '@legendapp/state'
 import { invoke } from '../lib/bridge'
+import { t } from '../lib/i18n'
 import type {
   AccountEncryptionState,
   ImportOwnResult,
@@ -16,7 +17,7 @@ import type {
   RecipientKeys,
 } from '../lib/crypto'
 import { loadThread } from './mail'
-import { ui$ } from './ui'
+import { confirmAction, ui$ } from './ui'
 
 /** A key file the user picked: base64, so binary `.gpg` keyrings work too. */
 export type KeyFile = { name: string; data_b64: string }
@@ -133,6 +134,26 @@ export async function dismissEncryptionOffer(accountId: string, addr: string) {
 
 export function recipientKeys(accountId: string, addrs: string[]) {
   return invoke<RecipientKeys>('pgp.keys.forRecipients', { account: accountId, addrs })
+}
+
+/** Before an encrypted send: when a recipient's key isn't the one Meron last
+ * encrypted to for them (a new device, or someone else's key: audit H2), asks
+ * once whether to send anyway. Resolves true to go ahead. A failed check
+ * doesn't stop the send: the core still refuses any recipient without a key. */
+export async function confirmKeyChanges(accountId: string, addrs: string[]): Promise<boolean> {
+  let changed: string[] = []
+  try {
+    changed = ((await recipientKeys(accountId, addrs)).changed ?? []).map((c) => c.addr)
+  } catch {
+    return true
+  }
+  if (changed.length === 0) return true
+  const addresses = changed.join(', ')
+  return confirmAction({
+    title: t('crypto.keyChange.confirmTitle'),
+    message: t('crypto.keyChange.confirmMessage', { addresses }),
+    confirmLabel: t('crypto.keyChange.sendAnyway'),
+  })
 }
 
 /** Looks an address up on the configured key sources. Only on a click: the

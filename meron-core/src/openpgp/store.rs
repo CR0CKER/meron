@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS openpgp_offer_dismissed (
   addr       TEXT NOT NULL,
   PRIMARY KEY (account_id, addr)
 );
+CREATE TABLE IF NOT EXISTS openpgp_key_used (
+  addr        TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  used_at     INTEGER NOT NULL
+);
 ";
 
 fn now_secs() -> i64 {
@@ -59,6 +64,9 @@ pub fn init_main(conn: &Connection) -> Result<()> {
     if let Some(path) = conn.path().filter(|p| !p.is_empty()) {
         let _ = MAIN_DB.set(path.to_string());
     }
+    // Every table is `IF NOT EXISTS`: this adds the ones newer than the store's
+    // OpenPGP migration (`openpgp_key_used`) without a migration of their own.
+    conn.execute_batch(DDL)?;
     reparse_key_attachments_once(conn)?;
     refetch_encrypted_cached_without_openpgp_once(conn)?;
     // Cheap and idempotent, so every start: rows cached before it existed, and
@@ -456,6 +464,47 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
         put(addr, key, Source::Attachment, false)?;
     }
     Ok(changed)
+}
+
+/// A recipient whose key would differ from the one Meron last encrypted to
+/// for that address (audit H2: the composer asks before sending).
+#[derive(Debug, Clone, Serialize)]
+pub struct KeyChange {
+    pub addr: String,
+    /// Primary fingerprint last used for this address.
+    pub previous: String,
+    /// Primary fingerprint Meron would use now.
+    pub current: String,
+}
+
+/// Remembers which key each recipient's mail was just encrypted to.
+pub fn record_used(conn: &Connection, used: &[(String, String)]) -> Result<()> {
+    let now = now_secs();
+    for (addr, fingerprint) in used {
+        conn.execute(
+            "INSERT INTO openpgp_key_used (addr, fingerprint, used_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(addr) DO UPDATE SET fingerprint = excluded.fingerprint, used_at = excluded.used_at",
+            params![addr.to_ascii_lowercase(), fingerprint, now],
+        )?;
+    }
+    Ok(())
+}
+
+/// Of the keys a send would use (`chosen`: address, fingerprint), those that
+/// differ from the key last used for that address. An address never written
+/// to encrypted has nothing to compare and is not listed.
+pub fn key_changes(conn: &Connection, chosen: &[(String, String)]) -> Result<Vec<KeyChange>> {
+    let mut out = Vec::new();
+    for (addr, current) in chosen {
+        let addr = addr.to_ascii_lowercase();
+        let previous: Option<String> = conn
+            .query_row("SELECT fingerprint FROM openpgp_key_used WHERE addr = ?1", [&addr], |r| r.get(0))
+            .optional()?;
+        if let Some(previous) = previous.filter(|p| p != current) {
+            out.push(KeyChange { addr, previous, current: current.clone() });
+        }
+    }
+    Ok(out)
 }
 
 /// A peer key row for the Settings → Encryption page.
@@ -912,6 +961,23 @@ mod tests {
         ingest(&conn, &ann(carol), &[], now_secs()).unwrap();
         let ring = load(&conn).unwrap();
         assert_eq!(ring.encryption_key_for("carol@example.com").unwrap().fingerprint, carol_fpr);
+    }
+
+    #[test]
+    fn a_key_other_than_the_one_last_used_is_reported_until_it_is_used() {
+        // Audit H2, option 4: the composer warns when the key it would encrypt
+        // to isn't the one Meron last encrypted to for that address.
+        let conn = db();
+        let carol = "carol@example.com".to_string();
+        let chosen = |fpr: &str| vec![(carol.clone(), fpr.to_string())];
+        assert!(key_changes(&conn, &chosen("AAAA")).unwrap().is_empty(), "first contact: nothing to compare");
+        record_used(&conn, &chosen("AAAA")).unwrap();
+        assert!(key_changes(&conn, &chosen("AAAA")).unwrap().is_empty());
+        let changes = key_changes(&conn, &chosen("BBBB")).unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!((changes[0].addr.as_str(), changes[0].previous.as_str(), changes[0].current.as_str()), ("carol@example.com", "AAAA", "BBBB"));
+        record_used(&conn, &chosen("BBBB")).unwrap();
+        assert!(key_changes(&conn, &chosen("BBBB")).unwrap().is_empty(), "sending to the new key settles it");
     }
 
     #[test]

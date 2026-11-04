@@ -94,7 +94,7 @@ pub(crate) async fn dispatch(
             let ring = meron_core::openpgp::keyring::current();
             let raw = if encrypt {
                 let keys = meron_core::openpgp::outgoing::resolve(&ring, &account, &from_addr, &to, &cc, &bcc)?;
-                smtp::send_encrypted(
+                let raw = smtp::send_encrypted(
                     &creds,
                     &from_addr,
                     &sender_name,
@@ -111,7 +111,19 @@ pub(crate) async fn dispatch(
                     &message_id,
                     &keys,
                 )
-                .await?
+                .await?;
+                // The keys it went to are now the ones the composer compares
+                // against (audit H2). The mail is out: a failure here only
+                // means the next send asks again.
+                let recipients: Vec<String> = [&to, &cc, &bcc]
+                    .iter()
+                    .flat_map(|field| meron_core::openpgp::outgoing::split_recipients(field))
+                    .collect();
+                let used = meron_core::openpgp::outgoing::chosen_peer_keys(&ring, &recipients);
+                if let Err(err) = meron_core::openpgp::store::record_used(&engine.db.lock().unwrap(), &used) {
+                    eprintln!("openpgp: couldn't record the keys used: {err:#}");
+                }
+                raw
             } else {
                 let extra: Vec<(&str, String)> = meron_core::openpgp::outgoing::autocrypt_for(&ring, &account, &from_addr)
                     .map(|v| vec![("Autocrypt", v)])

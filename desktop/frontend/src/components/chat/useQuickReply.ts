@@ -14,6 +14,9 @@ import {
   seedQuickReplySignature,
 } from '../../states/quickReply'
 import { sendReply } from '../../states/quickReplySend'
+import { confirmKeyChanges } from '../../states/crypto'
+import { quickReplyEncrypts, quickReplyRecipients, quickReplyTarget } from '../../states/composeReply'
+import { recipientAddresses } from '../crypto/EncryptToggle'
 import { showToast, ui$ } from '../../states/ui'
 import {
   readAttachment,
@@ -112,6 +115,13 @@ export function useQuickReply() {
     if (sendingReply) return
     setSendingReply(true)
     try {
+      // A recipient's key changed since the last encrypted mail: ask first,
+      // before the send claims the box's draft (audit H2).
+      const target = quickReplyTarget()
+      if (target && quickReplyEncrypts()) {
+        const { to, cc } = quickReplyRecipients()
+        if (!(await confirmKeyChanges(target.account_id, recipientAddresses(to, cc)))) return
+      }
       await sendReply()
     } finally {
       setSendingReply(false)

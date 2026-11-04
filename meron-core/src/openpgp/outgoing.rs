@@ -80,6 +80,18 @@ fn key_for<'a>(ring: &'a Keyring, addr: &str) -> std::result::Result<&'a SignedP
     }
 }
 
+/// The correspondent key each recipient would get (bare address, primary
+/// fingerprint). Our own addresses and recipients without a key are left out:
+/// only a correspondent's key can change behind the user's back (audit H2).
+pub fn chosen_peer_keys(ring: &Keyring, addrs: &[String]) -> Vec<(String, String)> {
+    addrs
+        .iter()
+        .map(|a| bare_addr(a))
+        .filter(|a| !a.is_empty())
+        .filter_map(|addr| ring.encryption_key_for(&addr).ok().map(|peer| (addr, peer.fingerprint.clone())))
+        .collect()
+}
+
 /// Which recipients have no usable key (empty: all can be encrypted to).
 pub fn missing_keys(ring: &Keyring, addrs: &[String]) -> Vec<Missing> {
     addrs
@@ -287,6 +299,15 @@ mod tests {
         // And so do we (Sent copy), as verified.
         let m = crate::parse::parse_message_with(&raw, None, &ring);
         assert_eq!(m.crypto.unwrap().trust(&ring, &m.from_addr), Trust::Verified);
+    }
+
+    #[test]
+    fn chosen_keys_name_each_correspondent_but_not_our_own_addresses() {
+        let me = keys::generate(&["me@example.org".into()]).unwrap();
+        let peer = keys::generate(&["peer@example.org".into()]).unwrap();
+        let ring = ring_with(&me, &[("peer@example.org", &peer)]);
+        let chosen = chosen_peer_keys(&ring, &["Peer <Peer@example.org>".into(), "me@example.org".into(), "x@example.org".into()]);
+        assert_eq!(chosen, vec![("peer@example.org".to_string(), keys::fingerprint_hex(&peer.primary_key))]);
     }
 
     #[test]

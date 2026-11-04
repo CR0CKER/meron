@@ -187,7 +187,12 @@ CREATE TABLE openpgp_peer_keys (addr TEXT NOT NULL, fingerprint TEXT NOT NULL, p
   last_seen INTEGER NOT NULL, PRIMARY KEY (addr, fingerprint));
 CREATE TABLE openpgp_offer_dismissed (account_id TEXT NOT NULL, addr TEXT NOT NULL,
   PRIMARY KEY (account_id, addr));
+CREATE TABLE openpgp_key_used (addr TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, used_at INTEGER NOT NULL);
 ```
+
+`openpgp_key_used` (audit H2) came after the migration; `store::init_main` runs the whole `DDL` (every statement
+`IF NOT EXISTS`) on each start, which adds it to stores already past the OpenPGP migration. For the PR it folds into the
+migration.
 
 The archive database runs the same migrations, so these tables also exist (empty) in `archive.db`.
 
@@ -248,6 +253,11 @@ Chat's and the Autocrypt v2 draft's rule).
   late must not win). `last_seen` is the message's `Date:` clamped to now (Autocrypt's effective date): the header is the
   sender's claim, and one forged mail dated years ahead would otherwise stay the newest and choose the address's key
   for good (audit H2, `a_future_date_header_cannot_pin_a_key_as_the_newest`).
+- **Key changes before sending** (audit H2, option 4): TOFU still switches to a newer key by itself, but the composer
+  says so. After every encrypted send the core records, per correspondent address, the key it encrypted to
+  (`store::record_used`, from `outgoing::chosen_peer_keys`; our own addresses don't count). `pgp.keys.forRecipients`
+  reports `changed` (`store::key_changes`): recipients whose key now differs from the one last used. A first contact has
+  nothing to compare and is not listed; once a send to the new key succeeds, it is the one compared against.
 - Gossip (`Autocrypt-Gossip`) only fills addresses with no key at all.
 - Keys with `check()` problems other than expiry are not ingested.
 - `Keyring::encryption_key_for`: a verified usable key wins; if the verified key is unusable and only unverified ones
@@ -446,6 +456,12 @@ flowchart TD
   on and sticky for replies/forwards of encrypted mail; a manual "off" holds for that message.
 - Off whenever a recipient has no usable key; clicking the lock then opens the key lookup, and encryption switches on
   once all keys are present. Exception: forwards of encrypted mail stay on and Send stays blocked.
+- **Changed keys:** with encryption on and a recipient in `changed`, the lock is amber with the reason in its tooltip
+  (`crypto.toggle.keyChanged`; a missing key's message wins), the full editor shows a line above its footer per address
+  with Verify… for the new key (`components/crypto/KeyChangeNote.tsx`), and Send asks once, "Send anyway" or Cancel
+  (`states/crypto.ts confirmKeyChanges`, called by `useComposer` `submit` and `useQuickReply` `handleSendReply` before
+  the quick reply claims its draft). A failed check doesn't stop the send. There is no Verify button in the question
+  (the shared confirm dialog has two buttons): Cancel, then Verify… in the note or Settings → Encryption.
 - **Quote guard:** a reply's quote of an encrypted original is only included when the message is encrypted
   (`composedContent`, `lib/crypto.ts mayQuoteInto`, quick reply in `quickReplySend.ts`); turning encryption off on such a
   reply asks first and drops the quote.
@@ -559,7 +575,7 @@ message iframe.
 | Key overwriting (KO) | Secret keys inside SQLCipher (page HMAC); self-test (sign + verify) on every load; AEAD/CFB S2K only for exports | `store::tests::a_corrupted_stored_key_is_never_loaded` |
 | SHA-1 collisions / downgrade | Data signatures with SHA-1/MD5/RIPEMD never valid; SHA-1 bindings only before 2023-02-01 | `crypt::tests::sha1_detached_signature_is_weak_and_never_valid`, `mime::tests::sha1_signature_is_weak_and_unconfirmed` |
 | Surreptitious forwarding | Protected headers inside the encryption; intended-recipient fingerprints in our signatures (not checked on receive) | `outgoing::tests::wrapped_message_hides_subject_and_body_and_round_trips_through_our_parser` |
-| Autocrypt key injection | `addr` must equal From; gossip never replaces a key; verified keys never replaced; key changes shown | `autocrypt::tests::header_for_another_address_is_ignored`, `store::tests::gossip_never_replaces_a_direct_key`, `verified_key_stays_preferred_over_a_newer_one` |
+| Autocrypt key injection | `addr` must equal From; gossip never replaces a key; verified keys never replaced; key changes shown; `Date:` clamped to now; sending to a key other than the one last used asks first (H2) | `autocrypt::tests::header_for_another_address_is_ignored`, `store::tests::gossip_never_replaces_a_direct_key`, `verified_key_stays_preferred_over_a_newer_one` |
 | Compromised key still trusted after its owner (or its designated revoker) revoked it | Signatures checked against key validity at signing time; revocations, including designated-revoker ones, merged into stored keys from every source including lookups; stored keys never overwritten by older copies; forged third-party revocations ignored | `keys::tests::validity_at_a_time_respects_expiry_and_revocation`, `merging_a_revoked_copy_revokes_the_stored_key`, `mime::tests::a_signature_by_a_revoked_key_is_not_valid_even_if_made_before`, `a_signature_made_while_the_key_was_valid_stays_valid_after_expiry`, `store::tests::a_revocation_arriving_later_takes_effect_and_an_older_copy_cannot_undo_it`, `importing_a_revoked_copy_updates_the_stored_key`, `keys::tests::a_designated_revoker_can_revoke_and_nobody_else_can`, `store::tests::a_designated_revocation_arriving_by_mail_takes_effect_and_a_forged_one_does_not`, `mime::tests::a_key_revoked_by_its_designated_revoker_no_longer_signs`, `lookup::tests::hkp_results_are_marked_unverified_and_revoked_keys_dropped` |
 | Bcc disclosure via key IDs | Separate message per Bcc recipient | `outgoing::tests::bcc_recipients_get_their_own_message_without_the_others_keys` |
 | Silent downgrade to plaintext | Core refuses `encrypt` with a missing key | `outgoing::tests::a_recipient_without_a_key_is_refused_not_downgraded` |
@@ -583,6 +599,11 @@ message iframe.
   (`states/replyQuote.test.ts` ×2, `lib/crypto.test.ts` ×1), each seen failing first and mutation-checked; full core suite
   837 pass, frontend 1331 pass, 1 skip, the same five `AppHotkeys` failures. The note for a withheld quote: one test each
   in `states/compose.test.ts`, `Composer.test.tsx` and `CryptoUi.test.tsx`, mutation-checked; frontend 1334 pass.
+  Key changes before sending (H2, option 4): `store::tests::a_key_other_than_the_one_last_used_is_reported_until_it_is_used`,
+  `outgoing::tests::chosen_keys_name_each_correspondent_but_not_our_own_addresses`, and in the frontend the lock, note and
+  question (`CryptoUi.test.tsx` ×3, `Composer.test.tsx`, `useQuickReply.test.ts`), mutation-checked; core 839 pass,
+  frontend 1339 pass, 1 skip, the five `AppHotkeys` failures. The two dispatch lines (record after send, `changed` in
+  `pgp.keys.forRecipients`) have no unit test and were not run against a live send yet.
 - **Fixtures** (`meron-core/src/openpgp/testdata/`): made-up keys and messages generated by `make_fixtures.py` with
   GnuPG in a throwaway `GNUPGHOME` (Alice = the user, Bob = RSA-3072 passphrase-protected, Carol = peer, Mallory =
   attacker, expired and revoked keys, Carol's second key). Messages cover encrypted+signed, unsigned, wrong recipient,
@@ -657,7 +678,7 @@ reached v22 the old way. Before an upstream PR: rebase onto upstream, take the n
 | Core, OpenPGP | `meron-core/src/openpgp/{mod,keys,crypt,mime,outgoing,autocrypt,keyring,store,lookup}.rs`, `testdata/` |
 | Core, integration | `parse.rs` (`parse_message_with`, `SECURE_MEDIA_PREFIX`, `secure_media_root`, `media_file`, `Message.crypto/found_keys`), `store/db.rs` (`migrate_v22`), `store/messages.rs` (crypto persisted, key ingest, subject kept), `engine/mod.rs` (`init_main`), `engine/read.rs` (remote content off), `thread_read.rs` (`crypto` view), `mail_model.rs` (card lock), `smtp.rs` (`send` extra headers, `send_encrypted`), `backup.rs` (`openpgp_keys`), `sidecar/dispatch/{openpgp,compose,mod}.rs`, `protocol/mail.rs` |
 | Desktop (Go) | `app.go` (`pgpInvoke`, `pgpExport`), `paths.go` (`secureMediaDir`, media handler), `mail.go` (`mediaFilePath`, `encrypt`), `sidecar.go` (env, timeouts), `types.go`, `secure_media_test.go` |
-| Frontend | `lib/crypto.ts`, `states/crypto.ts`, `components/crypto/*` (badge, strip, toggle, dialogs, settings), changes in `MessageBubble`, `MessageRow`, `ReaderTabView`, `MessageContent`, `ThreadListItem`, `QuickReplyComposer`, `Composer`, `ComposerFooter`, `useComposer`, `states/compose*.ts`, `quickReply*.ts`, `pendingSends.ts`, `settings.ts`, `SettingsDialog.tsx`, `index.css` (`--me-verified`), `types.ts`, `App.tsx` |
+| Frontend | `lib/crypto.ts`, `states/crypto.ts`, `components/crypto/*` (badge, strip, toggle, key-change note, dialogs, settings), changes in `MessageBubble`, `MessageRow`, `ReaderTabView`, `MessageContent`, `ThreadListItem`, `QuickReplyComposer`, `Composer`, `ComposerFooter`, `useComposer`, `states/compose*.ts`, `quickReply*.ts`, `pendingSends.ts`, `settings.ts`, `SettingsDialog.tsx`, `index.css` (`--me-verified`), `types.ts`, `App.tsx` |
 | Strings | `locales/*.json`, `crypto.*` keys (English placeholders in the 18 non-English catalogues) |
 
 <sub>[↑ Back to contents](#contents)</sub>
