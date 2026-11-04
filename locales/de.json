@@ -799,6 +799,7 @@
   "mcp.regenerate": "Zugangsdaten ersetzen",
   "mcp.regenerateMessage": "Die aktuellen Zugangsdaten funktionieren sofort nicht mehr. Der Client behält seine Konten und Berechtigungen und verbindet sich wieder, sobald Sie die neuen Zugangsdaten dort eintragen.",
   "mcp.regenerateTitle": "Zugangsdaten für {name} ersetzen?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Ablehnen",
   "mcp.requestingClient": "Client",
   "mcp.retry": "Server erneut starten",

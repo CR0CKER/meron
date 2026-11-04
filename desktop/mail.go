@@ -1011,6 +1011,7 @@ func (a *App) mailSend(payload map[string]any) (any, error) {
 		"message_id":  req.MessageID,
 		"attachments": req.Attachments,
 		"encrypt":     req.Encrypt,
+		"plain":       req.Plain,
 	}); err != nil {
 		return nil, err
 	}
@@ -1040,6 +1041,7 @@ func (a *App) mailSaveDraft(payload map[string]any) (any, error) {
 		"draft_id":    req.DraftID,
 		"attachments": req.Attachments,
 		"encrypt":     req.Encrypt,
+		"plain":       req.Plain,
 	}); err != nil {
 		return nil, err
 	}

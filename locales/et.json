@@ -799,6 +799,7 @@
   "mcp.regenerate": "Asenda mandaat",
   "mcp.regenerateMessage": "Praegune mandaat lakkab kohe töötamast. Klient säilitab oma kontod ja õigused ning ühendub uuesti, kui kleebid sinna uue mandaadi.",
   "mcp.regenerateTitle": "Kas asendada {name} mandaat?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Keeldu",
   "mcp.requestingClient": "Klient",
   "mcp.retry": "Proovi serverit uuesti käivitada",

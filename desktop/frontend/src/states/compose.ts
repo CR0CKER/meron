@@ -1143,6 +1143,10 @@ export async function sendComposed(args: {
   const body = args.rich ? htmlToText(args.content) : args.content
   await invoke('mail.send', {
     encrypt: !!args.encrypt,
+    // Plain only when encryption was switched off (`false`), never because the
+    // flag is missing: the core encrypts a reply to encrypted mail that says
+    // neither (audit M1).
+    plain: args.encrypt === false,
     account_id: args.accountId,
     from: args.from ?? '',
     to: args.to,
@@ -1252,6 +1256,10 @@ export async function saveComposedDraft(args: {
       : args.draftMessageId
   const request = invoke('mail.saveDraft', {
     encrypt: !!args.encrypt,
+    // Plain only when encryption was switched off (`false`), never because the
+    // flag is missing: the core encrypts a reply to encrypted mail that says
+    // neither (audit M1).
+    plain: args.encrypt === false,
     account_id: args.accountId,
     from: args.from ?? '',
     to: args.to,

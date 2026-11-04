@@ -799,6 +799,7 @@
   "mcp.regenerate": "認証情報を再発行",
   "mcp.regenerateMessage": "現在の認証情報はすぐに使えなくなります。クライアントのアカウントと権限はそのままで、新しい認証情報を貼り付ければ再び接続できます。",
   "mcp.regenerateTitle": "{name} の認証情報を再発行しますか？",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "拒否",
   "mcp.requestingClient": "クライアント",
   "mcp.retry": "サーバーの起動を再試行",

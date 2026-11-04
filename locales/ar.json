@@ -799,6 +799,7 @@
   "mcp.regenerate": "استبدال بيانات الاعتماد",
   "mcp.regenerateMessage": "تتوقف بيانات الاعتماد الحالية عن العمل فورًا. يحتفظ العميل بحساباته وأذوناته، ويعود للاتصال بمجرد لصق بيانات الاعتماد الجديدة فيه.",
   "mcp.regenerateTitle": "هل تريد استبدال بيانات اعتماد {name}؟",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "رفض",
   "mcp.requestingClient": "العميل",
   "mcp.retry": "إعادة محاولة تشغيل الخادم",

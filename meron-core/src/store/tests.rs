@@ -5750,3 +5750,47 @@ fn a_plain_gmail_reply_to_a_locally_cached_message_keeps_gmails_thread() {
     let key: String = conn.query_row("SELECT thread_key FROM messages WHERE uid = 2", [], |r| r.get(0)).unwrap();
     assert_eq!(key, "gmthrid:99");
 }
+
+// Audit M1: the core decides whether a reply answers encrypted mail from the
+// message it names in In-Reply-To, whatever the caller sends.
+#[test]
+fn a_reply_is_known_to_answer_encrypted_mail_by_its_in_reply_to() {
+    let conn = test_conn();
+    let insert = |uid: u32, message_id: &str, encrypted: bool, account: &str| {
+        let crypto = if encrypted { r#","crypto":{"encrypted":true}"# } else { "" };
+        let json = format!(r#"{{"message_id":"{message_id}"{crypto}}}"#);
+        conn.execute(
+            "INSERT INTO messages(account, folder, msg_id, uid, subject, date, seen, json)
+             VALUES(?1, 'INBOX', ?2, ?3, 's', 1, 1, ?4)",
+            params![account, uid.to_string(), uid, json],
+        )
+        .unwrap();
+    };
+    insert(1, "Secret@Example.com", true, "acct");
+    insert(2, "plain@example.com", false, "acct");
+    insert(3, "elsewhere@example.com", true, "other");
+    let answers = |id: &str| crate::openpgp::store::answers_encrypted(&conn, "acct", id).unwrap();
+    assert!(answers("<secret@example.com>"), "brackets and case don't matter");
+    assert!(answers("secret@example.com"));
+    assert!(!answers("<plain@example.com>"));
+    assert!(!answers("<elsewhere@example.com>"), "another account's message doesn't count");
+    assert!(!answers(""));
+    assert!(!answers("<unknown@example.com>"));
+}
+
+// Audit M1, as the sidecar applies it to send and save_draft.
+#[test]
+fn a_reply_to_encrypted_mail_saying_nothing_is_encrypted_and_marked_implicit() {
+    let conn = test_conn();
+    conn.execute(
+        "INSERT INTO messages(account, folder, msg_id, uid, subject, date, seen, json)
+         VALUES('acct', 'INBOX', '1', 1, 's', 1, 1, '{\"message_id\":\"secret@example.com\",\"crypto\":{\"encrypted\":true}}')",
+        [],
+    )
+    .unwrap();
+    let decide = |irt: &str, encrypt: bool, plain: bool| crate::openpgp::store::reply_protection(&conn, "acct", irt, encrypt, plain).unwrap();
+    assert_eq!(decide("<secret@example.com>", false, false), (true, true), "nothing said: encrypted, implicitly");
+    assert_eq!(decide("<secret@example.com>", false, true), (false, false), "plain chosen");
+    assert_eq!(decide("<secret@example.com>", true, false), (true, false), "asked for");
+    assert_eq!(decide("<other@example.com>", false, false), (false, false), "answers plain mail");
+}

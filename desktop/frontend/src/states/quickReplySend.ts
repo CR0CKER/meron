@@ -417,6 +417,8 @@ export async function sendReply() {
     from: addressed.from,
     message_id: messageId,
     encrypt,
+    // The quick reply always decides, so it always says (audit M1).
+    plain: !encrypt,
     attachments: outgoing.attachments.map((a) => ({
       filename: a.filename,
       mime: a.mime,

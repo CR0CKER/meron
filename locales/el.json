@@ -799,6 +799,7 @@
   "mcp.regenerate": "Αντικατάσταση διαπιστευτηρίου",
   "mcp.regenerateMessage": "Το τρέχον διαπιστευτήριο παύει αμέσως να ισχύει. Ο πελάτης διατηρεί τους λογαριασμούς και τα δικαιώματά του και συνδέεται ξανά μόλις επικολλήσετε σε αυτόν το νέο διαπιστευτήριο.",
   "mcp.regenerateTitle": "Αντικατάσταση του διαπιστευτηρίου του {name};",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Απόρριψη",
   "mcp.requestingClient": "Πελάτης",
   "mcp.retry": "Νέα προσπάθεια εκκίνησης του διακομιστή",

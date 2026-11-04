@@ -190,6 +190,13 @@ pub(crate) async fn dispatch(engine: &Arc<Engine>, req: &Request, _out: &Writer)
             }
             // The composer's live check: can this message be encrypted, and
             // which recipients lack a key.
+            // For the MCP approval preview: a reply to encrypted mail goes out
+            // encrypted whatever the tool asked (audit M1).
+            "pgp.reply.encrypted" => {
+                let account = req_str(&p, "account")?;
+                let in_reply_to = req_str(&p, "in_reply_to").unwrap_or_default();
+                Ok(json!({ "encrypted": pgp_store::answers_encrypted(&conn, &account, &in_reply_to)? }))
+            }
             "pgp.keys.forRecipients" => {
                 let account = req_str(&p, "account")?;
                 let addrs: Vec<String> = p

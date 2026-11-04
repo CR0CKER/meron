@@ -17,6 +17,8 @@ import {
   replyAllToMessage,
   replyToMessage,
   composedContent,
+  saveComposedDraft,
+  sendComposed,
 } from './compose'
 import { formatFullTimestamp } from '../components/chat/messageHelpers'
 import { ownSentCrypto } from '../lib/crypto'
@@ -892,6 +894,13 @@ describe('quick reply draft sharing', () => {
 
       const bubble = mail$.messages.get().find((m) => m.body === 'Secret reply')
       expect(bubble).toBeDefined()
+      // The quick reply always states its choice, so the core never has to
+      // guess (audit M1).
+      const sent = [...calls].reverse().find((c) => c.command === 'mail.send')?.payload as {
+        encrypt: boolean
+        plain: boolean
+      }
+      expect(sent).toMatchObject({ encrypt: on, plain: !on })
       if (on) {
         expect(bubble?.crypto).toMatchObject({ encrypted: true, signed: true, own: true, trust: 'verified' })
         expect(bubble?.crypto?.problem ?? null).toBeNull()
@@ -899,6 +908,29 @@ describe('quick reply draft sharing', () => {
         expect(bubble?.crypto ?? null).toBeNull()
       }
       compose$.quickReplyEncrypt.set(null)
+    }
+  })
+
+  it('says plain to the core only when encryption was switched off, not when the flag is missing', async () => {
+    // Audit M1: a reply to encrypted mail that says neither is encrypted by the
+    // core, so a path that loses `encrypt` can't downgrade it by accident.
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: unknown) => {
+      calls.push({ command, payload })
+      if (command === 'mail.allocateIdentity') return { message_id: 'd@example.com' }
+      return {}
+    }
+    const base = { accountId: 'acc-1', to: 'x@example.com', subject: 's', rich: false, content: 'hi', attachments: [] }
+    const last = (command: string) =>
+      [...calls].reverse().find((c) => c.command === command)?.payload as { encrypt: boolean; plain: boolean }
+    for (const [encrypt, plain] of [
+      [true, false],
+      [false, true],
+      [undefined, false],
+    ] as const) {
+      await sendComposed({ ...base, encrypt })
+      expect(last('mail.send')).toMatchObject({ encrypt: !!encrypt, plain })
+      await saveComposedDraft({ ...base, draftMessageId: 'd@example.com', encrypt })
+      expect(last('mail.saveDraft')).toMatchObject({ encrypt: !!encrypt, plain })
     }
   })
 

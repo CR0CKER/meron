@@ -435,6 +435,16 @@ flowchart TD
   a key for every recipient or the send fails with "can't encrypt to …". There is no code path that sends an
   `encrypt: true` message in the clear. Keys come from `Keyring::encryption_key_for`, or the user's own key for their
   own addresses.
+- **Replies to encrypted mail** (audit M1): the core doesn't rely on the caller's flag alone. `store::reply_protection`
+  looks up the message named in In-Reply-To (`store::answers_encrypted`: a cached message of the account with
+  `$.crypto.encrypted`) and applies `outgoing::protection`: encrypted when `encrypt` is set, or when the reply answers
+  encrypted mail and the caller didn't send `plain: true`. Such an implicit send needs keys for every recipient like any
+  encrypted one (refused naming them, "this replies to encrypted mail, so it can only be sent encrypted"); an implicit
+  draft is encrypted to the account's own key, even with encryption turned off for the account. The editor sends
+  `plain` only when its `encrypt` is `false` (never for a missing flag, so a path that loses `encrypt` can't downgrade a
+  thread); the quick reply always decides and sends `plain: !encrypt`. MCP `send_message`, `create_draft` and
+  `update_draft` send neither, so replies into encrypted threads come out encrypted, and the approval preview says so
+  (`pgp.reply.encrypted`, `mcp.sendsEncrypted`).
 - **Payload** (`outgoing::inner_payload`): the complete message as built by `smtp::build_message` (all headers,
   including From, To, Cc, Subject, Date, Message-ID, In-Reply-To, References), with `; protected-headers="v1"`
   appended to its Content-Type and our `Autocrypt:` header prepended. Delta Chat checks a signature only against the key
@@ -472,7 +482,8 @@ flowchart TD
   The composer says why (`crypto.quoteWithheld`): the full editor shows the note where the folded quote would be
   (`ComposeDraft.quoteWithheld`, set by `replyQuoteWithheld`), the quick reply adds it to the lock's tooltip. No note when
   quoting is off or the original has no body (a failed decryption).
-- MCP `create_draft` sends no `encrypt` flag (plain drafts).
+- MCP `create_draft` sends no `encrypt` flag: plain drafts, except replies to encrypted mail (encrypted to the user's
+  own key, see above).
 - **Reply subject** (`states/composeReply.ts replySubject`, used by the full editor, reply-to-message, the quick reply
   and its draft matching): `Re: ` before the subject as before, except when that subject is still an encrypted
   message's placeholder (`[...]`, `...`, after reply prefixes): then the decrypted subject of the message being
@@ -534,8 +545,8 @@ third-party certifications are not imported.
 `pgp.account.create`, `pgp.account.enable`, `pgp.account.disable`, `pgp.account.importKey`,
 `pgp.account.exportPublic`, `pgp.account.exportSecret`, `pgp.account.deleteKey`, `pgp.peers.list`,
 `pgp.peers.importPreview`, `pgp.peers.import`, `pgp.peers.setVerified`, `pgp.peers.remove`, `pgp.offer.dismiss`,
-`pgp.keys.forRecipients`, `pgp.lookup`, `pgp.lookup.add`, `pgp.lookup.sources`, `pgp.lookup.setSources`. Plus
-`encrypt` on `send` and `save_draft`.
+`pgp.keys.forRecipients`, `pgp.lookup`, `pgp.lookup.add`, `pgp.lookup.sources`, `pgp.lookup.setSources`, `pgp.reply.encrypted` (MCP preview). Plus
+`encrypt` and `plain` on `send` and `save_draft`.
 
 **Logging:** the sidecar's error path (`main.rs::handle`) prints the method and the error chain to stderr; error
 messages in this code name addresses and fingerprints, never key material or passphrases. The Go host logs only command
@@ -578,7 +589,7 @@ message iframe.
 | Autocrypt key injection | `addr` must equal From; gossip never replaces a key; verified keys never replaced; key changes shown; `Date:` clamped to now; sending to a key other than the one last used asks first (H2) | `autocrypt::tests::header_for_another_address_is_ignored`, `store::tests::gossip_never_replaces_a_direct_key`, `verified_key_stays_preferred_over_a_newer_one` |
 | Compromised key still trusted after its owner (or its designated revoker) revoked it | Signatures checked against key validity at signing time; revocations, including designated-revoker ones, merged into stored keys from every source including lookups; stored keys never overwritten by older copies; forged third-party revocations ignored | `keys::tests::validity_at_a_time_respects_expiry_and_revocation`, `merging_a_revoked_copy_revokes_the_stored_key`, `mime::tests::a_signature_by_a_revoked_key_is_not_valid_even_if_made_before`, `a_signature_made_while_the_key_was_valid_stays_valid_after_expiry`, `store::tests::a_revocation_arriving_later_takes_effect_and_an_older_copy_cannot_undo_it`, `importing_a_revoked_copy_updates_the_stored_key`, `keys::tests::a_designated_revoker_can_revoke_and_nobody_else_can`, `store::tests::a_designated_revocation_arriving_by_mail_takes_effect_and_a_forged_one_does_not`, `mime::tests::a_key_revoked_by_its_designated_revoker_no_longer_signs`, `lookup::tests::hkp_results_are_marked_unverified_and_revoked_keys_dropped` |
 | Bcc disclosure via key IDs | Separate message per Bcc recipient | `outgoing::tests::bcc_recipients_get_their_own_message_without_the_others_keys` |
-| Silent downgrade to plaintext | Core refuses `encrypt` with a missing key | `outgoing::tests::a_recipient_without_a_key_is_refused_not_downgraded` |
+| Silent downgrade to plaintext | Core refuses `encrypt` with a missing key; a reply to encrypted mail is encrypted unless `plain` is sent (MCP and paths that lose the flag included) | `outgoing::tests::a_recipient_without_a_key_is_refused_not_downgraded` |
 | Keyserver key substitution | Lookup only on click; WKD/VKS marked verified, HKP marked unverified; user confirms each key; stored as Known | `lookup::tests::*` |
 
 <sub>[↑ Back to contents](#contents)</sub>
@@ -604,6 +615,11 @@ message iframe.
   question (`CryptoUi.test.tsx` ×3, `Composer.test.tsx`, `useQuickReply.test.ts`), mutation-checked; core 839 pass,
   frontend 1339 pass, 1 skip, the five `AppHotkeys` failures. The two dispatch lines (record after send, `changed` in
   `pgp.keys.forRecipients`) have no unit test and were not run against a live send yet.
+  Replies to encrypted mail (M1): `store::tests::a_reply_is_known_to_answer_encrypted_mail_by_its_in_reply_to`,
+  `a_reply_to_encrypted_mail_saying_nothing_is_encrypted_and_marked_implicit`,
+  `outgoing::tests::a_reply_to_encrypted_mail_is_encrypted_unless_plain_is_asked_for`, the payload tests in
+  `states/compose.test.ts` and the preview in `McpApprovalDialog.test.tsx`, mutation-checked; core 842 pass, frontend
+  1341 pass. The Go passthrough (`Plain`, `replyEncrypted`) is checked by build and `go vet` only.
 - **Fixtures** (`meron-core/src/openpgp/testdata/`): made-up keys and messages generated by `make_fixtures.py` with
   GnuPG in a throwaway `GNUPGHOME` (Alice = the user, Bob = RSA-3072 passphrase-protected, Carol = peer, Mallory =
   attacker, expired and revoked keys, Carol's second key). Messages cover encrypted+signed, unsigned, wrong recipient,

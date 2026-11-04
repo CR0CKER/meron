@@ -799,6 +799,7 @@
   "mcp.regenerate": "자격 증명 재발급",
   "mcp.regenerateMessage": "현재 자격 증명은 즉시 사용할 수 없게 됩니다. 클라이언트의 계정과 권한은 그대로이며, 새 자격 증명을 붙여 넣으면 다시 연결됩니다.",
   "mcp.regenerateTitle": "{name}의 자격 증명을 재발급할까요?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "거부",
   "mcp.requestingClient": "클라이언트",
   "mcp.retry": "서버 시작 다시 시도",

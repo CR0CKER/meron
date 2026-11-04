@@ -799,6 +799,7 @@
   "mcp.regenerate": "Thay thông tin xác thực",
   "mcp.regenerateMessage": "Thông tin xác thực hiện tại ngừng hoạt động ngay lập tức. Ứng dụng vẫn giữ tài khoản và quyền của nó, và kết nối lại khi bạn dán thông tin xác thực mới vào.",
   "mcp.regenerateTitle": "Thay thông tin xác thực của {name}?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Từ chối",
   "mcp.requestingClient": "Ứng dụng",
   "mcp.retry": "Thử khởi động máy chủ lại",

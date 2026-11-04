@@ -799,6 +799,7 @@
   "mcp.regenerate": "Substituir credencial",
   "mcp.regenerateMessage": "A credencial atual deixa de funcionar de imediato. O cliente mantém as contas e as permissões e volta a ligar-se assim que colar nele a nova credencial.",
   "mcp.regenerateTitle": "Substituir a credencial de {name}?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Recusar",
   "mcp.requestingClient": "Cliente",
   "mcp.retry": "Tentar iniciar o servidor novamente",

@@ -799,6 +799,7 @@
   "mcp.regenerate": "更换凭据",
   "mcp.regenerateMessage": "当前凭据将立即失效。该客户端保留其账户与权限，将新凭据粘贴进去即可重新连接。",
   "mcp.regenerateTitle": "更换 {name} 的凭据？",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "拒绝",
   "mcp.requestingClient": "客户端",
   "mcp.retry": "重试启动服务器",

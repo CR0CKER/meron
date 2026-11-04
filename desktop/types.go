@@ -230,6 +230,9 @@ type SendMailRequest struct {
 	// End-to-end encrypt (PGP/MIME). The core refuses rather than sending
 	// unencrypted when a recipient has no key.
 	Encrypt bool `json:"encrypt"`
+	// Plain: the composer chose no encryption. Without it, a reply to encrypted
+	// mail is encrypted by the core whatever Encrypt says (audit M1).
+	Plain bool `json:"plain"`
 }
 
 type ExchangedProfile struct {

@@ -799,6 +799,7 @@
   "mcp.regenerate": "Nomainīt akreditācijas datus",
   "mcp.regenerateMessage": "Pašreizējie akreditācijas dati uzreiz pārstāj darboties. Klients saglabā savus kontus un atļaujas un atkal pieslēdzas, tiklīdz tajā ielīmēsiet jaunos akreditācijas datus.",
   "mcp.regenerateTitle": "Vai nomainīt {name} akreditācijas datus?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Noraidīt",
   "mcp.requestingClient": "Klients",
   "mcp.retry": "Mēģināt palaist serveri vēlreiz",

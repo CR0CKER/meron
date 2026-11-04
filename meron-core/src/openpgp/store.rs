@@ -466,6 +466,35 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
     Ok(changed)
 }
 
+/// Whether `in_reply_to` names a cached message of `account` that arrived
+/// encrypted. The core decides a reply's protection from this, not from what
+/// the caller sends (audit M1).
+pub fn answers_encrypted(conn: &Connection, account: &str, in_reply_to: &str) -> Result<bool> {
+    let first = in_reply_to.split_whitespace().next().unwrap_or("");
+    let id = first.trim_start_matches('<').trim_end_matches('>').trim();
+    if id.is_empty() {
+        return Ok(false);
+    }
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM messages
+           WHERE account = ?1
+             AND lower(COALESCE(json_extract(json, '$.message_id'), '')) = lower(?2)
+             AND json_extract(json, '$.crypto.encrypted') = 1)",
+        params![account, id],
+        |r| r.get(0),
+    )?)
+}
+
+/// Whether a send or draft is encrypted, by `outgoing::protection` with the
+/// answered message looked up here; the second value is true when it is
+/// encrypted only because it answers encrypted mail (nothing was asked).
+pub fn reply_protection(conn: &Connection, account: &str, in_reply_to: &str, encrypt: bool, plain: bool) -> Result<(bool, bool)> {
+    use super::outgoing::{Protection, protection};
+    let answers = answers_encrypted(conn, account, in_reply_to)?;
+    let encrypted = protection(encrypt, plain, answers) == Protection::Encrypt;
+    Ok((encrypted, encrypted && !encrypt))
+}
+
 /// A recipient whose key would differ from the one Meron last encrypted to
 /// for that address (audit H2: the composer asks before sending).
 #[derive(Debug, Clone, Serialize)]

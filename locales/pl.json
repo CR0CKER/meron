@@ -799,6 +799,7 @@
   "mcp.regenerate": "Zmień poświadczenie",
   "mcp.regenerateMessage": "Obecne poświadczenie natychmiast przestaje działać. Klient zachowuje konta i uprawnienia i połączy się ponownie, gdy wkleisz w nim nowe poświadczenie.",
   "mcp.regenerateTitle": "Zmienić poświadczenie klienta {name}?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Odrzuć",
   "mcp.requestingClient": "Klient",
   "mcp.retry": "Spróbuj uruchomić serwer ponownie",

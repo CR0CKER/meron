@@ -799,6 +799,7 @@
   "mcp.regenerate": "Kimlik bilgisini değiştir",
   "mcp.regenerateMessage": "Mevcut kimlik bilgisi hemen çalışmaz olur. İstemci hesaplarını ve izinlerini korur; yeni kimlik bilgisini içine yapıştırdığınızda yeniden bağlanır.",
   "mcp.regenerateTitle": "{name} için kimlik bilgisi değiştirilsin mi?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Reddet",
   "mcp.requestingClient": "İstemci",
   "mcp.retry": "Sunucuyu yeniden başlatmayı dene",

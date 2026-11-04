@@ -799,6 +799,7 @@
   "mcp.regenerate": "Remplacer l'identifiant",
   "mcp.regenerateMessage": "L'identifiant actuel cesse de fonctionner immédiatement. Le client conserve ses comptes et ses autorisations et se reconnecte dès que vous y collez le nouvel identifiant.",
   "mcp.regenerateTitle": "Remplacer l'identifiant de {name} ?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Refuser",
   "mcp.requestingClient": "Client",
   "mcp.retry": "Relancer le serveur",

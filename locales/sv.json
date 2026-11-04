@@ -799,6 +799,7 @@
   "mcp.regenerate": "Ersätt uppgifter",
   "mcp.regenerateMessage": "De nuvarande uppgifterna slutar fungera direkt. Klienten behåller sina konton och behörigheter och ansluter igen när du klistrar in de nya uppgifterna i den.",
   "mcp.regenerateTitle": "Ersätta uppgifterna för {name}?",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "Avvisa",
   "mcp.requestingClient": "Klient",
   "mcp.retry": "Försök starta servern igen",

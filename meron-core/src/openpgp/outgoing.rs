@@ -80,6 +80,21 @@ fn key_for<'a>(ring: &'a Keyring, addr: &str) -> std::result::Result<&'a SignedP
     }
 }
 
+/// How a send or draft goes out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Protection {
+    Encrypt,
+    Plain,
+}
+
+/// The core's rule for every send and draft (audit M1): encrypted when the
+/// caller asks for it, and also when the message answers encrypted mail and
+/// the caller didn't explicitly ask for plain. A caller that says nothing
+/// (an MCP tool, a composer path that lost the flag) can't downgrade a thread.
+pub fn protection(encrypt: bool, plain: bool, answers_encrypted: bool) -> Protection {
+    if encrypt || (answers_encrypted && !plain) { Protection::Encrypt } else { Protection::Plain }
+}
+
 /// The correspondent key each recipient would get (bare address, primary
 /// fingerprint). Our own addresses and recipients without a key are left out:
 /// only a correspondent's key can change behind the user's back (audit H2).
@@ -299,6 +314,18 @@ mod tests {
         // And so do we (Sent copy), as verified.
         let m = crate::parse::parse_message_with(&raw, None, &ring);
         assert_eq!(m.crypto.unwrap().trust(&ring, &m.from_addr), Trust::Verified);
+    }
+
+    #[test]
+    fn a_reply_to_encrypted_mail_is_encrypted_unless_plain_is_asked_for() {
+        // Audit M1: callers that say nothing (MCP, a path that forgot the flag)
+        // get encryption when the reply answers encrypted mail.
+        use Protection::{Encrypt, Plain};
+        assert_eq!(protection(true, false, false), Encrypt);
+        assert_eq!(protection(false, false, false), Plain);
+        assert_eq!(protection(false, false, true), Encrypt, "nothing said, answers encrypted mail");
+        assert_eq!(protection(false, true, true), Plain, "the user turned encryption off");
+        assert_eq!(protection(true, true, true), Encrypt, "encrypt wins over a stray plain");
     }
 
     #[test]

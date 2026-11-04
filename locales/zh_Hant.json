@@ -799,6 +799,7 @@
   "mcp.regenerate": "更換憑證",
   "mcp.regenerateMessage": "目前的憑證會立即失效。該用戶端會保留其帳戶與權限，將新憑證貼入即可重新連線。",
   "mcp.regenerateTitle": "更換 {name} 的憑證？",
+  "mcp.sendsEncrypted": "Replies to encrypted mail: it will be sent end-to-end encrypted, and only if every recipient has a key.",
   "mcp.reject": "拒絕",
   "mcp.requestingClient": "用戶端",
   "mcp.retry": "重試啟動伺服器",
