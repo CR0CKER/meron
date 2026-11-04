@@ -4,7 +4,8 @@ Status: **local test build, not upstream.** Branch `feat/openpgp`, based on `ups
 (nonbili/meron#46). Written 2026-11-01 from the code at `60dad7c1` for security review and future audits; updated 2026-11-02 at
 `fa2d03d3` (encrypted subjects, reply subjects, the sent bubble's lock, our Sent copy cached at once, Gmail
 threading, messages not yet decrypted kept in their thread's branch) and 2026-11-03 at `b0062d79` (a plain Gmail
-reply stays in the encrypted thread it answers; tested by Nils on the Mac and Linux). Every
+reply stays in the encrypted thread it answers; tested by Nils on the Mac and Linux), and 2026-11-04 (audit fixes H1
+and H2: no reply quote of unauthenticated decrypted mail, `Date:` headers clamped to now for key choice). Every
 statement here names the code it describes; where the code and this document disagree, the code is right and this
 document is a bug.
 
@@ -244,7 +245,9 @@ Chat's and the Autocrypt v2 draft's rule).
 
 **TOFU rules** (`store::ingest`):
 - A key never seen for the address is added; a known one only moves `last_seen` forward (never back: old mail fetched
-  late must not win).
+  late must not win). `last_seen` is the message's `Date:` clamped to now (Autocrypt's effective date): the header is the
+  sender's claim, and one forged mail dated years ahead would otherwise stay the newest and choose the address's key
+  for good (audit H2, `a_future_date_header_cannot_pin_a_key_as_the_newest`).
 - Gossip (`Autocrypt-Gossip`) only fills addresses with no key at all.
 - Keys with `check()` problems other than expiry are not ingested.
 - `Keyring::encryption_key_for`: a verified usable key wins; if the verified key is unusable and only unverified ones
@@ -446,6 +449,10 @@ flowchart TD
 - **Quote guard:** a reply's quote of an encrypted original is only included when the message is encrypted
   (`composedContent`, `lib/crypto.ts mayQuoteInto`, quick reply in `quickReplySend.ts`); turning encryption off on such a
   reply asks first and drops the quote.
+- **No quote of unauthenticated decrypted mail** (audit H1): `replyQuote` quotes a decrypted original only when its
+  trust is known or verified, i.e. a valid signature by a key bound to its From address covers it
+  (`lib/crypto.ts mayQuoteOriginal`). An unsigned, foreign-signed, unknown-signer, partly signed or weak-hash message gets
+  no quote in any reply path (full editor, quick reply, quick reply opened in the editor); the reply itself is allowed.
 - MCP `create_draft` sends no `encrypt` flag (plain drafts).
 - **Reply subject** (`states/composeReply.ts replySubject`, used by the full editor, reply-to-message, the quick reply
   and its draft matching): `Re: ` before the subject as before, except when that subject is still an encrypted
@@ -544,7 +551,7 @@ message iframe.
 | Decompression bomb, oversized input | 50 MiB ciphertext cap, 64 MiB plaintext cap via bounded reader, 16 MiB key files, 1 MiB lookup responses | `crypt::tests::decompression_bomb_is_stopped_at_the_plaintext_cap` |
 | Parser panics on crafted input (CVE-2024-53856 class) | `catch_unwind` around decrypt, verify and key parsing | `crypt::tests::garbage_is_unreadable_not_a_panic`, `keys::tests::garbage_is_reported_not_panicked_on` |
 | Signature spoofing ("Johnny, you are fired"): partial signing, signer ≠ From, fake indicators | Only fully covered content counts (partial → unconfirmed); signer must hold a UID for From (`SignerMismatch`); indicator outside the iframe | `signed_by_someone_other_than_from_is_flagged`, `mailing_list_footer_makes_it_partial_not_an_error` |
-| Decryption oracle via replies ("Re: What's up Johnny?") | Quote of an encrypted original only in encrypted replies; forwards of encrypted mail can't go out unencrypted | `CryptoUi.test.tsx` (quote, forward), `lib/crypto.test.ts` |
+| Decryption oracle via replies ("Re: What's up Johnny?") | A decrypted original is quoted only if its sender's key signed it (trust known/verified), so a resent ciphertext's plaintext never reaches a reply encrypted to the attacker; the quote goes only into encrypted replies; forwards of encrypted mail can't go out unencrypted | `states/replyQuote.test.ts`, `CryptoUi.test.tsx` (quote, forward), `lib/crypto.test.ts` |
 | `mailto:` attachment injection | Unchanged: `lib/mailto.ts` reads only to/cc/bcc/subject/body (no regression test added yet, see §13) | — |
 | Key overwriting (KO) | Secret keys inside SQLCipher (page HMAC); self-test (sign + verify) on every load; AEAD/CFB S2K only for exports | `store::tests::a_corrupted_stored_key_is_never_loaded` |
 | SHA-1 collisions / downgrade | Data signatures with SHA-1/MD5/RIPEMD never valid; SHA-1 bindings only before 2023-02-01 | `crypt::tests::sha1_detached_signature_is_weak_and_never_valid`, `mime::tests::sha1_signature_is_weak_and_unconfirmed` |
@@ -569,6 +576,9 @@ message iframe.
   reply to a locally cached message keeps Gmail's thread (`store::tests` ×2; mutation-checked: dropping the reconcile
   step or the Gmail-id guard fails one each); full core suite 836 + 4 pass (904 + 4 in `local/daily`). Tested by Nils
   on the Mac's Gmail and on Linux with a fresh thread: one thread after turning encryption off.
+  2026-11-04, audit fixes: H2 (`store::tests::a_future_date_header_cannot_pin_a_key_as_the_newest`) and H1
+  (`states/replyQuote.test.ts` ×2, `lib/crypto.test.ts` ×1), each seen failing first and mutation-checked; full core suite
+  837 pass, frontend 1331 pass, 1 skip, the same five `AppHotkeys` failures.
 - **Fixtures** (`meron-core/src/openpgp/testdata/`): made-up keys and messages generated by `make_fixtures.py` with
   GnuPG in a throwaway `GNUPGHOME` (Alice = the user, Bob = RSA-3072 passphrase-protected, Carol = peer, Mallory =
   attacker, expired and revoked keys, Carol's second key). Messages cover encrypted+signed, unsigned, wrong recipient,
@@ -611,7 +621,7 @@ reached v22 the old way. Before an upstream PR: rebase onto upstream, take the n
 |---|---|---|
 | ~~G1~~ | **Resolved 2026-11-01.** Signatures by keys revoked or expired at signing time are void (§4, `KeyRevoked`/`KeyExpired`); designated revokers are evaluated (§6). Remaining: the *superseded/retired* exception is implemented but has no fixture test (GnuPG only makes such revocations interactively); designated-revoker revocations are tested with rPGP-made signatures only | — |
 | ~~G2~~ | **Resolved 2026-11-01.** Copies of stored keys are merged (§6); revocations take effect from Autocrypt, gossip, attachments, imports and lookups (lookups merge every copy they find, including revoked ones); stored bytes are never replaced (this also closed an unlisted hole: an older copy used to overwrite a newer one) | — |
-| G3 | Intended-recipient fingerprints are written but not checked on receive | Surreptitious forwarding of a signed+encrypted message isn't flagged |
+| G3 | Intended-recipient fingerprints are written but not checked on receive | Surreptitious forwarding of a signed+encrypted message isn't flagged (the reply-quote leak this enabled is closed by H1's rule) |
 | G4 | The inner `From` (protected header) isn't compared with the outer `From` | A mismatch isn't flagged (the signer check still applies) |
 | G5 | `keys::is_stub` detects GnuPG stubs by matching the debug text of rPGP's S2K parameters | Fragile against rPGP changes; worst case a stub reports "needs passphrase" instead of "on card" |
 | G6 | No `cargo audit`/`cargo deny` gate; Rust sources not run through `rustfmt` (not installed on the build machine) | Supply-chain and style gates missing |

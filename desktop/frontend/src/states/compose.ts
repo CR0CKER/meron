@@ -11,7 +11,7 @@ import { mail$ } from './mailState'
 import { isDraftFolder } from './mailFolders'
 import { discardSavedDraftCopy } from './mailMoves'
 import { LOCAL_SEND_PREFIX } from './pendingSends'
-import { ownSentCrypto } from '../lib/crypto'
+import { mayQuoteOriginal, ownSentCrypto } from '../lib/crypto'
 import { htmlToText, resolveInlineCids } from '../lib/html'
 import { parseMailto } from '../lib/mailto'
 import {
@@ -122,10 +122,12 @@ function forwardedHtmlBody(message: Message): string {
  * `> `-prefixed in plain text and in a `<blockquote type="cite">` in HTML —
  * the Apple Mail and Thunderbird shape, which the conversation view folds in
  * our own sent replies as it does in theirs. `rich` says whether the original
- * was HTML. Undefined when quoting is off or the original has no body loaded.
+ * was HTML. Undefined when quoting is off, the original has no body loaded, or
+ * it is decrypted mail its sender isn't shown to have written (`mayQuoteOriginal`).
  */
 export function replyQuote(message: Message): ComposeBody | undefined {
   if (!settings$.quoteReplies.peek()) return undefined
+  if (!mayQuoteOriginal(message.crypto)) return undefined
   const body = message.body ?? ''
   if (!message.body_html && !body.trim()) return undefined
   const attribution = `On ${formatFullTimestamp(message.date)}, ${formatMessageFrom(message)} wrote:`

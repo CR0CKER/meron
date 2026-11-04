@@ -215,6 +215,17 @@ export function mayQuoteInto(original: { crypto?: MessageCrypto | null } | null 
   return encrypting || !original?.crypto?.encrypted
 }
 
+/** Whether a reply may quote this message at all. A decrypted message is
+ * quoted only when a valid signature by a key bound to its From address covers
+ * it (trust known or verified). Otherwise anyone holding an old ciphertext can
+ * resend it from their own address and read the plaintext in our reply, which
+ * is encrypted to *them* ("Re: What's up Johnny?", audit H1): unsigned,
+ * signed by someone else, by an unknown key, partly signed or weak-hash all
+ * come out `unconfirmed` from the core (`CryptoStatus::trust`). */
+export function mayQuoteOriginal(crypto?: MessageCrypto | null) {
+  return !crypto?.encrypted || crypto.trust !== 'unconfirmed'
+}
+
 /** Where key lookups go (meron-core `openpgp::lookup`). */
 export type KeySourceKind = 'wkd' | 'vks' | 'hkp'
 export type KeySource = { kind: KeySourceKind; url: string; enabled: boolean }

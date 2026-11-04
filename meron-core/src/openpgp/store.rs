@@ -418,7 +418,11 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
         return Ok(false);
     }
     let mut changed = false;
-    let seen = if message_date > 0 { message_date } else { now_secs() };
+    // The Date header is the sender's claim: never later than now (Autocrypt
+    // Level 1's "effective date"), or one forged mail dated years ahead would
+    // stay the newest and choose this address's key for good (audit H2).
+    let now = now_secs();
+    let seen = if message_date > 0 { message_date.min(now) } else { now };
     let mut put = |addr: &str, key: &pgp::composed::SignedPublicKey, source: Source, only_if_new_addr: bool| -> Result<()> {
         // A copy of a key we already have (revoked, renewed) updates it first.
         changed |= merge_into_stored(conn, key)?;
@@ -886,6 +890,28 @@ mod tests {
         let ring = load(&conn).unwrap();
         assert_eq!(ring.peers_for("carol@example.com")[0].last_seen, 2_000);
         assert!(ring.encryption_key_for("carol@example.com").is_ok());
+    }
+
+    #[test]
+    fn a_future_date_header_cannot_pin_a_key_as_the_newest() {
+        // Audit H2: the Date header is the sender's claim. A forged mail dated
+        // far ahead must not make its key "seen last" forever, or the real
+        // owner's later mail could never take encryption back.
+        let conn = db();
+        let carol = keys::parse_public(&fixture("carol-public.asc")).unwrap();
+        let mallory = keys::parse_public(&fixture("mallory-public.asc")).unwrap();
+        let carol_fpr = fingerprint_hex(&carol.primary_key);
+        let ann = |key| [Announced { addr: "carol@example.com".into(), key, prefer_mutual: true, gossip: false }];
+        ingest(&conn, &ann(carol.clone()), &[], 10).unwrap();
+        ingest(&conn, &ann(mallory), &[], 4_102_444_800).unwrap(); // Date: 2100-01-01
+        let ring = load(&conn).unwrap();
+        assert!(ring.peers_for("carol@example.com").iter().all(|p| p.last_seen <= now_secs()), "no stored time may lie ahead of now");
+        // An hour passes (shift the stored times back), then Carol writes again:
+        // her real mail is newer than the forged one and takes encryption back.
+        conn.execute("UPDATE openpgp_peer_keys SET last_seen = last_seen - 3600", []).unwrap();
+        ingest(&conn, &ann(carol), &[], now_secs()).unwrap();
+        let ring = load(&conn).unwrap();
+        assert_eq!(ring.encryption_key_for("carol@example.com").unwrap().fingerprint, carol_fpr);
     }
 
     #[test]

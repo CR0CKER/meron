@@ -5,6 +5,7 @@ import {
   formatFingerprint,
   indicatorFor,
   mayQuoteInto,
+  mayQuoteOriginal,
   shortFingerprint,
   stripFor,
   type MessageCrypto,
@@ -110,6 +111,16 @@ test('a decrypted message is never quoted into an unencrypted reply', () => {
   expect(mayQuoteInto(encrypted, true)).toBe(true)
   expect(mayQuoteInto({ crypto: null }, false)).toBe(true)
   expect(mayQuoteInto(undefined, false)).toBe(true)
+})
+
+test('decrypted mail is quotable only when its sender is shown to have written it', () => {
+  expect(mayQuoteOriginal(null)).toBe(true)
+  // Plain mail with an unverifiable signature is ordinary mail: quoted as before.
+  expect(mayQuoteOriginal({ ...base, signed: true })).toBe(true)
+  expect(mayQuoteOriginal({ ...base, encrypted: true, signed: true, trust: 'known' })).toBe(true)
+  expect(mayQuoteOriginal({ ...base, encrypted: true, signed: true, trust: 'verified' })).toBe(true)
+  expect(mayQuoteOriginal({ ...base, encrypted: true })).toBe(false)
+  expect(mayQuoteOriginal({ ...base, encrypted: true, signed: true, problem: 'signer_mismatch' })).toBe(false)
 })
 
 test('a signature by a revoked or expired key is danger, never verified', () => {
