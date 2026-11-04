@@ -350,9 +350,16 @@ sequenceDiagram
   because `json_patch` merges and a missing field would keep stale values.
 - Decrypted plaintext goes into `messages.body` (full-text index, previews, notifications, MCP), by decision (§1).
 - Decrypted attachments are written under `parse::secure_media_root()` (`MERON_SECURE_MEDIA_DIR`, set by the desktop to
-  `$XDG_RUNTIME_DIR/<app>/secure-media`, a per-user tmpfs; mode 0700) and keyed `e2ee/…`; `parse::media_file`
-  resolves the prefix. After a reboot the files are gone, `missing_media_count` reports them, and the message is
-  fetched and decrypted again.
+  `$XDG_RUNTIME_DIR/<app>/secure-media`, a per-user tmpfs, and without `XDG_RUNTIME_DIR` (macOS, Windows) to the
+  per-user temp dir `os.TempDir()/<app>/secure-media`, never the persistent cache; mode 0700) and keyed `e2ee/…`;
+  `parse::media_file` resolves the prefix. **The desktop empties that dir at start (before the sidecar) and at quit
+  (after it), on every platform** (`wipeSecureMedia`, audit M2): decrypted files exist only while Meron runs. A missing
+  file is reported by `missing_media_count`, and the message is fetched and decrypted again. The OS cleanup can't be
+  relied on instead: macOS removes `$TMPDIR` files only after 3 days without access ("may be cleaned", not API),
+  Windows only through Storage Sense if enabled. After a crash or kill the files stay until the next start.
+- Opening a decrypted attachment in another app copies it into `secure-media/attachment-open/` (`attachmentOpenRoot`),
+  not `<cache>/attachment-open` like plain ones, so the wipe covers it. On Windows a copy another app still holds open
+  can't be deleted at quit; the next start removes it.
 - A verified `signature.asc` (`application/pgp-signature`) is dropped from the attachment list.
 - Attached key files (`application/pgp-keys`) that hold only the sender's own keys (`mime::sender_key_files`; what
   Thunderbird attaches to every signed message) are dropped from the attachment list; the keys are recorded (§9). Key
@@ -635,7 +642,9 @@ a terminal; a GnuPG-made designated revocation has not been tested. Marked `bina
   2.4.9 decrypted, verified (`GOODSIG`, `DECRYPTION_OKAY`) and read the protected Subject. The reverse direction is
   the fixture suite. A live lookup returned Linus Torvalds' key from kernel.org WKD with fingerprint
   `ABAF11C65A2970B130ABE3C479BE3E4300411886`.
-- Go: `secure_media_test.go` (e2ee keys resolve inside the secure dir; traversal clamped; env passed). Frontend: 30
+- Go: `secure_media_test.go` (e2ee keys resolve inside the secure dir; traversal clamped; env passed; M2: temp-dir
+  fallback, the wipe, open copies in the secure dir, the wipe at shutdown; mutation-checked. The wipe in `Startup` is
+  not covered: `Startup` starts the tray, sidecar and window and isn't run in tests). Frontend: 30
   component tests (`components/crypto/CryptoUi.test.tsx`) and 11 logic tests (`lib/crypto.test.ts`); full suite 1320
   pass with five `AppHotkeys` failures that also fail on pristine `4cc646b7`. 2026-11-02: `states/replySubject.test.ts`
   (4) and the sent-bubble lock tests in `states/compose.test.ts` and `states/appendSentMessage.test.ts`; full suite 1327
@@ -667,7 +676,7 @@ reached v22 the old way. Before an upstream PR: rebase onto upstream, take the n
 | G5 | `keys::is_stub` detects GnuPG stubs by matching the debug text of rPGP's S2K parameters | Fragile against rPGP changes; worst case a stub reports "needs passphrase" instead of "on card" |
 | G6 | No `cargo audit`/`cargo deny` gate; Rust sources not run through `rustfmt` (not installed on the build machine) | Supply-chain and style gates missing |
 | G7 | No `mailto:` regression test (planned) | The `attach=` safety relies on unchanged code |
-| G8 | Decrypted attachments on macOS/Windows fall back to `<cache>/secure-media` (persistent disk) | Plaintext attachments on disk outside SQLCipher on those platforms |
+| ~~G8~~ | **Resolved 2026-11-04 (audit M2).** Decrypted attachments now go to the per-user temp dir where there is no `XDG_RUNTIME_DIR`, and the secure dir (open copies included) is wiped at start and quit on every platform (§7). Remaining: files survive a crash until the next start | — |
 
 **Residual risks accepted by decision:**
 - Decrypted plaintext and secret keys rest in SQLCipher; whoever can read the database and the OS keyring as the user

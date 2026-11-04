@@ -125,6 +125,8 @@ func (a *App) Startup(ctx context.Context) {
 	// way it is re-downloadable, so start clean.
 	sweepReplacedExecutable()
 	cleanupUpdateCache()
+	// Decrypted attachments a crash or kill left behind (audit M2).
+	wipeSecureMedia()
 	a.startTray()
 	a.logf("startup: core path=%s", coreBinaryPath())
 	a.sidecar = NewSidecar(coreBinaryPath(), a.logWriter())
@@ -180,6 +182,8 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.sidecar != nil {
 		a.sidecar.Close()
 	}
+	// Decrypted attachments exist only while Meron runs (audit M2).
+	wipeSecureMedia()
 	a.closeNotificationListener()
 	a.closeResumeListener()
 	a.closeAppearanceListener()

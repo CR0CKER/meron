@@ -104,14 +104,23 @@ func mediaHandler() http.Handler {
 const secureMediaPrefix = "e2ee/"
 
 // secureMediaDir holds attachments of decrypted mail: on Linux in
-// $XDG_RUNTIME_DIR (tmpfs, owner-only, emptied at logout), elsewhere next to
-// the cache until a platform equivalent is chosen (open item for macOS and
-// Windows). After a reboot the sidecar decrypts the message again.
+// $XDG_RUNTIME_DIR (tmpfs, owner-only, emptied at logout), elsewhere in the
+// per-user temp dir, never the persistent cache (audit M2). Meron empties it
+// at start and at quit (wipeSecureMedia), so decrypted files exist only while
+// it runs; a missing file makes the sidecar fetch and decrypt the message again.
 func secureMediaDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
 		return filepath.Join(runtime, appDirName(), "secure-media")
 	}
-	return filepath.Join(appCacheDir(), "secure-media")
+	return filepath.Join(os.TempDir(), appDirName(), "secure-media")
+}
+
+// wipeSecureMedia removes every decrypted attachment, and the copies opened
+// from them. Called before the sidecar starts and after it stops. Errors are
+// ignored (on Windows a file another app holds open can't go): the next start
+// tries again.
+func wipeSecureMedia() {
+	_ = os.RemoveAll(secureMediaDir())
 }
 
 // mediaDir is where the mail sidecar writes attachment files and the asset

@@ -777,7 +777,7 @@ func (a *App) openAttachment(payload map[string]any) (any, error) {
 		return map[string]any{"opened": false}, nil
 	}
 
-	root := filepath.Join(appCacheDir(), attachmentOpenDirName)
+	root := attachmentOpenRoot(key)
 	pruneAttachmentOpenDir(root)
 	dir := filepath.Join(root, randomBase64URL(8))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -791,6 +791,16 @@ func (a *App) openAttachment(payload map[string]any) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"opened": true, "path": dest}, nil
+}
+
+// attachmentOpenRoot is where the copy handed to another app goes: for a
+// decrypted attachment inside the secure dir, which Meron wipes, never the
+// persistent cache (audit M2).
+func attachmentOpenRoot(key string) string {
+	if strings.HasPrefix(key, secureMediaPrefix) {
+		return filepath.Join(secureMediaDir(), attachmentOpenDirName)
+	}
+	return filepath.Join(appCacheDir(), attachmentOpenDirName)
 }
 
 // pruneAttachmentOpenDir removes copies older than attachmentOpenTTL.

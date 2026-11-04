@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,4 +37,69 @@ func TestSidecarGetsTheSecureMediaDir(t *testing.T) {
 		}
 	}
 	t.Fatalf("sidecar env lacks %s", want)
+}
+
+// Audit M2: without XDG_RUNTIME_DIR (macOS, Windows) decrypted attachments go
+// to the per-user temp dir, never the persistent app cache.
+func TestSecureMediaDirFallsBackToTheTempDirNotTheCache(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	t.Setenv("TMPDIR", tmp)
+	dir := secureMediaDir()
+	if !strings.HasPrefix(dir, tmp+string(filepath.Separator)) || filepath.Base(dir) != "secure-media" {
+		t.Fatalf("secure media dir %s is not under the temp dir %s", dir, tmp)
+	}
+	if strings.HasPrefix(dir, appCacheDir()) {
+		t.Fatalf("secure media dir %s is in the persistent cache", dir)
+	}
+}
+
+// Audit M2: decrypted files live only while Meron runs. The wipe empties the
+// secure dir and touches nothing beside it.
+func TestWipeSecureMediaRemovesDecryptedFilesOnly(t *testing.T) {
+	runtimeDir := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	secret := filepath.Join(secureMediaDir(), "acc", "INBOX", "7", "0.pdf")
+	if err := os.MkdirAll(filepath.Dir(secret), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secret, []byte("plaintext"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	beside := filepath.Join(filepath.Dir(secureMediaDir()), "other")
+	if err := os.WriteFile(beside, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wipeSecureMedia()
+	if _, err := os.Stat(secureMediaDir()); !os.IsNotExist(err) {
+		t.Fatalf("secure media dir survived the wipe: %v", err)
+	}
+	if _, err := os.Stat(beside); err != nil {
+		t.Fatalf("the wipe removed a file beside the secure dir: %v", err)
+	}
+	wipeSecureMedia() // nothing there: no panic, no error
+}
+
+// Audit M2: the copy handed to another app for a decrypted attachment stays in
+// the secure dir (wiped), not in the persistent cache like a plain one.
+func TestDecryptedAttachmentsAreOpenedFromTheSecureDir(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	if root := attachmentOpenRoot("e2ee/acc/INBOX/7/0.pdf"); !strings.HasPrefix(root, secureMediaDir()+string(filepath.Separator)) {
+		t.Fatalf("decrypted attachment opened from %s", root)
+	}
+	if root := attachmentOpenRoot("acc/INBOX/7/0.pdf"); root != filepath.Join(appCacheDir(), attachmentOpenDirName) {
+		t.Fatalf("plain attachment opened from %s", root)
+	}
+}
+
+// Audit M2: quitting wipes the secure dir.
+func TestShutdownWipesSecureMedia(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	if err := os.MkdirAll(secureMediaDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	(&App{}).Shutdown(context.Background())
+	if _, err := os.Stat(secureMediaDir()); !os.IsNotExist(err) {
+		t.Fatalf("secure media dir survived shutdown: %v", err)
+	}
 }
