@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -39,18 +40,37 @@ func TestSidecarGetsTheSecureMediaDir(t *testing.T) {
 	t.Fatalf("sidecar env lacks %s", want)
 }
 
-// Audit M2: without XDG_RUNTIME_DIR (macOS, Windows) decrypted attachments go
-// to the per-user temp dir, never the persistent app cache.
-func TestSecureMediaDirFallsBackToTheTempDirNotTheCache(t *testing.T) {
+// Audit M2 + F1: without XDG_RUNTIME_DIR (no logind session on Linux; macOS;
+// Windows) decrypted attachments go to a directory that is both ephemeral
+// (under the temp dir, not the persistent cache — M2) and private: an
+// unguessable, owner-only parent, not the old predictable path under the
+// world-writable /tmp that another local user could read or pre-plant (F1).
+func TestSecureMediaDirFallbackIsEphemeralAndPrivate(t *testing.T) {
+	secureMediaOnce = &sync.Once{}
+	secureMediaPath = ""
+	t.Cleanup(func() { secureMediaOnce = &sync.Once{}; secureMediaPath = "" })
 	tmp := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", "")
 	t.Setenv("TMPDIR", tmp)
 	dir := secureMediaDir()
-	if !strings.HasPrefix(dir, tmp+string(filepath.Separator)) || filepath.Base(dir) != "secure-media" {
-		t.Fatalf("secure media dir %s is not under the temp dir %s", dir, tmp)
+	if !strings.HasPrefix(dir, tmp+string(filepath.Separator)) {
+		t.Fatalf("secure media dir %s is not under the temp dir %s (M2: ephemeral)", dir, tmp)
 	}
 	if strings.HasPrefix(dir, appCacheDir()) {
-		t.Fatalf("secure media dir %s is in the persistent cache", dir)
+		t.Fatalf("secure media dir %s is in the persistent cache (M2)", dir)
+	}
+	// Not the old guessable shared path another local user could pre-plant (F1).
+	if dir == filepath.Join(os.TempDir(), appDirName(), "secure-media") {
+		t.Fatalf("secure media dir is a predictable shared path: %s", dir)
+	}
+	// Its parent is owner-only (0700), so no other user can read the plaintext
+	// or plant a symlink there (F1).
+	info, err := os.Stat(filepath.Dir(dir))
+	if err != nil {
+		t.Fatalf("secure media parent not created: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf("secure media parent %o is accessible to other users (F1)", perm)
 	}
 }
 

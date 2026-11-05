@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 func decode(payload map[string]any, out any) error {
@@ -103,16 +104,37 @@ func mediaHandler() http.Handler {
 // plain attachment cache (meron-core parse::SECURE_MEDIA_PREFIX).
 const secureMediaPrefix = "e2ee/"
 
-// secureMediaDir holds attachments of decrypted mail: on Linux in
-// $XDG_RUNTIME_DIR (tmpfs, owner-only, emptied at logout), elsewhere in the
-// per-user temp dir, never the persistent cache (audit M2). Meron empties it
-// at start and at quit (wipeSecureMedia), so decrypted files exist only while
-// it runs; a missing file makes the sidecar fetch and decrypt the message again.
+// secureMediaDir holds attachments of decrypted mail. It must be both
+// ephemeral (gone on reboot, never persisted — audit M2) and private to this
+// user (no other local user can read the plaintext or pre-plant the path —
+// audit F1). Meron empties it at start and at quit (wipeSecureMedia), so
+// decrypted files exist only while it runs; a missing file makes the sidecar
+// fetch and decrypt the message again.
+//   - Linux desktop session: $XDG_RUNTIME_DIR (tmpfs, owner-only, per-user).
+//   - Otherwise (no logind session on Linux; macOS; Windows): an owner-only
+//     directory with an unguessable name created once under the temp dir. The
+//     former fixed $TMPDIR/meron/secure-media was a predictable path under the
+//     world-writable /tmp when $XDG_RUNTIME_DIR was unset, which another local
+//     user could read or pre-plant with a symlink (F1). A random name created
+//     atomically (os.MkdirTemp, O_EXCL, mode 0700) cannot be, and stays
+//     ephemeral under the temp dir.
+var secureMediaOnce = &sync.Once{}
+var secureMediaPath string
+
 func secureMediaDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
 		return filepath.Join(runtime, appDirName(), "secure-media")
 	}
-	return filepath.Join(os.TempDir(), appDirName(), "secure-media")
+	secureMediaOnce.Do(func() {
+		if base, err := os.MkdirTemp("", appDirName()+"-secure-"); err == nil {
+			secureMediaPath = filepath.Join(base, "secure-media")
+			return
+		}
+		// The temp dir is unusable: a per-user persistent dir is safer than a
+		// shared one (reboot no longer clears it, but no other user can read it).
+		secureMediaPath = filepath.Join(appCacheDir(), "secure-media")
+	})
+	return secureMediaPath
 }
 
 // wipeSecureMedia removes every decrypted attachment, and the copies opened
