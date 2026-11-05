@@ -58,6 +58,11 @@ pub struct SigCheck {
     /// Made with SHA-1/MD5: never counts as valid.
     pub weak_hash: bool,
     pub created: Option<i64>,
+    /// Primary fingerprints the signer named as intended recipients (RFC 9580
+    /// §5.2.3.36), from the signed (hashed) subpackets. Empty when the sender
+    /// set none. When present, our key must be among them, or the message was
+    /// redirected to us by someone else (audit G3).
+    pub intended_recipients: Vec<String>,
 }
 
 /// A successfully decrypted message.
@@ -221,6 +226,20 @@ fn keys_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect()
 }
 
+/// Primary fingerprints named as intended recipients in the signature's signed
+/// (hashed) subpackets. Unhashed subpackets are attacker-malleable, so only the
+/// hashed ones count.
+fn intended_recipients(sig: &Signature) -> Vec<String> {
+    sig.config()
+        .into_iter()
+        .flat_map(|c| c.hashed_subpackets())
+        .filter_map(|sp| match &sp.data {
+            SubpacketData::IntendedRecipientFingerprint(fp) => Some(keys_hex(fp.as_bytes())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Whether the signature's issuer could be one of `key`'s signing parts.
 fn issuer_matches(issuer: Option<&str>, key: &SignedPublicKey) -> bool {
     let Some(issuer) = issuer else { return true };
@@ -235,7 +254,7 @@ fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey], r
         let issuer = issuer_of(sig);
         let weak_hash = !data_hash_ok(sig.hash_alg());
         let created = sig.created().map(|t| i64::from(t.as_secs()));
-        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created };
+        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig) };
         'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
             for (_, vk) in signing_keys(key) {
                 if msg.verify_nested_explicit(index, vk.as_dyn()).is_ok() {
@@ -282,7 +301,7 @@ fn verify_detached_inner(
             .map(|iter| iter.filter_map(Result::ok).collect::<Vec<_>>())
     };
     let Ok(sigs) = parsed else {
-        return vec![SigCheck { issuer: None, signer: None, valid: false, key_problem: None, weak_hash: false, created: None }];
+        return vec![SigCheck { issuer: None, signer: None, valid: false, key_problem: None, weak_hash: false, created: None, intended_recipients: Vec::new() }];
     };
     sigs.iter()
         .map(|detached| {
@@ -290,7 +309,7 @@ fn verify_detached_inner(
             let issuer = issuer_of(sig);
             let weak_hash = !data_hash_ok(sig.hash_alg());
             let created = sig.created().map(|t| i64::from(t.as_secs()));
-            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created };
+            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig) };
             'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
                 for (_, vk) in signing_keys(key) {
                     if vk.verify_detached(sig, content) {
@@ -318,6 +337,20 @@ pub fn encrypt(
     recipients: &[&SignedPublicKey],
     signer: &SignedSecretKey,
 ) -> anyhow::Result<String> {
+    // The signature names exactly the recipients the message is encrypted to.
+    encrypt_to(plain, recipients, recipients, signer)
+}
+
+/// [`encrypt`], but the signature's intended-recipient subpackets name
+/// `intended` rather than `recipients`. In real use they are the same; tests
+/// pass a different `intended` to forge a message redirected to someone the
+/// sender did not name (audit G3).
+pub(crate) fn encrypt_to(
+    plain: &[u8],
+    recipients: &[&SignedPublicKey],
+    intended: &[&SignedPublicKey],
+    signer: &SignedSecretKey,
+) -> anyhow::Result<String> {
     use anyhow::Context as _;
     let now = keys::now();
     let subkeys: Vec<_> = recipients
@@ -330,7 +363,7 @@ pub fn encrypt(
     let v2 = recipients.iter().all(|k| keys::supports_seipd_v2(k));
     let mut rng = rand::thread_rng();
     let ts = pgp::types::Timestamp::now();
-    let subpackets = signature_subpackets(ts, signer, recipients)?;
+    let subpackets = signature_subpackets(ts, signer, intended)?;
     let builder = MessageBuilder::from_bytes("", plain.to_vec());
     let armored = if v2 {
         let mut msg = builder.seipd_v2(&mut rng, SymmetricKeyAlgorithm::AES256, AeadAlgorithm::Ocb, ChunkSize::C8KiB);

@@ -458,6 +458,8 @@
   "crypto.problem.no_key": "This message is encrypted to a key Meron doesn't have.",
   "crypto.problem.partly_encrypted": "Part of this message is encrypted, mixed with unencrypted parts. Meron didn't open it: this is how some attacks try to steal encrypted text.",
   "crypto.problem.signer_mismatch": "Signed with a key that doesn't belong to {sender}. It may not be from them.",
+  "crypto.problem.redirected": "This encrypted message looks redirected: it was not encrypted to you, or its sender was changed. It may be a copy of a message meant for, or from, someone else.",
+  "crypto.trust.redirected": "This message looks redirected and may not be what it seems.",
   "crypto.problem.too_large": "This encrypted message is too large to open safely.",
   "crypto.problem.unreadable": "This encrypted message can't be read.",
   "crypto.quoteWithheld": "The original isn't quoted: it isn't signed by its sender, so it could be someone else's encrypted mail, resent to make your reply reveal it.",

@@ -15,6 +15,7 @@ export type CryptoProblem =
   | 'inline_in_html'
   | 'key_revoked'
   | 'key_expired'
+  | 'redirected'
 
 /** A message's OpenPGP status, from `thread_message_json`. */
 export type MessageCrypto = {
@@ -78,6 +79,7 @@ const DANGER: CryptoProblem[] = [
   'signer_mismatch',
   'key_revoked',
   'key_expired',
+  'redirected',
 ]
 
 /**

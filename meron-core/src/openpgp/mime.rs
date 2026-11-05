@@ -38,6 +38,11 @@ pub enum Problem {
     KeyRevoked,
     /// Signed by a key that had expired when the signature was made.
     KeyExpired,
+    /// The encrypted message appears redirected: the signer named intended
+    /// recipients that don't include us (G3), or its protected inner `From`
+    /// differs from the envelope `From` (G4). Either way it reads as a copy of
+    /// a message meant for, or from, someone else.
+    Redirected,
 }
 
 /// The message's OpenPGP facts, persisted with the cached body (every field
@@ -391,10 +396,13 @@ fn open_encrypted(
     // checked: it is recorded only for a message validly signed by its From
     // (audit H4), decided after signature verification below.
     let mut inner_gossip: Vec<Announced> = Vec::new();
+    // The protected (inner) From, for G4: it must match the envelope From.
+    let mut inner_from: Option<String> = None;
     if let Ok(inner) = mailparse::parse_mail(&bytes) {
         // Protected headers (RFC 9788): Subject and Autocrypt inside.
         if !inline {
             inner_subject = inner.headers.get_first_value("Subject").filter(|s| !s.trim().is_empty());
+            inner_from = inner.headers.get_first_value("From").filter(|s| !s.trim().is_empty());
             let inner_announced = autocrypt::announced(&inner.headers, from);
             inner_keys.extend(inner_announced.iter().filter(|a| !a.gossip).map(|a| a.key.clone()));
             // Protected headers win over the outer ones (Delta Chat's rule).
@@ -438,6 +446,27 @@ fn open_encrypted(
     if !checks.is_empty() {
         status.signed = true;
         apply_signature(status, &checks, from, ring, &extra);
+    }
+    // G3: the signer named intended recipients, but none is one of our keys —
+    // the message was encrypted to someone else and redirected to us.
+    if status.problem.is_none()
+        && let Some(valid) = checks.iter().find(|c| c.valid)
+        && !valid.intended_recipients.is_empty()
+        && !valid.intended_recipients.iter().any(|fp| status.decrypted_with.as_deref() == Some(fp.as_str()) || ring.is_own(fp))
+    {
+        status.problem = Some(Problem::Redirected);
+    }
+    // G4: the protected inner From differs from the envelope From — the
+    // encrypted payload was lifted from a message by a different sender. Lists
+    // legitimately rewrite From, so they are left out.
+    if status.problem.is_none()
+        && !status.on_list
+        && let Some(inner) = inner_from.as_deref()
+    {
+        let inner_addr = super::outgoing::bare_addr(inner);
+        if !inner_addr.is_empty() && inner_addr != from {
+            status.problem = Some(Problem::Redirected);
+        }
     }
     // Record inner gossip only from a message validly signed by its From
     // (audit H4): an unsigned or mis-signed encrypted message cannot vouch for
@@ -582,6 +611,69 @@ mod tests {
         let eml = format!("From: Mallory <mallory@example.com>\r\nTo: alice@example.org\r\nSubject: hi\r\nAutocrypt-Gossip: addr=boss@example.com; keydata={kd}\r\nContent-Type: text/plain\r\n\r\nhello\r\n");
         let m = parse_message_with(eml.as_bytes(), None, &ring);
         assert!(m.found_keys.announced.iter().all(|a| !a.gossip), "outer gossip must be dropped (H4)");
+    }
+
+    // A secret key for `email` from a fixture holding several (unprotected).
+    fn secret_of(file: &str, email: &str) -> pgp::composed::SignedSecretKey {
+        let parsed = parse_keys(&fixture(file)).unwrap();
+        let key = parsed
+            .secret
+            .into_iter()
+            .find(|k| keys::secret_info(k, keys::now()).emails.iter().any(|e| e == email))
+            .expect("secret key for email");
+        match unlock(key, None).unwrap() {
+            Unlock::Ok(k) => k,
+            _ => panic!("locked"),
+        }
+    }
+
+    // Wrap an armored OpenPGP message as a PGP/MIME mail from `from`.
+    fn wrap_encrypted(from: &str, armored: &str) -> String {
+        format!(
+            "From: {from}\r\nTo: alice@example.org\r\nSubject: hi\r\nMessage-ID: <x@example.com>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--b\r\nContent-Type: application/octet-stream\r\n\r\n{armored}\r\n--b--\r\n"
+        )
+    }
+
+    // G3: a message encrypted to us but whose signature names only someone else
+    // as the intended recipient was redirected to us, and is flagged.
+    #[test]
+    fn a_message_whose_intended_recipient_is_not_us_is_flagged_g3() {
+        let ring = with_peer(alice_ring(), "carol@example.com", "carol-public.asc", false);
+        let carol = secret_of("two-secret-keys.asc", "carol@example.com");
+        let alice = ring.own[0].public.clone();
+        let bob = public("bob-public.asc");
+        let inner = b"Content-Type: text/plain; charset=utf-8\r\n\r\nredirected body\r\n";
+        // Encrypted to Alice, but Carol's signature names only Bob as intended.
+        let armored = crypt::encrypt_to(inner, &[&alice, &bob], &[&bob], &carol).unwrap();
+        let m = parse_message_with(wrap_encrypted("Carol <carol@example.com>", &armored).as_bytes(), None, &ring);
+        assert_eq!(crypto(&m).problem, Some(Problem::Redirected), "G3: intended recipients exclude us");
+        assert_ne!(crypto(&m).trust(&ring, &m.from_addr), Trust::Verified);
+    }
+
+    // A normal message to us (intended includes us) is not flagged (no G3 false
+    // positive).
+    #[test]
+    fn a_message_intended_for_us_is_not_flagged_g3() {
+        let ring = with_peer(alice_ring(), "carol@example.com", "carol-public.asc", false);
+        let carol = secret_of("two-secret-keys.asc", "carol@example.com");
+        let alice = ring.own[0].public.clone();
+        let inner = b"Content-Type: text/plain; charset=utf-8\r\n\r\nhello\r\n";
+        let armored = crypt::encrypt(inner, &[&alice], &carol).unwrap();
+        let m = parse_message_with(wrap_encrypted("Carol <carol@example.com>", &armored).as_bytes(), None, &ring);
+        assert_eq!(crypto(&m).problem, None, "a message intended for us is fine");
+    }
+
+    // G4: the decrypted inner From differs from the envelope From — the payload
+    // was lifted from a different sender's message.
+    #[test]
+    fn a_message_whose_inner_from_differs_is_flagged_g4() {
+        let ring = with_peer(alice_ring(), "carol@example.com", "carol-public.asc", false);
+        let carol = secret_of("two-secret-keys.asc", "carol@example.com");
+        let alice = ring.own[0].public.clone();
+        let inner = b"From: Eve <eve@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+        let armored = crypt::encrypt(inner, &[&alice], &carol).unwrap();
+        let m = parse_message_with(wrap_encrypted("Carol <carol@example.com>", &armored).as_bytes(), None, &ring);
+        assert_eq!(crypto(&m).problem, Some(Problem::Redirected), "G4: inner From != outer From");
     }
 
     #[test]
