@@ -155,10 +155,20 @@ impl Keyring {
             .or_else(|| self.own.iter().find(|k| k.fingerprint == fingerprint).map(|k| k.public.clone()))
     }
 
+    /// Whether `addr` is an address of one of our own keys. Only then does a
+    /// signature by our own key prove the sender (our sent mail, our other
+    /// accounts); a stranger replaying our signed ciphertext from their own
+    /// address must not be trusted as that sender (audit H3).
+    pub fn is_own_address(&self, addr: &str) -> bool {
+        let addr = addr.trim().to_ascii_lowercase();
+        self.own.iter().any(|k| keys::info(&k.public, true, keys::now()).emails.contains(&addr))
+    }
+
     /// The trust a signature by `fingerprint` earns for a message from `addr`.
     pub fn trust_of(&self, fingerprint: &str, addr: &str) -> Trust {
         if self.is_own(fingerprint) {
-            return Trust::Verified;
+            // Our own key vouches for the sender only on our own mail (H3).
+            return if self.is_own_address(addr) { Trust::Verified } else { Trust::Unconfirmed };
         }
         match self.peers_for(addr).into_iter().find(|p| p.fingerprint == fingerprint) {
             Some(p) if p.verified => Trust::Verified,

@@ -127,7 +127,7 @@ pub fn view_json(status: &CryptoStatus, ring: &Keyring, account_id: &str, from_a
         "key_changed": status.key_changed,
         "verified_conflict": verified_conflict,
         "on_list": status.on_list,
-        "own": status.signer.as_deref().is_some_and(|f| ring.is_own(f)),
+        "own": status.signer.as_deref().is_some_and(|f| ring.is_own(f)) && ring.is_own_address(&from),
         // Whether the signer's key is stored for this address (Verify… needs it).
         "signer_stored": signer_key.is_some(),
         "offer": offer,
@@ -269,6 +269,10 @@ pub fn open(mail: &ParsedMail<'_>, from_addr: &str, ring: &Keyring) -> Opened {
     let from = from_addr.trim().to_ascii_lowercase();
     let on_list = mail.headers.get_first_value("List-Id").is_some();
     let mut announced = autocrypt::announced(&mail.headers, &from);
+    // Gossip is only legitimate inside the encrypted, signed part of a message
+    // (Autocrypt Level 1). A cleartext Autocrypt-Gossip header on an ordinary
+    // mail must never plant a key for the gossiped address (audit H4).
+    announced.retain(|a| !a.gossip);
     let mut attached = Vec::new();
     let mut status = CryptoStatus { on_list, ..Default::default() };
 
@@ -383,6 +387,10 @@ fn open_encrypted(
     let mut inner_subject = None;
     let mut signed_inside = false;
     let mut inner_keys: Vec<SignedPublicKey> = Vec::new();
+    // Gossip from the decrypted headers, held back until the signature is
+    // checked: it is recorded only for a message validly signed by its From
+    // (audit H4), decided after signature verification below.
+    let mut inner_gossip: Vec<Announced> = Vec::new();
     if let Ok(inner) = mailparse::parse_mail(&bytes) {
         // Protected headers (RFC 9788): Subject and Autocrypt inside.
         if !inline {
@@ -393,7 +401,9 @@ fn open_encrypted(
             if inner_announced.iter().any(|a| !a.gossip) {
                 announced.retain(|a| a.gossip);
             }
-            announced.extend(inner_announced);
+            let (gossip, direct): (Vec<_>, Vec<_>) = inner_announced.into_iter().partition(|a| a.gossip);
+            inner_gossip = gossip;
+            announced.extend(direct);
         }
         attached_keys(&inner, from, attached);
         inner_keys.extend(attached.iter().map(|(_, k)| k.clone()));
@@ -428,6 +438,12 @@ fn open_encrypted(
     if !checks.is_empty() {
         status.signed = true;
         apply_signature(status, &checks, from, ring, &extra);
+    }
+    // Record inner gossip only from a message validly signed by its From
+    // (audit H4): an unsigned or mis-signed encrypted message cannot vouch for
+    // third parties' keys.
+    if status.signed && status.problem.is_none() && status.signer.is_some() {
+        announced.extend(inner_gossip);
     }
     Opened { content: Content::Inner { bytes, signed_inside }, status: None, announced: Vec::new(), attached: Vec::new(), inner_subject }
 }
@@ -469,8 +485,13 @@ fn apply_signature(status: &mut CryptoStatus, checks: &[SigCheck], from: &str, r
         .into_iter()
         .chain(extra.iter())
         .find(|k| keys::fingerprint_hex(&k.primary_key) == fpr);
-    let matches_from = key.is_some_and(|k| keys::info(k, false, keys::now()).emails.iter().any(|e| e == from)) || ring.own_key_for_addr(from).is_some_and(|k| k.fingerprint == fpr);
-    if !matches_from && !ring.is_own(&fpr) {
+    // The signing key must belong to the From address: a peer key whose user
+    // ID carries it, or our own key only when From is one of our own addresses.
+    // Our key vouching for a stranger's From is the replay oracle (audit H3),
+    // so there is no blanket own-key exemption.
+    let matches_from = key.is_some_and(|k| keys::info(k, false, keys::now()).emails.iter().any(|e| e == from))
+        || (ring.is_own(&fpr) && ring.is_own_address(from));
+    if !matches_from {
         status.problem = Some(Problem::SignerMismatch);
     }
     let known: Vec<_> = ring.peers_for(from);
@@ -527,6 +548,41 @@ mod tests {
     }
 
     const SECRET: &str = "The meeting moved to Thursday";
+
+    // H3: Mallory resends a message Alice sent (signed by Alice, encrypted to
+    // Alice) as a new mail From her own address. Alice's own key must not vouch
+    // for Mallory's From: no "verified", and a reply must not quote it.
+    #[test]
+    fn own_signed_ciphertext_replayed_by_a_stranger_is_not_trusted() {
+        let ring = with_peer(alice_ring(), "mallory@example.com", "mallory-public.asc", false);
+        let own = &ring.own[0];
+        let bob = public("bob-public.asc");
+        let inner = b"Content-Type: text/plain; charset=utf-8\r\n\r\nAlice's private note\r\n";
+        let armored = crypt::encrypt(inner, &[&own.public, &bob], &own.secret).unwrap();
+        let eml = format!("From: Mallory <mallory@example.com>\r\nTo: alice@example.org\r\nSubject: hi\r\nMessage-ID: <x@example.com>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--b\r\nContent-Type: application/octet-stream\r\n\r\n{armored}\r\n--b--\r\n");
+        let m = parse_message_with(eml.as_bytes(), None, &ring);
+        let c = crypto(&m);
+        assert_eq!(c.problem, Some(Problem::SignerMismatch), "own key must not vouch for a stranger's From (H3)");
+        assert_ne!(c.trust(&ring, &m.from_addr), Trust::Verified);
+        // trust_of directly (the path card_lock takes on stored status): our
+        // key verifies our own mail, never a stranger's From.
+        let own_fpr = ring.own[0].fingerprint.clone();
+        assert_eq!(ring.trust_of(&own_fpr, "alice@example.org"), Trust::Verified);
+        assert_ne!(ring.trust_of(&own_fpr, "mallory@example.com"), Trust::Verified);
+    }
+
+    // H4: a cleartext Autocrypt-Gossip header on an ordinary (unencrypted) mail
+    // must not plant a key for the gossiped address.
+    #[test]
+    fn outer_gossip_in_plain_mail_is_ignored() {
+        use base64::Engine as _;
+        let ring = alice_ring();
+        let mallory = public("mallory-public.asc");
+        let kd = base64::engine::general_purpose::STANDARD.encode(keys::binary_public(&mallory).unwrap());
+        let eml = format!("From: Mallory <mallory@example.com>\r\nTo: alice@example.org\r\nSubject: hi\r\nAutocrypt-Gossip: addr=boss@example.com; keydata={kd}\r\nContent-Type: text/plain\r\n\r\nhello\r\n");
+        let m = parse_message_with(eml.as_bytes(), None, &ring);
+        assert!(m.found_keys.announced.iter().all(|a| !a.gossip), "outer gossip must be dropped (H4)");
+    }
 
     #[test]
     fn encrypted_and_signed_by_a_known_key_shows_body_and_inner_subject() {

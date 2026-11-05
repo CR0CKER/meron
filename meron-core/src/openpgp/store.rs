@@ -458,6 +458,14 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
         Ok(())
     };
     for a in announced {
+        // A gossiped key must carry the gossiped address in its own user IDs,
+        // so a group member can't gossip a key that isn't for that address (H4).
+        if a.gossip {
+            let addr = a.addr.to_ascii_lowercase();
+            if !keys::info(&a.key, false, keys::now()).emails.iter().any(|e| *e == addr) {
+                continue;
+            }
+        }
         put(&a.addr, &a.key, if a.gossip { Source::Gossip } else { Source::Autocrypt }, a.gossip)?;
     }
     for (addr, key) in attached {
