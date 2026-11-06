@@ -481,6 +481,13 @@ fn open_encrypted(
 /// matches the From address, whether it is new for that address.
 fn apply_signature(status: &mut CryptoStatus, checks: &[SigCheck], from: &str, ring: &Keyring, extra: &[SignedPublicKey]) {
     status.weak_hash = checks.iter().any(|c| c.weak_hash);
+    // L5: verification broke the verifier (a caught rPGP panic). We could not
+    // validate the signature at all, so flag it invalid rather than leave it
+    // looking merely unconfirmed.
+    if checks.iter().any(|c| c.errored) && !checks.iter().any(|c| c.valid) {
+        status.problem = Some(Problem::InvalidSignature);
+        return;
+    }
     // G1: the signature verified, but its key was revoked or expired then.
     if !checks.iter().any(|c| c.valid) {
         if let Some(c) = checks.iter().find(|c| c.key_problem.is_some()) {
@@ -577,6 +584,18 @@ mod tests {
     }
 
     const SECRET: &str = "The meeting moved to Thursday";
+
+    // L5: a crafted detached signature panics rPGP's armor reader. The panic is
+    // caught (the sidecar survives), but the message must not then be shown as a
+    // bland "signed" with no problem: a signature we could not verify at all is
+    // surfaced as invalid, never left looking merely unconfirmed.
+    #[test]
+    fn a_signature_that_panics_the_verifier_is_flagged_invalid_not_signed_ok() {
+        let ring = alice_ring();
+        let m = parse("l5-panic-sig.bin", &ring);
+        let c = crypto(&m);
+        assert_eq!(c.problem, Some(Problem::InvalidSignature));
+    }
 
     // H3: Mallory resends a message Alice sent (signed by Alice, encrypted to
     // Alice) as a new mail From her own address. Alice's own key must not vouch

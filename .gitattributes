@@ -6,3 +6,4 @@
 meron-core/src/openpgp/testdata/*.eml binary
 meron-core/src/openpgp/testdata/*.asc binary
 meron-core/src/openpgp/testdata/*.gpg binary
+meron-core/src/openpgp/testdata/*.bin binary

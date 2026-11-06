@@ -63,6 +63,10 @@ pub struct SigCheck {
     /// set none. When present, our key must be among them, or the message was
     /// redirected to us by someone else (audit G3).
     pub intended_recipients: Vec<String>,
+    /// Verification could not complete: the signature broke the verifier (an
+    /// rPGP panic, caught) rather than simply failing to match a key. Treated
+    /// as an invalid signature, never as merely unconfirmed (audit L5).
+    pub errored: bool,
 }
 
 /// A successfully decrypted message.
@@ -254,7 +258,7 @@ fn check_message_signatures(msg: &Message<'_>, verifiers: &[&SignedPublicKey], r
         let issuer = issuer_of(sig);
         let weak_hash = !data_hash_ok(sig.hash_alg());
         let created = sig.created().map(|t| i64::from(t.as_secs()));
-        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig) };
+        let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig), errored: false };
         'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
             for (_, vk) in signing_keys(key) {
                 if msg.verify_nested_explicit(index, vk.as_dyn()).is_ok() {
@@ -284,7 +288,21 @@ pub fn verify_detached_with(
     resolve: keys::Resolver<'_>,
 ) -> Vec<SigCheck> {
     let run = AssertUnwindSafe(|| verify_detached_inner(content, signature, verifiers, resolve));
-    std::panic::catch_unwind(run).unwrap_or_default()
+    // A panic in rPGP means verification could not complete. Surface it as one
+    // failed, errored check so the message is flagged invalid, not shown as a
+    // bland "signed" with no problem (audit L5).
+    std::panic::catch_unwind(run).unwrap_or_else(|_| {
+        vec![SigCheck {
+            issuer: None,
+            signer: None,
+            valid: false,
+            key_problem: None,
+            weak_hash: false,
+            created: None,
+            intended_recipients: Vec::new(),
+            errored: true,
+        }]
+    })
 }
 
 fn verify_detached_inner(
@@ -301,7 +319,7 @@ fn verify_detached_inner(
             .map(|iter| iter.filter_map(Result::ok).collect::<Vec<_>>())
     };
     let Ok(sigs) = parsed else {
-        return vec![SigCheck { issuer: None, signer: None, valid: false, key_problem: None, weak_hash: false, created: None, intended_recipients: Vec::new() }];
+        return vec![SigCheck { issuer: None, signer: None, valid: false, key_problem: None, weak_hash: false, created: None, intended_recipients: Vec::new(), errored: false }];
     };
     sigs.iter()
         .map(|detached| {
@@ -309,7 +327,7 @@ fn verify_detached_inner(
             let issuer = issuer_of(sig);
             let weak_hash = !data_hash_ok(sig.hash_alg());
             let created = sig.created().map(|t| i64::from(t.as_secs()));
-            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig) };
+            let mut check = SigCheck { issuer: issuer.clone(), signer: None, valid: false, key_problem: None, weak_hash, created, intended_recipients: intended_recipients(sig), errored: false };
             'keys: for key in verifiers.iter().filter(|k| issuer_matches(issuer.as_deref(), k)) {
                 for (_, vk) in signing_keys(key) {
                     if vk.verify_detached(sig, content) {

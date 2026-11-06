@@ -351,17 +351,26 @@ fn valid_user_ids(key: &SignedPublicKey) -> Vec<String> {
         .collect()
 }
 
+/// The key's verified self-signatures: direct-key signatures and user-ID
+/// self-certifications the primary key actually made. Expiry and feature flags
+/// must be read only from these, never from a signature a third party attached
+/// (audit K1): an unverified signature could otherwise move the expiry or turn
+/// on SEIPDv2 for a key that can't read it.
+fn self_signatures(key: &SignedPublicKey) -> impl Iterator<Item = &Signature> {
+    let direct = key.details.direct_signatures.iter().filter(move |s| s.verify_key(&key.primary_key).is_ok());
+    let certs = key.details.users.iter().flat_map(move |u| {
+        u.signatures
+            .iter()
+            .filter(move |s| s.verify_certification(&key.primary_key, pgp::types::Tag::UserId, &u.id).is_ok())
+    });
+    direct.chain(certs)
+}
+
 /// When the primary key expires, from its newest valid user-ID binding
 /// (or direct-key signature), as an absolute timestamp.
 fn primary_expiry(key: &SignedPublicKey) -> Option<i64> {
     let created = i64::from(key.primary_key.created_at().as_secs());
-    let sigs = key
-        .details
-        .users
-        .iter()
-        .flat_map(|u| u.signatures.iter())
-        .chain(key.details.direct_signatures.iter());
-    let sig = newest(sigs)?;
+    let sig = newest(self_signatures(key))?;
     sig.key_expiration_time()
         .filter(|d| d.as_secs() != 0)
         .map(|d| created + i64::from(d.as_secs()))
@@ -624,13 +633,7 @@ pub fn encryption_subkey(key: &SignedPublicKey, now: u32) -> Option<&SignedPubli
 
 /// Whether the key's features advertise SEIPDv2 (RFC 9580 AEAD).
 pub fn supports_seipd_v2(key: &SignedPublicKey) -> bool {
-    key.details
-        .users
-        .iter()
-        .flat_map(|u| u.signatures.iter())
-        .chain(key.details.direct_signatures.iter())
-        .filter_map(|s| s.features())
-        .any(|f| f.seipd_v2())
+    self_signatures(key).filter_map(|s| s.features()).any(|f| f.seipd_v2())
 }
 
 /// Checks a public key against Meron's policy at `now`.
@@ -836,6 +839,54 @@ pub(crate) mod tests {
         out
     }
 
+    /// A user-ID certification of `target`'s first user ID made by `signer` (so
+    /// it does NOT verify against `target`'s own key), carrying an attacker-set
+    /// key expiration and the SEIPDv2 feature flag, created now so it is the
+    /// newest signature. Models a third party attaching a junk self-signature
+    /// to someone's genuine key (audit K1).
+    fn forge_user_sig_by(signer: &SignedSecretKey, target: &SignedPublicKey, exp_secs: u32, seipd_v2: bool) -> SignedPublicKey {
+        use pgp::packet::{SignatureConfig, SignatureType, Subpacket, SubpacketData};
+        use pgp::types::{Duration, Timestamp};
+        let mut features = pgp::packet::Features::new();
+        features.set_seipd_v2(seipd_v2);
+        let mut config = SignatureConfig::v4(SignatureType::CertPositive, signer.primary_key.algorithm(), HashAlgorithm::Sha256);
+        config.hashed_subpackets = vec![
+            Subpacket::critical(SubpacketData::SignatureCreationTime(Timestamp::now())).unwrap(),
+            Subpacket::regular(SubpacketData::IssuerFingerprint(signer.primary_key.fingerprint())).unwrap(),
+            Subpacket::regular(SubpacketData::KeyExpirationTime(Duration::from_secs(exp_secs))).unwrap(),
+            Subpacket::regular(SubpacketData::Features(features)).unwrap(),
+        ];
+        let user = &target.details.users[0];
+        let sig = config
+            .sign_certification(&signer.primary_key, &target.primary_key, &Password::empty(), pgp::types::Tag::UserId, &user.id)
+            .unwrap();
+        let mut out = target.clone();
+        out.details.users[0].signatures.push(sig);
+        out
+    }
+
+    // K1: expiry and SEIPDv2 must be read only from verified self-signatures. A
+    // third party who serves someone's genuine key with a junk signature
+    // attached must not be able to change when Meron thinks the key expires, or
+    // trick Meron into sending SEIPDv2 (AEAD) to a key that can't read it.
+    #[test]
+    fn unverified_signatures_do_not_set_expiry_or_seipd_v2() {
+        let mallory = secret("mallory-secret.asc");
+
+        // SEIPDv2: alice's real self-sig advertises none; a forged one claims it.
+        let alice = parse_public(&fixture("alice-public.asc")).unwrap();
+        assert!(!supports_seipd_v2(&alice), "baseline: alice does not advertise SEIPDv2");
+        let alice_spiked = forge_user_sig_by(&mallory, &alice, 2_000_000_000, true);
+        assert!(!supports_seipd_v2(&alice_spiked), "a forged signature must not enable SEIPDv2");
+
+        // Expiry: expired-public has a real expiry; a forged newer sig claims another.
+        let expired = parse_public(&fixture("expired-public.asc")).unwrap();
+        let real_expiry = primary_expiry(&expired);
+        assert!(real_expiry.is_some(), "baseline: expired-public has a real expiry");
+        let spiked = forge_user_sig_by(&mallory, &expired, 2_000_000_000, false);
+        assert_eq!(primary_expiry(&spiked), real_expiry, "a forged signature must not change the expiry");
+    }
+
     fn secret(name: &str) -> SignedSecretKey {
         let k = parse_keys(&fixture(name)).unwrap().secret.remove(0);
         match unlock(k, None).unwrap() {
@@ -882,3 +933,4 @@ pub(crate) mod tests {
         assert!(data_hash_ok(Some(HashAlgorithm::Sha256)));
     }
 }
+

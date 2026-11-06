@@ -154,6 +154,12 @@ pub fn wkd_urls(addr: &str) -> Option<[String; 2]> {
         return None;
     }
     let domain = domain.to_ascii_lowercase();
+    // WKD needs a real DNS name. Reject ports, IPv6 brackets, IP literals and
+    // single-label names, so a click-triggered lookup can't reach a local or
+    // private service like x@127.0.0.1:631 (audit L3).
+    if domain.contains(':') || domain.contains('[') || domain.contains(']') || !domain.contains('.') || domain.parse::<std::net::IpAddr>().is_ok() {
+        return None;
+    }
     let digest = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, local.to_lowercase().as_bytes());
     let hash = zbase32(digest.as_ref());
     let l = url::form_urlencoded::byte_serialize(local.as_bytes()).collect::<String>();
@@ -274,6 +280,20 @@ mod tests {
         );
         assert_eq!(direct, "https://example.org/.well-known/openpgpkey/hu/iy9q119eutrkn8s1mk4r39qejnbu3n5q?l=Joe.Doe");
         assert!(wkd_urls("nope").is_none());
+    }
+
+    // L3/SSRF: a recipient whose domain is an IP literal or carries a port must
+    // not produce a WKD URL, so a click-triggered lookup can't reach a local or
+    // private service (e.g. x@127.0.0.1:631). WKD requires a real DNS name.
+    #[test]
+    fn wkd_refuses_ip_literals_and_ports() {
+        assert!(wkd_urls("x@127.0.0.1").is_none(), "IPv4 literal");
+        assert!(wkd_urls("x@127.0.0.1:631").is_none(), "host with port");
+        assert!(wkd_urls("x@[::1]").is_none(), "IPv6 literal");
+        assert!(wkd_urls("x@192.168.0.5").is_none(), "private IPv4");
+        assert!(wkd_urls("x@localhost").is_none(), "no dot, not a FQDN");
+        // A normal domain still works.
+        assert!(wkd_urls("x@example.org").is_some());
     }
 
     #[test]
