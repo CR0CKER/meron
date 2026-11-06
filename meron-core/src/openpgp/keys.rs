@@ -527,6 +527,28 @@ fn add_signatures(into: &mut Vec<Signature>, from: &[Signature], valid: impl Fn(
     changed
 }
 
+/// A copy of `key` carrying only what verifies against its own primary key:
+/// self direct-key signatures, self/designated revocations, user-ID
+/// self-certifications and subkey bindings (each capped at `MAX_SIGNATURES`);
+/// user IDs and subkeys with no valid self-signature are dropped. A third
+/// party's junk signatures attached to a genuine key are stripped before it is
+/// stored, where they could otherwise be read as the key's expiry or feature
+/// flags (audit K1). Implemented by merging `key` into a bare copy of its
+/// primary, so it shares [`merge`]'s verification exactly.
+pub fn minimize(key: &SignedPublicKey) -> SignedPublicKey {
+    minimize_with(key, &stored_key)
+}
+
+/// [`minimize`] with an explicit resolver for designated revokers.
+pub fn minimize_with(key: &SignedPublicKey, resolve: Resolver<'_>) -> SignedPublicKey {
+    let mut bare = key.clone();
+    bare.details.direct_signatures.clear();
+    bare.details.revocation_signatures.clear();
+    bare.details.users.clear();
+    bare.public_subkeys.clear();
+    merge_with(&bare, key, resolve).unwrap_or(bare)
+}
+
 /// Merges a newer copy of the same key (same primary fingerprint) into the
 /// stored one: revocations, direct-key signatures, user ID certifications and
 /// subkey bindings it adds, and user IDs and subkeys that are new. Only
@@ -885,6 +907,26 @@ pub(crate) mod tests {
         assert!(real_expiry.is_some(), "baseline: expired-public has a real expiry");
         let spiked = forge_user_sig_by(&mallory, &expired, 2_000_000_000, false);
         assert_eq!(primary_expiry(&spiked), real_expiry, "a forged signature must not change the expiry");
+    }
+
+    // K1 (store side): a key is minimized before it is stored, so a third
+    // party's junk signature attached to a genuine key never reaches the store.
+    #[test]
+    fn minimize_drops_signatures_that_do_not_verify_and_keeps_the_key_usable() {
+        let mallory = secret("mallory-secret.asc");
+        let alice = parse_public(&fixture("alice-public.asc")).unwrap();
+        let spiked = forge_user_sig_by(&mallory, &alice, 2_000_000_000, true);
+        let before: usize = spiked.details.users.iter().map(|u| u.signatures.len()).sum();
+
+        let clean = minimize(&spiked);
+        let after: usize = clean.details.users.iter().map(|u| u.signatures.len()).sum();
+        assert!(after < before, "the forged signature is stripped ({before} -> {after})");
+
+        // Alice's genuine key still works: her user ID binds and her encryption
+        // subkey survives.
+        assert!(valid_user_ids(&clean).iter().any(|u| u.contains("alice")), "the real user ID survives");
+        assert!(encryption_subkey(&clean, now()).is_some(), "the encryption subkey survives");
+        assert!(!supports_seipd_v2(&clean), "the forged SEIPDv2 flag is gone");
     }
 
     fn secret(name: &str) -> SignedSecretKey {

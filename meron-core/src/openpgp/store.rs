@@ -445,7 +445,7 @@ pub fn ingest(conn: &Connection, announced: &[Announced], attached: &[(String, p
             }
         }
         let fingerprint = fingerprint_hex(&key.primary_key);
-        let blob = keys::binary_public(key)?;
+        let blob = keys::binary_public(&keys::minimize(key))?;
         let n = conn.execute(
             "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
              VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
@@ -684,7 +684,7 @@ pub fn import_peers(conn: &Connection, data: &[u8], fingerprints: &[String]) -> 
         if !fingerprints.contains(&info.fingerprint) || info.unusable.is_some() {
             continue;
         }
-        let blob = keys::binary_public(&key)?;
+        let blob = keys::binary_public(&keys::minimize(&key))?;
         for addr in &info.emails {
             conn.execute(
                 "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
@@ -719,7 +719,7 @@ pub fn add_looked_up(conn: &Connection, addr: &str, data: &[u8], from_wkd: bool)
         "INSERT INTO openpgp_peer_keys (addr, fingerprint, public_key, source, verified, first_seen, last_seen)
          VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
          ON CONFLICT(addr, fingerprint) DO UPDATE SET last_seen = excluded.last_seen",
-        params![addr, info.fingerprint, keys::binary_public(&key)?, source.as_str(), now],
+        params![addr, info.fingerprint, keys::binary_public(&keys::minimize(&key))?, source.as_str(), now],
     )?;
     reload(conn)?;
     Ok(info)
