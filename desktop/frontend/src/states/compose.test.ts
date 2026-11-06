@@ -4,6 +4,7 @@ import {
   activateConversationTab,
   closeMessageTab,
   closeMessageTabs,
+  closeMessageTabsKeepingDrafts,
   draftShouldOpenConversation,
   openDraftCompose,
   openDraftConversationOrCompose,
@@ -19,6 +20,7 @@ import {
   composedContent,
   saveComposedDraft,
   sendComposed,
+  editAsNewMessage,
 } from './compose'
 import { formatFullTimestamp } from '../components/chat/messageHelpers'
 import { ownSentCrypto } from '../lib/crypto'
@@ -29,10 +31,13 @@ import {
   quickReplyRecipients,
   replyAllAddsRecipients,
   pickReplyTarget,
+  quickReplyAddable,
   resolveQuickReplyFrom,
 } from './composeReply'
 import { compose$ } from './composeState'
+import { draftSavesSettled } from './composeSessions'
 import {
+  addToQuickReply,
   cancelQuickReplyDraftSave,
   discardQuickReplyDraftIfEmpty,
   isQuickReplyBlank,
@@ -50,6 +55,7 @@ import { ui$ } from './ui'
 import { mail$ } from './mail'
 import { deleteMessage } from './mailMoves'
 import { resetThreadView, thread$ } from './thread'
+import { forgetThreadViews } from './threadView'
 
 const message = (overrides: Partial<Message> = {}): Message => ({
   id: 'm1',
@@ -494,6 +500,87 @@ describe('tab navigation', () => {
     // rather than on a tab that was about to go.
     expect(compose$.activeTab.get()).toBe(composeId)
   })
+
+  it('bulk-closes compose tabs from the tab strip, saving them to Drafts', async () => {
+    const saves: unknown[] = []
+    const invoke = (window as any).go.main.App.Invoke
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: unknown) => {
+      if (command === 'mail.allocateIdentity') return { message_id: `draft-${saves.length}@example.com` }
+      if (command === 'mail.saveDraft') {
+        saves.push(payload)
+        return {}
+      }
+      return invoke(command, payload)
+    }
+    ui$.selectedThread.set('t-current')
+    openThreadTab(message({ thread_id: 't-2', id: 'm2' }))
+    openComposeTab({ subject: 'Unsent' })
+    // Nothing written: discarded rather than filling Drafts with empty mail.
+    openComposeTab()
+    ui$.toast.set('')
+
+    closeMessageTabsKeepingDrafts(compose$.tabs.get().map((tab) => tab.id))
+    expect(compose$.tabs.get()).toHaveLength(0)
+    await draftSavesSettled(() => true)
+    await Promise.resolve()
+    expect(saves).toHaveLength(1)
+    expect((saves[0] as { subject: string }).subject).toBe('Unsent')
+    expect(ui$.toast.get()).toBe('Saved to Drafts')
+
+    // The toast's Open brings the saved draft back.
+    const open = ui$.toastUndo.get() as (() => void) | null
+    open?.()
+    expect(compose$.tabs.get().map((tab) => tab.compose?.subject)).toEqual(['Unsent'])
+  })
+
+  // An encrypted message closed from the tab strip (or with Esc, the same
+  // path) must reach Drafts encrypted, never in the clear on the server.
+  it('saves a closed encrypted message to Drafts encrypted', async () => {
+    const saves: { encrypt?: boolean; plain?: boolean }[] = []
+    const invoke = (window as any).go.main.App.Invoke
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: any) => {
+      if (command === 'mail.allocateIdentity') return { message_id: `draft-${saves.length}@example.com` }
+      if (command === 'mail.saveDraft') {
+        saves.push(payload)
+        return {}
+      }
+      return invoke(command, payload)
+    }
+    openComposeTab({ subject: 'Secret', encrypt: true })
+    ui$.toast.set('')
+
+    closeMessageTabsKeepingDrafts(compose$.tabs.get().map((tab) => tab.id))
+    await draftSavesSettled(() => true)
+    await Promise.resolve()
+    expect(saves).toHaveLength(1)
+    expect(saves[0].encrypt).toBe(true)
+    expect(saves[0].plain).toBe(false)
+  })
+
+  // A reply whose encryption is undecided (its answered message's crypto has
+  // not loaded yet: encrypt is undefined, not false) must not send plain=true,
+  // or the core can't keep a reply to an encrypted thread encrypted (audit M4).
+  it('lets the core decide when a closed reply has undecided encryption', async () => {
+    const saves: { encrypt?: boolean; plain?: boolean }[] = []
+    const invoke = (window as any).go.main.App.Invoke
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: any) => {
+      if (command === 'mail.allocateIdentity') return { message_id: `draft-${saves.length}@example.com` }
+      if (command === 'mail.saveDraft') {
+        saves.push(payload)
+        return {}
+      }
+      return invoke(command, payload)
+    }
+    openComposeTab({ subject: 'Re: loading', inReplyTo: '<enc@example.com>', encrypt: undefined })
+    ui$.toast.set('')
+
+    closeMessageTabsKeepingDrafts(compose$.tabs.get().map((tab) => tab.id))
+    await draftSavesSettled(() => true)
+    await Promise.resolve()
+    expect(saves).toHaveLength(1)
+    expect(saves[0].encrypt).toBe(false)
+    expect(saves[0].plain).toBe(false)
+  })
 })
 
 describe('quick reply draft sharing', () => {
@@ -785,6 +872,59 @@ describe('quick reply draft sharing', () => {
     expect(compose$.quickReplyDraftId.get()).toBe('draft-1@example.com')
     expect(compose$.quickReplyDraftSaved.get()).toBe(true)
     expect(compose$.quickReplyFrom.get()).toBe('me@example.com')
+  })
+
+  it.each([
+    ['a rich body', { body_html: '<p>rich</p>' }],
+    ['a Bcc', { bcc: 'hidden@example.com' }],
+    ['a Reply-To', { reply_to: 'elsewhere@example.com' }],
+    ['other recipients', { to: 'someone-else@example.com' }],
+    ['added recipients', { cc: 'added@example.com' }],
+    ['another subject', { subject: 'Re: Reworded' }],
+  ])('leaves a draft with %s to the full composer', (_, draft) => {
+    const thread = message({ id: 'm1', thread_id: 't-2', folder_id: 'INBOX', date: 1000 })
+    mail$.threads.set([thread])
+    ui$.selectedThread.set('t-2')
+
+    mail$.messages.set([
+      thread,
+      message({
+        id: 'd1',
+        thread_id: 't-2',
+        folder_id: 'Drafts',
+        to: 'Sender <sender@example.com>',
+        subject: 'Re: Notification thread',
+        message_id: 'draft-1@example.com',
+        body: 'saved draft body',
+        date: 2000,
+        ...draft,
+      }),
+    ])
+
+    expect(compose$.composer.get()).toBe('')
+    expect(compose$.quickReplyDraftId.get()).toBe('')
+  })
+
+  it('takes a plain draft the quick reply could have written itself', () => {
+    const thread = message({ id: 'm1', thread_id: 't-2', folder_id: 'INBOX', date: 1000 })
+    mail$.threads.set([thread])
+    ui$.selectedThread.set('t-2')
+
+    mail$.messages.set([
+      thread,
+      message({
+        id: 'd1',
+        thread_id: 't-2',
+        folder_id: 'Drafts',
+        to: 'sender@example.com',
+        subject: 'Re: Notification thread',
+        message_id: 'draft-1@example.com',
+        body: 'saved draft body',
+        date: 2000,
+      }),
+    ])
+
+    expect(compose$.composer.get()).toBe('saved draft body')
   })
 
   it('recognizes a draft hydrated before the quick-reply component mounts', () => {
@@ -1164,6 +1304,9 @@ describe('quick reply draft sharing', () => {
       id: 'sent-draft-row',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-1',
       message_id: 'sent-draft@example.com',
       body: 'First reply',
@@ -1185,6 +1328,9 @@ describe('quick reply draft sharing', () => {
       id: 'new-draft-row',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-1',
       message_id: 'different-draft@example.com',
       body: 'Written elsewhere',
@@ -1497,6 +1643,9 @@ describe('quick reply draft sharing', () => {
       id: 'draft-row',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-1',
       message_id: 'safety-draft@example.com',
       body: 'Reply text',
@@ -3113,6 +3262,9 @@ describe('quick reply draft sharing', () => {
       id: 'draft-row',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-5',
       message_id: 'reopened-draft@example.com',
       body: 'Half-written answer',
@@ -3157,6 +3309,9 @@ describe('quick reply draft sharing', () => {
       id: 'draft-row-uid-42',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-1',
       message_id: '',
       body: '',
@@ -3197,6 +3352,9 @@ describe('quick reply draft sharing', () => {
       id: 'draft-row',
       account_id: 'acc-1',
       folder_id: 'Drafts',
+      to: 'them@example.com',
+      subject: 'Re: Notification thread',
+      outgoing: true,
       thread_id: 't-1',
       message_id: 'hydrated-draft@example.com',
       body: 'Half-written answer',
@@ -3599,6 +3757,20 @@ describe('quick reply send-as identity', () => {
     expect(compose$.tabs.get()[0].compose?.fromEmail).toBe('sales@example.com')
     expect(compose$.quickReplyFrom.get()).toBe('')
   })
+
+  it('keeps the sending alias when a sent message is edited as new', async () => {
+    const sent = setUpThread({ folder_id: 'Sent', from_addr: 'Sales@example.com', to: 'them@example.com' })
+
+    await editAsNewMessage(sent)
+
+    expect(compose$.tabs.get()[0].compose?.fromEmail).toBe('sales@example.com')
+  })
+
+  it('leaves a received message edited as new on the primary', async () => {
+    await editAsNewMessage(setUpThread())
+
+    expect(compose$.tabs.get()[0].compose?.fromEmail).toBe('')
+  })
 })
 
 describe('signatures in a new compose tab', () => {
@@ -3892,6 +4064,9 @@ describe('signature in the quick reply', () => {
         account_id: 'acc-1',
         thread_id: 't-1',
         folder_id: 'Drafts',
+        to: 'them@example.com',
+        subject: 'Re: Notification thread',
+        outgoing: true,
         message_id: 'draft@example.com',
         body: 'half typed\n\nfrom u2',
         date: thread.date + 60,
@@ -3980,7 +4155,7 @@ describe('revealMessageRemote', () => {
     expect(tab?.message?.starred).toBe(true)
   })
 
-  it('marks an open reader tab so a thread switch cannot re-block it', () => {
+  it('marks an open reader tab so clearing the session reveals cannot re-block it', () => {
     openMessageTab(message({ id: 'm1', body_html: '<p>hi</p>' }))
     openMessageTab(message({ id: 'm2', body_html: '<p>other</p>' }))
     // Reading the conversation, not the tab: the inactive tab is unmounted, so
@@ -3990,9 +4165,12 @@ describe('revealMessageRemote', () => {
     revealMessageRemote('m1')
     expect(thread$.revealedRemote.get().m1).toBe(true)
 
-    // The thread switch clears the conversation's reveal map; the tab keeps its
-    // own copy, and the message that was never revealed keeps none.
+    // A thread switch keeps the session's reveals.
     resetThreadView()
+    expect(thread$.revealedRemote.get().m1).toBe(true)
+    // Removing an account clears them; the tab keeps its own copy, and the
+    // message that was never revealed keeps none.
+    forgetThreadViews()
     const tabs = compose$.tabs.get()
     expect(tabs.find((tab) => tab.messageId === 'm1')?.revealRemote).toBe(true)
     expect(tabs.find((tab) => tab.messageId === 'm2')?.revealRemote).toBe(false)
@@ -4139,6 +4317,216 @@ describe('quick reply recipient line', () => {
 
   it('reports nothing without an open conversation, which hides the line', () => {
     expect(quickReplyRecipients()).toEqual({ to: '', cc: '' })
+  })
+})
+
+describe('adding people to the quick reply', () => {
+  // We were copied on a message to Alice and Bob, so a plain reply goes to the
+  // sender alone, and Reply all would also copy both.
+  const calls: { command: string; payload: unknown }[] = []
+  const reply = {
+    to: 'Them <them@example.com>',
+    cc: '',
+    all_to: 'Them <them@example.com>',
+    all_cc: 'Alice <alice@example.com>, Bob <bob@example.com>',
+    all_adds_recipients: true,
+  }
+  const setUpThread = (overrides: Partial<Message> = {}) => {
+    const thread = message({
+      id: 'root',
+      account_id: 'acc-1',
+      thread_id: 't-1',
+      folder_id: 'INBOX',
+      from_name: 'Them',
+      from_addr: 'them@example.com',
+      to: 'Alice <alice@example.com>, Bob <bob@example.com>',
+      cc: 'me@example.com',
+      subject: 'Plans',
+      message_id: 'root@example.com',
+      date: 1000,
+      reply,
+      ...overrides,
+    })
+    mail$.threads.set([thread])
+    mail$.messages.set([thread])
+    ui$.selectedThread.set('t-1')
+    return thread
+  }
+
+  beforeEach(() => {
+    cancelQuickReplyDraftSave()
+    calls.length = 0
+    compose$.tabs.set([])
+    compose$.activeTab.set('')
+    compose$.composer.set('')
+    compose$.composerAttachments.set([])
+    compose$.quickReplyDraftId.set('')
+    compose$.quickReplyDraftSaved.set(false)
+    compose$.quickReplyDraftThreadId.set('')
+    compose$.quickReplyFrom.set('')
+    compose$.quickReplyAdded.set([])
+    compose$.quickReplySignature.set(null)
+    settings$.signature.set('')
+    mail$.messages.set([])
+    mail$.threads.set([])
+    mail$.folders.set([])
+    mail$.foldersByAccount.set({})
+    ui$.selectedThread.set('')
+    ui$.selectedAccount.set('acc-1')
+    accounts$.set([
+      {
+        id: 'acc-1',
+        email: 'me@example.com',
+        display_name: 'Me',
+        provider: 'custom',
+        auth_type: 'password',
+        imap_host: 'imap.example.com',
+        imap_port: 993,
+        smtp_host: 'smtp.example.com',
+        smtp_port: 465,
+        tls: true,
+      },
+    ])
+    ;(window as any).go = {
+      main: {
+        App: {
+          Invoke: async (command: string, payload: unknown) => {
+            calls.push({ command, payload })
+            if (command === 'mail.allocateIdentity') return { message_id: 'draft-core@example.com' }
+            if (command === 'mail.folderList') return { folders: [] }
+            if (command === 'mail.threadList') return { threads: mail$.threads.get() }
+            return {}
+          },
+        },
+      },
+    }
+  })
+
+  it('offers the people Reply all would add, one by one, until each is in', () => {
+    setUpThread()
+    expect(quickReplyAddable()).toEqual(['Alice <alice@example.com>', 'Bob <bob@example.com>'])
+
+    addToQuickReply('Bob <bob@example.com>')
+
+    expect(quickReplyRecipients()).toEqual({ to: 'Them <them@example.com>', cc: 'Bob <bob@example.com>' })
+    expect(quickReplyAddable()).toEqual(['Alice <alice@example.com>'])
+  })
+
+  it('offers nobody when Reply all reaches no one new', () => {
+    setUpThread({ reply: { ...reply, all_cc: '', all_adds_recipients: false } })
+
+    expect(quickReplyAddable()).toEqual([])
+  })
+
+  it('saves and sends the reply to the people added', async () => {
+    setUpThread()
+    addToQuickReply('Alice <alice@example.com>')
+    compose$.composer.set('Sounds good')
+
+    await saveQuickReplyDraft()
+    const saved = calls.find((c) => c.command === 'mail.saveDraft')?.payload as { to: string; cc: string }
+    expect(saved.cc).toBe('Alice <alice@example.com>')
+
+    await sendReply()
+    const sent = calls.find((c) => c.command === 'mail.send')?.payload as { to: string; cc: string }
+    expect(sent.to).toBe('Them <them@example.com>')
+    expect(sent.cc).toBe('Alice <alice@example.com>')
+    // The next reply in the box starts as a plain one.
+    expect(compose$.quickReplyAdded.get()).toEqual([])
+  })
+
+  it('re-saves a reply in progress when someone is added', async () => {
+    setUpThread()
+    compose$.composer.set('Sounds good')
+
+    addToQuickReply('Alice <alice@example.com>')
+    await new Promise((resolve) => setTimeout(resolve, 1300))
+
+    const saved = calls.find((c) => c.command === 'mail.saveDraft')?.payload as { cc: string }
+    expect(saved?.cc).toBe('Alice <alice@example.com>')
+  })
+
+  it('puts the people added back when a send never gets off the ground', async () => {
+    setUpThread()
+    addToQuickReply('Alice <alice@example.com>')
+    compose$.composer.set('Sounds good')
+    ;(window as any).go.main.App.Invoke = async (command: string, payload: unknown) => {
+      calls.push({ command, payload })
+      if (command === 'mail.allocateIdentity') throw new Error('offline')
+      if (command === 'mail.folderList') return { folders: [] }
+      if (command === 'mail.threadList') return { threads: mail$.threads.get() }
+      return {}
+    }
+
+    await sendReply().catch(() => undefined)
+
+    expect(compose$.composer.get()).toBe('Sounds good')
+    expect(compose$.quickReplyAdded.get()).toEqual(['alice@example.com'])
+  })
+
+  it('carries the people added into the full editor', () => {
+    setUpThread()
+    addToQuickReply('Alice <alice@example.com>')
+    compose$.composer.set('Sounds good')
+
+    openReplyInFullEditor()
+
+    expect(compose$.tabs.get()[0].compose?.cc).toBe('Alice <alice@example.com>')
+    expect(compose$.quickReplyAdded.get()).toEqual([])
+  })
+
+  it('starts the next conversation as a plain reply', () => {
+    setUpThread()
+    addToQuickReply('Alice <alice@example.com>')
+
+    ui$.selectedThread.set('')
+
+    expect(compose$.quickReplyAdded.get()).toEqual([])
+  })
+
+  it('takes back a saved draft with some of them added', () => {
+    const thread = setUpThread()
+    mail$.messages.set([
+      thread,
+      message({
+        id: 'd1',
+        account_id: 'acc-1',
+        thread_id: 't-1',
+        folder_id: 'Drafts',
+        from_addr: 'me@example.com',
+        to: 'Them <them@example.com>',
+        cc: 'Bob <bob@example.com>',
+        subject: 'Re: Plans',
+        message_id: 'draft-1@example.com',
+        body: 'saved draft body',
+        date: 2000,
+      }),
+    ])
+
+    expect(compose$.composer.get()).toBe('saved draft body')
+    expect(compose$.quickReplyAdded.get()).toEqual(['bob@example.com'])
+  })
+
+  it('leaves a draft copying someone Reply all would not reach to the full composer', () => {
+    const thread = setUpThread()
+    mail$.messages.set([
+      thread,
+      message({
+        id: 'd1',
+        account_id: 'acc-1',
+        thread_id: 't-1',
+        folder_id: 'Drafts',
+        from_addr: 'me@example.com',
+        to: 'Them <them@example.com>',
+        cc: 'Bob <bob@example.com>, Carol <carol@example.com>',
+        subject: 'Re: Plans',
+        message_id: 'draft-1@example.com',
+        body: 'saved draft body',
+        date: 2000,
+      }),
+    ])
+
+    expect(compose$.composer.get()).toBe('')
   })
 })
 

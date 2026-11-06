@@ -16,6 +16,8 @@ import { settings$ } from '../states/settings'
 import type { Account, Folder } from '../types'
 import {
   KANBAN_DROP_REASONS,
+  columnReadsTags,
+  columnTag,
   KANBAN_MOVE_MESSAGES,
   accountLabel,
   activeKanbanColumnAttachmentsOnly,
@@ -40,6 +42,7 @@ import {
   searchScopeColumn,
   searchTargets,
   subscribeKanbanMailReloads,
+  syncFolderAndWait,
   syncKanbanColumn,
 } from './kanbanData'
 
@@ -333,6 +336,32 @@ describe('kanban column loading filters', () => {
 
     expect(calls).toEqual(['mail.sync', 'mail.threadList'])
     expect(finished).toBe(true)
+    expect(handlers.size).toBe(0)
+  })
+
+  it('holds a background folder sync until that folder has landed', async () => {
+    const handlers = new Map<string, (detail: unknown) => void>()
+    ;(window as any).runtime = {
+      EventsOn: (name: string, handler: (detail: unknown) => void) => {
+        handlers.set(name, handler)
+        return () => handlers.delete(name)
+      },
+    }
+    ;(window as any).go = { main: { App: { Invoke: async () => ({ online: true, queued: true }) } } }
+
+    let finished = false
+    const sync = syncFolderAndWait('acc1', 'Later').then(() => {
+      finished = true
+    })
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(finished).toBe(false)
+
+    handlers.get('mail.synced')?.({ account: 'acc1', folder: 'Other' })
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(finished).toBe(false)
+
+    handlers.get('mail.synced')?.({ account: 'acc1', folder: 'Later' })
+    await sync
     expect(handlers.size).toBe(0)
   })
 
@@ -957,6 +986,7 @@ describe('labels', () => {
       'kanban.columns.unifiedArchive': 'Unified archive',
       'kanban.columns.unifiedJunk': 'Unified junk',
       'kanban.columns.unifiedTrash': 'Unified trash',
+      'folders.roles.inbox': 'Inbox',
     })[key] ?? key
 
   const accounts = [
@@ -977,17 +1007,17 @@ describe('labels', () => {
     expect(folderLabel({ accountId: 'unified', folderId: 'inbox' }, folders, accs, t)).toBe('Unified inbox')
     expect(isUnifiedStarredColumn({ accountId: 'unified', folderId: 'starred' })).toBe(true)
     expect(folderLabel({ accountId: 'unified', folderId: 'starred' }, folders, accs, t)).toBe('Unified starred')
-    expect(folderLabel({ accountId: 'acc1', folderId: 'INBOX' }, folders, accs)).toBe('Inbox')
-    expect(folderLabel({ accountId: 'acc1', folderId: 'f1' }, folders, accs)).toBe('Receipts')
-    expect(folderLabel({ accountId: 'acc1', folderId: 'f2' }, folders, accs)).toBe('f2')
+    expect(folderLabel({ accountId: 'acc1', folderId: 'INBOX' }, folders, accs, t)).toBe('Inbox')
+    expect(folderLabel({ accountId: 'acc1', folderId: 'f1' }, folders, accs, t)).toBe('Receipts')
+    expect(folderLabel({ accountId: 'acc1', folderId: 'f2' }, folders, accs, t)).toBe('f2')
   })
 
   it('folderLabel names local folders without an inbox after the account', () => {
     const local = { ...account('local'), display_name: 'Local Folders' }
     const folders = [{ account_id: 'local', id: 'INBOX', name: 'INBOX', delimiter: '/' } as Folder]
-    expect(folderLabel({ accountId: 'local', folderId: 'inbox' }, [], [local])).toBe('Local Folders')
+    expect(folderLabel({ accountId: 'local', folderId: 'inbox' }, [], [local], t)).toBe('Local Folders')
     // A local folder the user named "inbox" is stored as INBOX and is real.
-    expect(folderLabel({ accountId: 'local', folderId: 'INBOX' }, folders, [local])).toBe('INBOX')
+    expect(folderLabel({ accountId: 'local', folderId: 'INBOX' }, folders, [local], t)).toBe('INBOX')
   })
 
   it('folderLabel names a nested folder by its last path segment', () => {
@@ -996,15 +1026,15 @@ describe('labels', () => {
       { account_id: 'acc1', id: 'INBOX.Later', name: 'INBOX.Later', delimiter: '.' } as Folder,
     ]
     const accs = [account('acc1')]
-    expect(folderLabel({ accountId: 'acc1', folderId: '[Gmail]/Now' }, folders, accs)).toBe('Now')
-    expect(folderLabel({ accountId: 'acc1', folderId: 'INBOX.Later' }, folders, accs)).toBe('Later')
+    expect(folderLabel({ accountId: 'acc1', folderId: '[Gmail]/Now' }, folders, accs, t)).toBe('Now')
+    expect(folderLabel({ accountId: 'acc1', folderId: 'INBOX.Later' }, folders, accs, t)).toBe('Later')
     expect(searchColumnLabel({ accountId: 'acc1', folderId: '[Gmail]/Now' }, folders, accs)).toBe('acc1 / Now')
   })
 
   it('folderLabel keeps an RSS feed title whole', () => {
     // Feed titles are not IMAP paths: a "/" in one is part of the name.
     const folders = [{ account_id: 'rss-1', id: 'feed1', name: 'News / Tech' } as Folder]
-    expect(folderLabel({ accountId: 'rss-1', folderId: 'feed1' }, folders, [])).toBe('News / Tech')
+    expect(folderLabel({ accountId: 'rss-1', folderId: 'feed1' }, folders, [], t)).toBe('News / Tech')
   })
 
   it('searchColumnLabel names a unified column by its role', () => {
@@ -1190,6 +1220,75 @@ describe('subscribeKanbanMailReloads', () => {
     } finally {
       cleanup()
     }
+  })
+})
+
+describe('resolveKanbanMove with tag columns', () => {
+  const mailAccounts = [
+    { id: 'acc1', provider: 'imap', auth_type: 'password' },
+    { id: 'acc2', provider: 'imap', auth_type: 'password' },
+    { id: 'feed1', provider: 'rss', auth_type: 'rss' },
+    { id: 'feed2', provider: 'rss', auth_type: 'rss' },
+  ]
+  const todo = { accountId: 'unified', folderId: 'inbox', query: 'tag:todo' }
+  const doing = { accountId: 'unified', folderId: 'inbox', query: 'tag:doing' }
+  const inbox = { accountId: 'acc1', folderId: 'INBOX' }
+  const archive = { accountId: 'acc1', folderId: 'Archive' }
+  const thread = message({ account_id: 'acc1', folder_id: 'INBOX' })
+
+  it('only a lone tag term makes a tag column', () => {
+    expect(columnTag(todo)).toBe('todo')
+    expect(columnTag({ ...todo, query: 'tag:Todo' })).toBe('todo')
+    expect(columnTag({ ...inbox, query: 'tag:todo is:unread' })).toBeUndefined()
+    expect(columnTag(inbox)).toBeUndefined()
+    expect(columnTag({ accountId: 'unified', folderId: 'starred', query: 'tag:todo' })).toBeUndefined()
+    expect(columnReadsTags({ ...inbox, query: 'tag:todo is:unread' })).toBe(true)
+    expect(columnReadsTags({ ...inbox, query: 'stag:x' })).toBe(false)
+  })
+
+  it('dropping on a tag column tags and leaves the mail in place', () => {
+    expect(resolveKanbanMove(inbox, todo, thread, mailAccounts)).toEqual({ kind: 'tag', add: 'todo' })
+  })
+
+  it('dropping between tag columns swaps the tag', () => {
+    expect(resolveKanbanMove(todo, doing, thread, mailAccounts)).toEqual({
+      kind: 'tag',
+      add: 'doing',
+      remove: 'todo',
+    })
+    expect(resolveKanbanMove(todo, todo, thread, mailAccounts)).toEqual({ kind: 'noop' })
+  })
+
+  it('dropping out of a tag column removes the tag, moving only if the folder differs', () => {
+    expect(resolveKanbanMove(todo, inbox, thread, mailAccounts)).toEqual({ kind: 'tag', remove: 'todo' })
+    expect(resolveKanbanMove(todo, archive, thread, mailAccounts)).toEqual({
+      kind: 'move',
+      origin: inbox,
+      removeTag: 'todo',
+    })
+  })
+
+  it('a unified tag column refuses an account it leaves out', () => {
+    const excluded = [{ id: 'acc1', provider: 'imap', auth_type: 'password', included_in_unified: false }]
+    expect(resolveKanbanMove(inbox, todo, thread, excluded)).toEqual({
+      kind: 'blocked',
+      reasonKey: KANBAN_DROP_REASONS.savedSearchTarget,
+    })
+  })
+
+  it('mail in the trash cannot join a tag column, which would not list it', () => {
+    expect(resolveKanbanMove(inbox, todo, { ...thread, folder_role: 'trash' }, mailAccounts)).toEqual({
+      kind: 'blocked',
+      reasonKey: KANBAN_DROP_REASONS.savedSearchTarget,
+    })
+  })
+
+  it("another account's tag column is refused", () => {
+    const other = { accountId: 'acc2', folderId: 'INBOX', query: 'tag:todo' }
+    expect(resolveKanbanMove(inbox, other, thread, mailAccounts)).toEqual({
+      kind: 'blocked',
+      reasonKey: KANBAN_DROP_REASONS.savedSearchTarget,
+    })
   })
 })
 

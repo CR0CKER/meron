@@ -1,4 +1,5 @@
 import type { Message } from '../types'
+import { contextualErrorMessage } from '../lib/errors'
 import { t } from '../lib/i18n'
 import { showToast, ui$ } from './ui'
 import { accounts$, isLocalAccountId, isSendableAccount } from './accounts'
@@ -25,8 +26,13 @@ import {
   quickReplyEncrypts,
   resolveQuickReplyFrom,
   replySubject,
+  addressQuickReply,
+  quickReplyAddressing,
 } from './composeReply'
 import { compose$, newDraftMessageId } from './composeState'
+import { draftSaveRunning } from './composeSessions'
+import { parseAddressList } from '../components/chat/messageHelpers'
+import { bareAddr, splitAddressList } from '../lib/address'
 
 // Quick-reply draft lifecycle: signature seeding, autosave, hydration from a
 // thread's tail draft, and ownership hand-offs with compose tabs and sends.
@@ -48,6 +54,14 @@ export function clearQuickReplyDraftOwnership() {
 // navigation. Thread-tab activations set activeTab first, so this guard skips
 // their selectedThread retarget and leaves the Current tab's thread intact.
 ui$.selectedThread.onChange(({ value }) => {
+  const activeTab = compose$.tabs.peek().find((tab) => tab.id === compose$.activeTab.peek())
+  // Selection also changes outside the tab strip: triage advances to a neighbour,
+  // folder changes clear it, and board navigation selects another card. Show that
+  // selection in Current so the displayed conversation and action target agree.
+  if (activeTab?.kind === 'thread' && activeTab.threadId !== value) compose$.activeTab.set('')
+  // The box still holds the thread being left: leaving, not the user, is what
+  // blanks it from here (see quickReplyLeftWithReplyTick).
+  if (!isQuickReplyBlank()) quickReplyLeftWithReplyTick = nextQuickReplyOwnershipTick()
   if (compose$.activeTab.peek() === '') compose$.conversationThread.set(value)
 })
 
@@ -161,7 +175,7 @@ async function performQuickReplyDraftSave() {
   if (activeAcc?.provider === 'rss' || activeAcc?.auth_type === 'rss' || isLocalAccountId(replyAccountId)) return
 
   const target = pickReplyTarget(activeT)
-  const { to, cc } = buildReplyRecipients(target)
+  const { to, cc } = quickReplyAddressing(target)
   const { in_reply_to, references } = buildReplyThreading(target)
   const fromEmail = resolveQuickReplyFrom(target, activeAcc)
   const subject = replySubject(activeT.subject, target)
@@ -243,8 +257,9 @@ async function performQuickReplyDraftSave() {
   // in that window saw quickReplyDraftSaved still false and bailed. Drop the
   // draft we just wrote instead of letting it resurrect on the next thread open.
   const sameThread = ui$.selectedThread.peek() === activeT.thread_id
+  const leftWithReply = quickReplyLeftWithReplyTick > startTick
   // ...unless something else took this exact draft over in the meantime.
-  if (sameThread && isQuickReplyBlank() && !draftClaimedElsewhere(savedDraftId)) {
+  if (sameThread && !leftWithReply && isQuickReplyBlank() && !draftClaimedElsewhere(savedDraftId)) {
     if (compose$.quickReplyDraftId.peek() === savedDraftId) {
       clearQuickReplyDraftOwnership()
     }
@@ -357,6 +372,12 @@ export let quickReplyOwnershipTick = 0
 export function nextQuickReplyOwnershipTick(): number {
   return ++quickReplyOwnershipTick
 }
+
+// The tick at which the reader last left a thread with a reply still in the box
+// (Esc on a board saves it just before). A save that started earlier and finds
+// the box blank on landing, back on that thread, sees what leaving cleared, not
+// a reply the user deleted, and must keep the copy it wrote.
+let quickReplyLeftWithReplyTick = 0
 // Bumped whenever the box changes hands: the user typing or attaching, or the
 // conversation switching. A send captures it at the click and resets the box
 // only if it hasn't moved since — comparing content instead can't tell "they
@@ -369,6 +390,9 @@ compose$.composerAttachments.onChange(() => {
   quickReplyBoxGeneration += 1
 })
 compose$.quickReplyFrom.onChange(() => {
+  quickReplyBoxGeneration += 1
+})
+compose$.quickReplyAdded.onChange(() => {
   quickReplyBoxGeneration += 1
 })
 ui$.selectedThread.onChange(() => {
@@ -453,6 +477,31 @@ export function scheduleQuickReplyDraftSave() {
   }, QUICK_REPLY_DRAFT_SAVE_DELAY_MS)
 }
 
+/** Run a pending autosave now, for a caller about to leave the thread: a save
+ * reads the box as it starts, so it has to start before leaving clears the box.
+ * Resolves once every save has read the box, not when the last one lands. A
+ * blank box is left as leaving it does today. */
+export async function saveQuickReplyDraftNow(): Promise<void> {
+  const pending = quickReplyDraftSaveTimer !== null
+  cancelQuickReplyDraftSave()
+  // A save still on the wire holds back any queued behind it (an autosave
+  // that fired meanwhile, or this one), and those read the box only once it
+  // lands: let the whole queue drain while the box is still there.
+  while (quickReplyDraftSaveInFlight) await quickReplyDraftSaveInFlight
+  if (!pending || isQuickReplyBlank()) return
+  void saveQuickReplyDraft()
+}
+
+/** Copy one of the people Reply all reaches on the quick reply (picked from
+ * its recipient line). A reply in progress is saved again, so its draft is
+ * addressed the same way. */
+export function addToQuickReply(entry: string) {
+  const addr = bareAddr(entry)
+  if (!addr || compose$.quickReplyAdded.peek().includes(addr)) return
+  compose$.quickReplyAdded.set([...compose$.quickReplyAdded.peek(), addr])
+  if (!isQuickReplyBlank()) scheduleQuickReplyDraftSave()
+}
+
 /** Cancel any pending debounced draft save — used when a send, thread switch,
  * or escalation to the full editor should preempt it. */
 export function cancelQuickReplyDraftSave() {
@@ -463,6 +512,9 @@ export function cancelQuickReplyDraftSave() {
 }
 
 ui$.selectedThread.onChange(({ value }) => {
+  // The box still holds the thread being left: leaving, not the user, is what
+  // blanks it from here (see quickReplyLeftWithReplyTick).
+  if (!isQuickReplyBlank()) quickReplyLeftWithReplyTick = nextQuickReplyOwnershipTick()
   // A failed send keeps its consumed draft suppressed while the user remains
   // in that editor. Once they leave, make the server safety copy available for
   // a later reopen; in-flight sends remain guarded across navigation.
@@ -476,8 +528,39 @@ ui$.selectedThread.onChange(({ value }) => {
   compose$.composerAttachments.set([])
   clearQuickReplyDraftOwnership()
   compose$.quickReplyFrom.set('')
+  compose$.quickReplyAdded.set([])
   compose$.quickReplySignature.set(null)
 })
+
+const addressesOf = (raw: string | undefined) =>
+  parseAddressList(raw)
+    .map((item) => item.email.toLowerCase())
+    .sort()
+    .join(' ')
+
+// The quick reply saves plain text under recipients and a subject worked out
+// from the thread, so a draft it can't reproduce must stay out of the box: its
+// next autosave would flatten the body and redirect the reply. That is a draft
+// the full composer kept with Esc, or another client wrote. It stays a bubble,
+// which opens in the full composer. Returns the people the box would have
+// added from its recipient line (none for a plain reply).
+function quickReplyCanHoldDraft(draft: Message): { added: string[] } | null {
+  if (draft.body_html?.trim() || draft.bcc?.trim() || draft.reply_to?.trim()) return null
+  const activeT = getActiveThread()
+  if (!activeT) return { added: [] }
+  const subject = activeT.subject.startsWith('Re:') ? activeT.subject : `Re: ${activeT.subject}`
+  if ((draft.subject ?? '').trim() !== subject.trim()) return null
+  const target = pickReplyTarget(activeT)
+  // The extras the draft copies beyond the plain reply, if all are people
+  // Reply all would reach; then the box can address it the same way.
+  const plainCc = new Set(splitAddressList(buildReplyRecipients(target).cc).map(bareAddr))
+  const added = splitAddressList(draft.cc)
+    .map(bareAddr)
+    .filter((addr) => !plainCc.has(addr))
+  const { to, cc } = addressQuickReply(target, added)
+  if (addressesOf(draft.to) !== addressesOf(to) || addressesOf(draft.cc) !== addressesOf(cc)) return null
+  return { added }
+}
 
 // Pre-fills the quick reply with an already-saved draft sitting at the tail of
 // the active thread, so the user can continue and send it inline instead of
@@ -515,6 +598,8 @@ function hydrateQuickReplyFromTailDraft(messages: Message[]) {
   // editors on one server draft, and hand this box a draft it may then discard.
   if (draftOpenInComposeTab(tailDraftId)) return
   if (normalizeMessageId(compose$.quickReplyDraftId.peek()) === normalizedTailDraftId) return
+  const holds = quickReplyCanHoldDraft(tail)
+  if (!holds) return
   // Only into a box that is free. Hydration fills an empty quick reply from a
   // saved draft; it is not entitled to replace a reply in progress — one the
   // user began while this very draft was still a header-less row, say — nor to
@@ -538,6 +623,7 @@ function hydrateQuickReplyFromTailDraft(messages: Message[]) {
   compose$.composerAttachments.set([])
   ownQuickReplyDraft(tailDraftId, activeThreadId, true)
   compose$.quickReplyFrom.set(tail.from_addr ?? '')
+  compose$.quickReplyAdded.set(holds.added)
   // The saved body already carries whatever signature it was written with, so
   // none of it is this app's to strip, re-seed, or discount as "not content".
   compose$.quickReplySignature.set(null)
@@ -578,31 +664,46 @@ const sentDraftDiscards = new Map<string, SentDraft>()
 // Gaps between further attempts at a discard that failed. A draft still there
 // after the last one is left for the user, who is told about it.
 const SENT_DRAFT_DISCARD_RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 600_000]
+// A closed tab gets one quick retry, for a connection that was only slow: the
+// user just asked for this, so a failure has to reach them while they still
+// remember doing it.
+const CLOSED_DRAFT_DISCARD_RETRY_DELAYS_MS = [5_000]
 
 /**
  * Discard the draft behind a message that was just sent. Resolves with whether
  * the first attempt removed it; a failed one keeps the draft suppressed and is
  * retried in the background, so callers can settle their own state either way.
  */
-export async function discardSentDraft(draft: SentDraft): Promise<boolean> {
+export async function discardSentDraft(
+  draft: SentDraft,
+  retryDelays: number[] = SENT_DRAFT_DISCARD_RETRY_DELAYS_MS,
+): Promise<boolean> {
   const id = normalizeMessageId(draft.draftMessageId)
   // A row known only by its local id can be neither suppressed nor retried by
   // Message-ID: one plain attempt, failing out loud.
   if (!id) return discardSavedDraftCopy(draft)
   sentDraftDiscards.set(id, draft)
   publishSendingDraftIds()
-  if (await attemptSentDraftDiscard(id, draft)) return true
-  void retrySentDraftDiscard(id, draft)
+  const failure = await attemptSentDraftDiscard(id, draft)
+  if (!failure) return true
+  void retrySentDraftDiscard(id, draft, retryDelays, failure.error)
   return false
 }
 
-async function attemptSentDraftDiscard(id: string, draft: SentDraft): Promise<boolean> {
+/** Discard the draft of a compose tab the user closed, as a send does but with
+ * a failure reported within about a minute. */
+export function discardClosedDraft(draft: SentDraft): Promise<boolean> {
+  return discardSentDraft(draft, CLOSED_DRAFT_DISCARD_RETRY_DELAYS_MS)
+}
+
+/** Null when the draft is gone. */
+async function attemptSentDraftDiscard(id: string, draft: SentDraft): Promise<{ error: unknown } | null> {
   discardingDraftIds.add(id)
   try {
     await discardSavedDraftCopy(draft, { throwOnError: true })
   } catch (error) {
-    console.error('Discarding a sent message’s draft failed:', error)
-    return false
+    console.error('Discarding a draft failed:', error)
+    return { error }
   } finally {
     discardingDraftIds.delete(id)
   }
@@ -610,11 +711,12 @@ async function attemptSentDraftDiscard(id: string, draft: SentDraft): Promise<bo
     sentDraftDiscards.delete(id)
     publishSendingDraftIds()
   }
-  return true
+  return null
 }
 
-async function retrySentDraftDiscard(id: string, draft: SentDraft) {
-  for (const delay of SENT_DRAFT_DISCARD_RETRY_DELAYS_MS) {
+async function retrySentDraftDiscard(id: string, draft: SentDraft, delays: number[], firstError: unknown) {
+  let lastError = firstError
+  for (const delay of delays) {
     await new Promise((resolve) => setTimeout(resolve, delay))
     if (sentDraftDiscards.get(id) !== draft) return
     // Reopened in the full editor meanwhile: it is the user's draft again.
@@ -623,11 +725,13 @@ async function retrySentDraftDiscard(id: string, draft: SentDraft) {
       publishSendingDraftIds()
       return
     }
-    if (await attemptSentDraftDiscard(id, draft)) return
+    const failure = await attemptSentDraftDiscard(id, draft)
+    if (!failure) return
+    lastError = failure.error
   }
   // Still suppressed, so it cannot come back into the quick reply this session;
   // the Drafts folder is where the user can remove it.
-  showToast(t('composer.status.couldNotDiscardDraft'), 'error')
+  showToast(contextualErrorMessage(lastError, t('composer.status.couldNotDiscardDraft')), 'error')
 }
 
 /** Whether a full-editor tab is editing this server-side draft, or about to be:
@@ -637,6 +741,9 @@ export function draftOpenInComposeTab(draftId: string): boolean {
   if (!draftId) return false
   const id = normalizeMessageId(draftId)
   if (openingComposeTabDraftIds.has(id)) return true
+  // Its tab has closed, but the Esc save is still writing what this copy is
+  // about to become.
+  if (draftSaveRunning((draft) => normalizeMessageId(draft.draftMessageId) === id)) return true
   return compose$.tabs
     .peek()
     .some((tab) => !!tab.compose?.draftMessageId && normalizeMessageId(tab.compose.draftMessageId) === id)

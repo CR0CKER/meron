@@ -122,6 +122,47 @@ pub(crate) async fn dispatch(
             meron_core::protocol::messages_still_unread(&engine.db.lock().unwrap(), p)
                 .map_err(anyhow::Error::msg)
         }
+        // Every tag in use, for pickers, or one account's. The archive is read
+        // before taking the store lock, as opening it reads the store.
+        "tags.list" => {
+            let account = req_str(p, "account").ok();
+            let mut counts = if account.is_none() {
+                crate::sidecar::local::tag_counts(engine)
+            } else {
+                Default::default()
+            };
+            let db = engine.db.lock().unwrap();
+            for (tag, count) in store::tag_counts(&db, account.as_deref())? {
+                *counts.entry(tag).or_insert(0) += count;
+            }
+            Ok(store::tag_counts_json(counts))
+        }
+
+        "rules.list" => Ok(json!({ "rules": store::rules(&engine.db.lock().unwrap())? })),
+        "rules.set" => {
+            let rules = serde_json::from_value(p.get("rules").cloned().unwrap_or_default())?;
+            let rules = store::set_rules(&engine.db.lock().unwrap(), rules)?;
+            Ok(json!({ "rules": rules }))
+        }
+        "rules.status" => {
+            let db = engine.db.lock().unwrap();
+            Ok(json!({ "log": store::rule_log(&db)?, "running": store::running_rules(&db)? }))
+        }
+        "rules.stop" => {
+            store::stop_rule(&engine.db.lock().unwrap(), &req_str(p, "id")?)?;
+            Ok(json!({ "ok": true }))
+        }
+        "rules.matches" => {
+            let id = req_str(p, "id")?;
+            let count = store::count_existing_rule_matches(&engine.db.lock().unwrap(), &id)?;
+            Ok(json!({ "count": count }))
+        }
+        "rules.run" => {
+            let id = req_str(p, "id")?;
+            let count = run_rule_on_existing(engine, &id).await?;
+            Ok(json!({ "count": count }))
+        }
+
         "starred.items" => {
             let limit = req_u32(p, "limit").unwrap_or(200);
             // Before taking the store lock: opening the archive reads the store.
@@ -149,14 +190,37 @@ pub(crate) async fn dispatch(
             )
         })),
 
-        // Recipient autocomplete: distinct correspondents from cached messages,
-        // matched against `query` and ranked by frequency/recency.
+        "contacts.threads" => {
+            let addr = req_str(p, "addr")?;
+            anyhow::ensure!(!addr.trim().is_empty(), "addr is required");
+            let db = engine.db.lock().unwrap();
+            let limit = req_u32(p, "limit").unwrap_or(50).clamp(1, 200) as usize;
+            store::contact_thread_page(
+                &db,
+                &addr,
+                p.get("before_cursor").and_then(Value::as_str),
+                limit,
+            )
+        }
+
+        // Recipient autocomplete and the Contacts panel (`directory`):
+        // distinct correspondents from cached messages, matched against
+        // `query`, in the order `sort` names (frequency by default).
         "contacts.suggest" => {
             let account = req_str(p, "account").unwrap_or_default();
             let query = req_str(p, "query").unwrap_or_default();
             let limit = req_u32(p, "limit").unwrap_or(8);
-            let contacts =
-                store::suggest_contacts(&engine.db.lock().unwrap(), &account, &query, limit)?;
+            let sort =
+                store::ContactSort::parse(p.get("sort").and_then(Value::as_str).unwrap_or(""));
+            let directory = p.get("directory").and_then(Value::as_bool).unwrap_or(false);
+            let contacts = store::list_contacts(
+                &engine.db.lock().unwrap(),
+                &account,
+                &query,
+                limit,
+                sort,
+                directory,
+            )?;
             Ok(json!({ "contacts": contacts }))
         }
 
@@ -370,7 +434,12 @@ async fn messages_recent(engine: &Arc<Engine>, p: &Value, out: &Writer) -> anyho
             // Chat-view search spans the selected folder plus Sent, so a
             // lookup surfaces both received and self-sent mail (and old
             // messages filed under Sent), not just the current mailbox.
-            let folders = search_folders(&engine.db.lock().unwrap(), &account, &folder);
+            let folders = query_folders(
+                &engine.db.lock().unwrap(),
+                &account,
+                &folder,
+                &request.query,
+            );
             if refresh || request.search_before_cursor.as_ref().is_some() {
                 let page = search_mail_messages(
                     engine,

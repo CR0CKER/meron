@@ -74,6 +74,8 @@ export type KanbanBoard = {
   avatarUrl?: string
   /** Background behind the board's columns. Unset = plain theme surface. */
   wallpaper?: ChatWallpaper | null
+  /** Show the board's unread count on its rail tile. Unset = off. */
+  showUnreadBadge?: boolean
 }
 
 /** Proxy transport, or 'off' for direct connections. */
@@ -480,6 +482,7 @@ export const settings$ = observable<Settings>({
 // The backend decides what the close button does, so hand it the setting. Its
 // default matches ours, so only a change (hydration included) needs sending.
 settings$.closeToTray.onChange(({ value }) => {
+  if (new URLSearchParams(window.location.search).has('eml')) return
   void invoke('window.setCloseToTray', { enabled: value }).catch(() => {})
 })
 
@@ -618,6 +621,7 @@ function applyActiveTheme() {
   // the backend as well and let it tint the window chrome to match. Where the
   // title bar takes arbitrary colors (GTK client-side decorations) it wears
   // the side nav's, reading as one piece with the rail below it.
+  if (new URLSearchParams(window.location.search).has('eml')) return
   void invoke('window.setAppearance', {
     dark: def.appearance === 'dark',
     titlebar: toHex(def.tokens.bgSideNav),
@@ -766,6 +770,7 @@ export function sanitizeKanbanBoards(raw: unknown): KanbanBoard[] | null {
     }
     const wallpaper = sanitizeChatWallpaper(obj.wallpaper)
     if (wallpaper) board.wallpaper = wallpaper
+    if (obj.showUnreadBadge === true) board.showUnreadBadge = true
     out.push(board)
   }
   return out

@@ -1319,6 +1319,8 @@ internal fun KanbanThreadActionDialog(
     onToggleRead: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit,
+    onTags: () -> Unit,
+    onAddTag: (String) -> Unit,
     onCopyFeedUrl: () -> Unit,
     onMove: (KanbanColumnSpec) -> Unit,
 ) {
@@ -1336,6 +1338,9 @@ internal fun KanbanThreadActionDialog(
                 item { DialogAction(tr("kanban.actions.openThread"), onOpen) }
                 item { DialogAction(if (thread.starred) tr("chat.unstar") else tr("chat.star"), onToggleStar) }
                 item { DialogAction(if (thread.unread) tr("threads.actions.markAsRead") else tr("threads.actions.markAsUnread"), onToggleRead) }
+                if (!threadIdIsRss(thread.id)) {
+                    item { DialogAction(tr("tags.title"), onTags) }
+                }
                 if (threadIdIsRss(thread.id) && thread.feedUrl.isNotBlank()) {
                     item { DialogAction(tr("feeds.copyUrl"), onCopyFeedUrl) }
                 }
@@ -1353,6 +1358,23 @@ internal fun KanbanThreadActionDialog(
                             val targetAccount = accounts.firstOrNull { it.id == target.accountId }
                             targetAccount != null && (threadIdIsRss(thread.id) == accountSummaryIsRss(targetAccount))
                         }.filterNot { it.accountId == thread.accountId && it.folderId.equals(thread.folder, ignoreCase = true) }
+                // A tag column is a state: joining it tags the thread where it lies.
+                val tagTargets =
+                    // Tag searches skip the trash, so that mail could not join one.
+                    if (threadIdIsRss(thread.id) || thread.folderRole == "trash" || thread.folderRole == "junk") {
+                        emptyList()
+                    } else {
+                        board
+                            ?.columns
+                            .orEmpty()
+                            .filter { column ->
+                                column.accountId == thread.accountId ||
+                                    (column.accountId == UNIFIED_ACCOUNT_ID && accounts.firstOrNull { it.id == thread.accountId }?.includedInUnified == true)
+                            }.mapNotNull(::kanbanColumnTag)
+                            .distinct()
+                            .filterNot { it in thread.tags }
+                    }
+                items(tagTargets, key = { "tag:$it" }) { tag -> DialogAction(tag) { onAddTag(tag) } }
                 if (moveTargets.isNotEmpty()) {
                     item {
                         Text(

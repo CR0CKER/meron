@@ -30,6 +30,7 @@ import {
   RefreshCw,
   MessagesSquare,
   Keyboard,
+  ListFilter,
   Archive,
   Server,
   PanelTop,
@@ -72,6 +73,7 @@ import { ThemeSettingsSection } from './ThemeSettingsSection'
 import { FontSettingsSection } from './FontSettingsSection'
 import { AccountProxyCard, ProxySettingsSection } from './ProxySettingsCard'
 import { AccountSignatureCard, SignatureSettingsSection } from './SignatureSettingsCard'
+import { TagsSection } from './TagsSection'
 import { AccountProfileGroup } from './AccountProfileGroup'
 import { useAccountAvatar } from './useAccountAvatar'
 import { RemoveImageBadge } from './RemoveImageBadge'
@@ -89,18 +91,20 @@ import { ALERT_MINUTES, ALL_DAY_ALERT_DAYS, NO_ALERT, alertLabel } from '../../l
 import { McpSettingsPanel } from './McpSettingsPanel'
 import { AccountEncryptionCard } from '../crypto/AccountEncryptionCard'
 import { EncryptionSettingsPage } from '../crypto/EncryptionSettingsPage'
+import { RulesPanel } from './RulesPanel'
 import { setIntegratedTitlebar, windowChrome$ } from '../../lib/windowChrome'
 
-// General uses the empty selection; Messages, Composer and MCP have ids of
+// General uses the empty selection; Messages, Composer, Rules and MCP have ids of
 // their own. Account and board IDs share the selection state with these
 // settings sections.
-type SectionId = 'general' | 'messages' | 'composer'
+type SectionId = 'general' | 'messages' | 'composer' | 'rules'
 const SECTIONS: { id: SectionId; labelKey: string; icon: LucideIcon }[] = [
   { id: 'general', labelKey: 'settings.sections.general', icon: SlidersHorizontal },
   { id: 'messages', labelKey: 'settings.sections.messages', icon: MessagesSquare },
   { id: 'composer', labelKey: 'settings.sections.composer', icon: SquarePen },
+  { id: 'rules', labelKey: 'rules.title', icon: ListFilter },
 ]
-const PAGE_IDS = new Set<string>(['messages', 'composer', 'mcp', 'encryption'])
+const PAGE_IDS = new Set<string>(['messages', 'composer', 'rules', 'mcp', 'encryption'])
 
 const SEND_SHORTCUT_OPTIONS: { value: SendShortcut; label: string }[] = [
   { value: 'enter', label: sendShortcutLabel('enter') },
@@ -260,6 +264,8 @@ export function SettingsDialog() {
             <MessagesSection />
           ) : selected === 'composer' ? (
             <ComposerSection />
+          ) : selected === 'rules' ? (
+            <RulesPanel />
           ) : (
             <GeneralSection />
           )}
@@ -635,6 +641,8 @@ function MessagesSection() {
       <SettingsGroup title={t('settings.sections.typography')}>
         <FontSettingsSection part="message" />
       </SettingsGroup>
+
+      <TagsSection />
 
       <SettingsGroup title={t('settings.sections.privacy')}>
         <SettingRow

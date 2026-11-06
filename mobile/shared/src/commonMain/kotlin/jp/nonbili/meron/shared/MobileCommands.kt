@@ -3,6 +3,7 @@ package jp.nonbili.meron.shared
 const val CONVERSATION_PAGE_SIZE = 10
 
 object MobileCommand {
+    const val CoreStatus = "core.status"
     const val AccountList = "account.list"
     const val AccountAddPassword = "account.addPassword"
     const val AccountAutodiscover = "account.autodiscover"
@@ -48,6 +49,7 @@ object MobileCommand {
     const val FolderRename = "mail.folderRename"
     const val FolderSetNotify = "mail.folderSetNotify"
     const val ContactSuggest = "mail.suggestContacts"
+    const val ContactThreads = "mail.contactThreads"
     const val ThreadList = "mail.threadList"
     const val StarredItems = "mail.starredItems"
     const val AllocateIdentity = "mail.allocateIdentity"
@@ -83,6 +85,15 @@ object MobileCommand {
     const val MarkAllRead = "mail.markAllRead"
     const val EmptyFolder = "mail.emptyFolder"
     const val MarkStarred = "mail.markStarred"
+    const val SetTags = "mail.setTags"
+    const val TagList = "mail.tagList"
+    const val ReplaceTag = "mail.replaceTag"
+    const val Rules = "mail.rules"
+    const val SetRules = "mail.setRules"
+    const val RuleMatches = "mail.ruleMatches"
+    const val RunRule = "mail.runRule"
+    const val RuleStatus = "mail.ruleStatus"
+    const val StopRule = "mail.stopRule"
     const val RssSync = "rss.sync"
     const val RssThread = "rss.thread"
     const val RssMarkRead = "rss.markRead"
@@ -113,6 +124,7 @@ data class SearchFields(
     val from: String = "",
     val to: String = "",
     val subject: String = "",
+    val tags: String = "",
     val words: String = "",
     val after: String = "",
     val before: String = "",
@@ -125,6 +137,7 @@ data class SearchFields(
             "from" to from.jsonString(),
             "to" to to.jsonString(),
             "subject" to subject.jsonString(),
+            "tags" to tags.jsonString(),
             "words" to words.jsonString(),
             "after" to after.jsonString(),
             "before" to before.jsonString(),
@@ -693,14 +706,33 @@ data class FolderSetNotifyParams(
 }
 
 data class ContactSuggestParams(
-    val accountId: String,
+    val accountId: String = "",
     val query: String = "",
     val limit: Int = 8,
+    // frequent (autocomplete default), name, or recent.
+    val sort: String = "frequent",
+    val directory: Boolean = false,
 ) {
     fun toJson(): String =
         jsonObject(
             "account" to accountId.jsonString(),
             "query" to query.jsonString(),
+            "limit" to limit.toString(),
+            "sort" to if (sort == "frequent") null else sort.jsonString(),
+            "directory" to if (directory) "true" else null,
+        )
+}
+
+/** Exact-address, cache-only history across all accounts and folders. */
+data class ContactThreadsParams(
+    val addr: String,
+    val beforeCursor: String? = null,
+    val limit: Int = 50,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "addr" to addr.jsonString(),
+            "before_cursor" to beforeCursor?.jsonString(),
             "limit" to limit.toString(),
         )
 }
@@ -1136,6 +1168,75 @@ data class MarkStarredParams(
         )
 }
 
+data class SetTagsParams(
+    val threadId: String,
+    val add: List<String> = emptyList(),
+    val remove: List<String> = emptyList(),
+    val messageIds: List<String> = emptyList(),
+) {
+    fun toJson(): String =
+        jsonObject(
+            "thread_id" to threadId.jsonString(),
+            "add" to add.jsonStringArray(),
+            "remove" to remove.jsonStringArray(),
+            "message_ids" to messageIds.takeUnless { it.isEmpty() }?.jsonStringArray(),
+        )
+}
+
+data class Rule(
+    val id: String = "",
+    val query: String,
+    val trigger: String = "arrival",
+    val delaySeconds: Long = 0,
+    val tags: List<String> = emptyList(),
+    val markRead: Boolean = false,
+    val star: Boolean = false,
+    val moveTo: String = "",
+    val folder: String = "",
+    /** The account of [folder]; empty for the mail's own account. */
+    val folderAccount: String = "",
+    /** The accounts the rule runs on; empty for all of them. */
+    val accounts: List<String> = emptyList(),
+    val copyFolder: String = "",
+    val copyAccount: String = "",
+    /** Kept, but not run. */
+    val disabled: Boolean = false,
+) {
+    fun toJson(): String =
+        jsonObject(
+            "id" to id.jsonString(),
+            "query" to query.jsonString(),
+            "tags" to tags.jsonStringArray(),
+            "trigger" to trigger.jsonString(),
+            "delay_seconds" to delaySeconds.toString(),
+            "mark_read" to markRead.toString(),
+            "star" to star.toString(),
+            "move_to" to moveTo.jsonString(),
+            "folder" to folder.jsonString(),
+            "folder_account" to folderAccount.jsonString(),
+            "accounts" to accounts.jsonStringArray(),
+            "copy_folder" to copyFolder.jsonString(),
+            "copy_account" to copyAccount.jsonString(),
+            "disabled" to disabled.toString(),
+        )
+}
+
+/** One line of what rules did. [subject] is empty for a run by hand, which logs one line. */
+data class RuleLogEntry(
+    val at: Long = 0,
+    val ruleId: String = "",
+    val subject: String = "",
+    val count: Int = 1,
+    val failed: Boolean = false,
+    val detail: String = "",
+)
+
+/** What rules did lately, and how many messages each rule run by hand has left. */
+data class RuleStatus(
+    val log: List<RuleLogEntry> = emptyList(),
+    val running: Map<String, Int> = emptyMap(),
+)
+
 data class RssMarkReadParams(
     val threadId: String,
     val seen: Boolean = true,
@@ -1261,6 +1362,8 @@ class MobileMailCommandClient(
 
     suspend fun suggestContacts(params: ContactSuggestParams): String = core.invoke(MobileCommand.ContactSuggest, params.toJson())
 
+    suspend fun contactThreads(params: ContactThreadsParams): String = core.invoke(MobileCommand.ContactThreads, params.toJson())
+
     suspend fun listThreads(params: ThreadListParams): String = core.invoke(MobileCommand.ThreadList, params.toJson())
 
     suspend fun listStarredItems(params: StarredItemsParams = StarredItemsParams()): String = core.invoke(MobileCommand.StarredItems, params.toJson())
@@ -1360,6 +1463,37 @@ class MobileMailCommandClient(
     suspend fun emptyFolder(params: EmptyFolderParams): String = core.invoke(MobileCommand.EmptyFolder, params.toJson())
 
     suspend fun markStarred(params: MarkStarredParams): String = core.invoke(MobileCommand.MarkStarred, params.toJson())
+
+    suspend fun setTags(params: SetTagsParams): String = core.invoke(MobileCommand.SetTags, params.toJson())
+
+    suspend fun tagList(): String = core.invoke(MobileCommand.TagList, "{}")
+
+    /** Renames [tag] everywhere, or deletes it when [to] is null. The answer rewrites [queries], in order. */
+    suspend fun replaceTag(
+        tag: String,
+        to: String?,
+        queries: List<String>,
+    ): String =
+        core.invoke(
+            MobileCommand.ReplaceTag,
+            jsonObject("tag" to tag.jsonString(), "to" to to?.jsonString(), "queries" to queries.jsonStringArray()),
+        )
+
+    suspend fun rules(): String = core.invoke(MobileCommand.Rules, "{}")
+
+    suspend fun setRules(rules: List<Rule>): String =
+        core.invoke(
+            MobileCommand.SetRules,
+            rules.joinToString(separator = ",", prefix = "{\"rules\":[", postfix = "]}") { it.toJson() },
+        )
+
+    suspend fun ruleMatches(id: String): String = core.invoke(MobileCommand.RuleMatches, jsonObject("id" to id.jsonString()))
+
+    suspend fun runRule(id: String): String = core.invoke(MobileCommand.RunRule, jsonObject("id" to id.jsonString()))
+
+    suspend fun ruleStatus(): String = core.invoke(MobileCommand.RuleStatus, "{}")
+
+    suspend fun stopRule(id: String): String = core.invoke(MobileCommand.StopRule, jsonObject("id" to id.jsonString()))
 }
 
 fun accountListRequest(id: Long = 1): CoreRequest = CoreRequest(id, MobileCommand.AccountList)
@@ -1533,6 +1667,11 @@ fun contactSuggestRequest(
     id: Long = 1,
     params: ContactSuggestParams,
 ): CoreRequest = CoreRequest(id, MobileCommand.ContactSuggest, params.toJson())
+
+fun contactThreadsRequest(
+    id: Long = 1,
+    params: ContactThreadsParams,
+): CoreRequest = CoreRequest(id, MobileCommand.ContactThreads, params.toJson())
 
 fun threadListRequest(
     id: Long = 1,

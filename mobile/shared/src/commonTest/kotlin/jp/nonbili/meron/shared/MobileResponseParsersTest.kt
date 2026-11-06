@@ -12,12 +12,13 @@ class MobileResponseParsersTest {
     fun parsesSearchFieldsAndBuiltQuery() {
         val fields =
             parseSearchFieldsResponse(
-                """{"id":1,"result":{"from":"Ann Lee","to":"","subject":"plan","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false,"has_attachment":true}}""",
+                """{"id":1,"result":{"from":"Ann Lee","to":"","subject":"plan","tags":"work","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false,"has_attachment":true}}""",
             )
         assertEquals(
             SearchFields(
                 from = "Ann Lee",
                 subject = "plan",
+                tags = "work",
                 words = "budget",
                 after = "2026-01-02",
                 unread = true,
@@ -26,7 +27,7 @@ class MobileResponseParsersTest {
             fields,
         )
         assertEquals(
-            """{"from":"Ann Lee","to":"","subject":"plan","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false,"has_attachment":true}""",
+            """{"from":"Ann Lee","to":"","subject":"plan","tags":"work","words":"budget","after":"2026-01-02","before":"","unread":true,"starred":false,"has_attachment":true}""",
             fields.toJson(),
         )
         assertEquals("from:a@b.c", parseSearchBuildResponse("""{"id":2,"result":{"query":"from:a@b.c"}}"""))
@@ -202,6 +203,19 @@ class MobileResponseParsersTest {
 
         assertEquals(1, threads.size)
         assertEquals("ada@example.com", threads[0].sender)
+    }
+
+    @Test
+    fun contactHistoryReusesThreadCardsAndOpaqueCursor() {
+        val response =
+            """{"result":{"threads":[{"id":"other#Archive#t","account_id":"other","folder_id":"Archive","folder_role":"archive","subject":"Hello","from_name":"Alice","unread":true,"unread_count":2,"message_count":3,"tags":["Work"],"starred":true}],"next_cursor":"[200,\"other\\nkey\"]"}}"""
+        val page = parseContactThreadsPage(response)
+        assertEquals(parseThreadListPage(response), page)
+        assertEquals("[200,\"other\\nkey\"]", page.nextCursor)
+        assertEquals("other", page.threads.single().accountId)
+        assertEquals("Archive", page.threads.single().folder)
+        assertEquals(listOf("Work"), page.threads.single().tags)
+        assertEquals("", parseContactThreadsPage("""{"threads":[],"next_cursor":null}""").nextCursor)
     }
 
     @Test
@@ -481,6 +495,49 @@ class MobileResponseParsersTest {
     }
 
     @Test
+    fun normalizesSpreadsheetAndOutlookRecipients() {
+        listOf("Bob <b@y.com", "\"Bob <b@y.com").forEach { malformed ->
+            assertEquals(
+                "$malformed\tc@z.com\td@w.com\t",
+                normalizeRecipientInput("$malformed\tc@z.com\r\nd@w.com\r\n"),
+            )
+        }
+        listOf(",", "; ", "\t", "\r\n", " ", "  ").forEach { separator ->
+            assertEquals("a@x.com, b@y.com", normalizeRecipientInput("a@x.com${separator}b@y.com"))
+        }
+        assertEquals(
+            "a@x.com, b@y.com, c@z.com, d@z.com, ",
+            normalizeRecipientInput("a@x.com\tb@y.com\r\nc@z.com\td@z.com\r\n"),
+        )
+        assertEquals(
+            "Alice Smith <a@x.com>, \"Doe, Jane\" <b@y.com>",
+            normalizeRecipientInput("Alice Smith <a@x.com>; \"Doe, Jane\" <b@y.com>"),
+        )
+        assertEquals("Email, a@x.com, invalid", normalizeRecipientInput("Email\na@x.com\tinvalid"))
+        assertEquals("\"Doe,", normalizeRecipientInput("\"Doe,"))
+        assertEquals("a@x.com, ", normalizeRecipientInput("a@x.com "))
+        assertEquals(
+            "\"A \\\" B\" <a@x.com>, b@y.com",
+            normalizeRecipientInput("\"A \\\" B\" <a@x.com>; b@y.com"),
+        )
+    }
+
+    @Test
+    fun malformedRecipientBoundariesSurviveChipRebuilding() {
+        val completed = listOf("\"Bob <b@y.com", "c@z.com")
+        val typing = joinRecipientEntries(completed + "d@w.comx")
+        assertEquals(completed + "d@w.comx", splitRecipientEntries(typing))
+        val blurred = joinRecipientEntries(completed + "d@w.com" + "")
+        assertEquals(completed + "d@w.com" + "", splitRecipientEntries(blurred))
+        val deleted = joinRecipientEntries(completed.take(1) + "d@w.com")
+        assertEquals(listOf("\"Bob <b@y.com", "d@w.com"), splitRecipientEntries(deleted))
+        assertEquals(
+            "\"Bob <b@y.com\tc@z.com\tBea <bea@example.com>\t",
+            replaceRecipientTail(typing, ContactSuggestion(name = "Bea", addr = "bea@example.com")),
+        )
+    }
+
+    @Test
     fun buildsSendIdentitiesAndDetectsReplyAlias() {
         val account =
             AccountSummary(
@@ -536,6 +593,23 @@ class MobileResponseParsersTest {
                 account,
             ),
         )
+    }
+
+    @Test
+    fun detectsEditAsNewIdentityFromTheOriginalSender() {
+        val account =
+            AccountSummary(
+                id = "acc",
+                email = "me@example.com",
+                senderName = "Me",
+                aliases = listOf(AccountAlias(email = "alias@example.com")),
+            )
+
+        fun sentFrom(addr: String) = MessageBody(id = "m", from = "Me", fromAddr = addr, to = "", cc = "", subject = "", body = "")
+
+        assertEquals("alias@example.com", detectSenderFromIdentity(sentFrom("Alias@Example.com"), account))
+        assertEquals("", detectSenderFromIdentity(sentFrom("me@example.com"), account))
+        assertEquals("", detectSenderFromIdentity(sentFrom("ada@example.com"), account))
     }
 
     @Test
@@ -759,6 +833,40 @@ class MobileResponseParsersTest {
     fun aMessageWithoutAnInviteHasNone() {
         val message = parseThreadReadPage("""{"id":10,"result":{"messages":[{"body":"\"invite\":{}","id":"m1"}]}}""").messages.single()
         assertEquals(null, message.invite)
+    }
+
+    @Test
+    fun parsesRulesWithTheirScopeAndTargets() {
+        val rule =
+            parseRulesResponse(
+                """{"rules":[{"id":"r","query":"","tags":[],"mark_read":false,"star":true,"move_to":"folder","folder":"Saved","folder_account":"b","accounts":["a","b"],"copy_folder":"Kept","copy_account":"c","disabled":true}]}""",
+            ).single()
+        assertEquals("b", rule.folderAccount)
+        assertEquals(listOf("a", "b"), rule.accounts)
+        assertEquals("Kept", rule.copyFolder)
+        assertEquals("c", rule.copyAccount)
+        assertEquals(true, rule.disabled)
+        assertEquals(rule, parseRulesResponse("""{"rules":[${rule.toJson()}]}""").single())
+    }
+
+    @Test
+    fun ruleTimingDefaultsAndRoundTrips() {
+        val old = parseRulesResponse("""{"rules":[{"id":"old","query":"","star":true}]}""").single()
+        assertEquals("arrival", old.trigger)
+        assertEquals(0L, old.delaySeconds)
+        val timed = old.copy(trigger = "read", delaySeconds = 300)
+        assertEquals(timed, parseRulesResponse("""{"rules":[${timed.toJson()}]}""").single())
+    }
+
+    @Test
+    fun parsesRuleStatus() {
+        val status =
+            parseRuleStatusResponse(
+                """{"log":[{"at":5,"rule_id":"r","account":"a","subject":"Invoice","count":1,"failed":true,"detail":"gone"}],"running":{"r":40}}""",
+            )
+        assertEquals(RuleLogEntry(at = 5, ruleId = "r", subject = "Invoice", failed = true, detail = "gone"), status.log.single())
+        assertEquals(mapOf("r" to 40), status.running)
+        assertEquals(RuleStatus(), parseRuleStatusResponse("""{"log":[],"running":{}}"""))
     }
 
     @Test

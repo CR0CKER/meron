@@ -229,6 +229,13 @@ CREATE INDEX IF NOT EXISTS tasks_thread_idx ON tasks(thread_id);
 const BODY_CACHE_VERSION: &str = "1";
 
 pub fn open() -> Result<Connection> {
+    open_notifying(|| {})
+}
+
+/// [`open`], calling `on_upgrade` first if this open has to rewrite an existing
+/// store, which can take a while on a large cache. A brand-new store and an
+/// up-to-date one stay silent.
+pub fn open_notifying(on_upgrade: impl FnOnce()) -> Result<Connection> {
     let path = db_path();
     // The key comes from the OS keychain, historically the slowest and most
     // failure-prone step of startup (a Flatpak Secret portal with no backend
@@ -250,10 +257,19 @@ pub fn open() -> Result<Connection> {
     let key = key?;
     let _ = STORE_KEY.set(key.clone());
     match key {
-        Some(key) => open_at_keyed(path, &key),
+        Some(key) => open_inner(path.as_ref(), Some(&key), on_upgrade),
         // Keyring disabled (tests/headless): keep the store plaintext as before.
-        None => open_at(path),
+        None => open_inner(path.as_ref(), None, on_upgrade),
     }
+}
+
+/// [`open_notifying`] for a store at a host-chosen path and key.
+pub fn open_at_notifying(
+    path: impl AsRef<Path>,
+    key: Option<&str>,
+    on_upgrade: impl FnOnce(),
+) -> Result<Connection> {
+    open_inner(path.as_ref(), key, on_upgrade)
 }
 
 /// The key [`open`] resolved, so the local-folder archive opens with the same
@@ -283,7 +299,7 @@ pub fn open_archive_at(path: impl AsRef<Path>, key: Option<&str>) -> Result<Conn
         let _ = std::fs::create_dir_all(parent);
     }
     let fresh = !path.exists();
-    let conn = open_keyed_connection(path, key)?;
+    let conn = open_keyed_connection(path, key, || {})?;
     // Deleting archived mail should give the disk space back. auto_vacuum only
     // takes effect when set before the first table exists.
     if fresh {
@@ -376,22 +392,31 @@ fn archive_path() -> PathBuf {
 /// is set, so this stays byte-compatible with pre-encryption databases and is
 /// what tests and the headless/`MERON_KEYRING=off` path use.
 pub fn open_at(path: impl AsRef<Path>) -> Result<Connection> {
-    open_inner(path.as_ref(), None)
+    open_inner(path.as_ref(), None, || {})
 }
 
 /// Open an encrypted store, keying the connection with `key` (64 hex chars = a
 /// raw 32-byte SQLCipher key). A legacy plaintext database at `path` is migrated
 /// in place to an encrypted one on first keyed open.
 pub fn open_at_keyed(path: impl AsRef<Path>, key: &str) -> Result<Connection> {
-    open_inner(path.as_ref(), Some(key))
+    open_inner(path.as_ref(), Some(key), || {})
 }
 
-fn open_inner(path: &Path, key: Option<&str>) -> Result<Connection> {
+fn open_inner(path: &Path, key: Option<&str>, on_upgrade: impl FnOnce()) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let conn = open_keyed_connection(path, key)?;
+    let mut on_upgrade = Some(on_upgrade);
+    let mut announce_upgrade = || {
+        if let Some(on_upgrade) = on_upgrade.take() {
+            on_upgrade();
+        }
+    };
+    let conn = open_keyed_connection(path, key, &mut announce_upgrade)?;
     configure_connection(&conn)?;
+    if upgrade_pending(&conn) {
+        announce_upgrade();
+    }
     with_anyhow_busy_retry(|| run_migrations(&conn)).context("run migrations")?;
     with_anyhow_busy_retry(|| invalidate_body_cache_if_needed(&conn))
         .context("invalidate body cache if needed")?;
@@ -420,8 +445,13 @@ fn configure_connection(conn: &Connection) -> Result<()> {
 
 /// Opens `path` and applies the SQLCipher `key` (if any). When the key is set
 /// but the file turns out to be an unencrypted legacy database, it is migrated
-/// in place to an encrypted database before returning.
-fn open_keyed_connection(path: &Path, key: Option<&str>) -> Result<Connection> {
+/// in place to an encrypted database before returning, calling `on_encrypt`
+/// first because that exports the whole file.
+fn open_keyed_connection(
+    path: &Path,
+    key: Option<&str>,
+    on_encrypt: impl FnOnce(),
+) -> Result<Connection> {
     let conn = Connection::open(path).with_context(|| format!("open db {}", path.display()))?;
     let Some(key) = key else {
         return Ok(conn);
@@ -443,6 +473,7 @@ fn open_keyed_connection(path: &Path, key: Option<&str>) -> Result<Connection> {
         );
     }
     drop(conn);
+    on_encrypt();
     encrypt_plaintext_db(path, key)
         .with_context(|| format!("encrypt legacy plaintext db {}", path.display()))?;
     let conn = Connection::open(path).with_context(|| format!("reopen db {}", path.display()))?;
@@ -605,6 +636,24 @@ fn config_dir() -> PathBuf {
 
 // ---- Migrations -------------------------------------------------------------
 
+/// The `user_version` [`run_migrations`] leaves behind.
+pub(super) const SCHEMA_VERSION: i64 = 29;
+
+/// Whether opening this store will rewrite existing data: a schema behind
+/// [`SCHEMA_VERSION`], or bodies rendered by an older version. Only decides
+/// whether to tell the user, so a failed read just answers "no".
+fn upgrade_pending(conn: &Connection) -> bool {
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap_or(0);
+    if version == 0 {
+        return false;
+    }
+    version < SCHEMA_VERSION
+        || meta_get(conn, "body_cache_version")
+            .is_ok_and(|current| current.as_deref() != Some(BODY_CACHE_VERSION))
+}
+
 /// Apply schema migrations in order, tracked by SQLite's `PRAGMA user_version`.
 ///
 /// Pending steps run inside one IMMEDIATE transaction that also bumps
@@ -688,6 +737,27 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if version < 22 {
         migrate_v22(&tx)?;
+    }
+    if version < 23 {
+        migrate_v23(&tx)?;
+    }
+    if version < 24 {
+        migrate_v24(&tx)?;
+    }
+    if version < 25 {
+        migrate_v25(&tx)?;
+    }
+    if version < 26 {
+        migrate_v26(&tx)?;
+    }
+    if version < 27 {
+        migrate_v27(&tx)?;
+    }
+    if version < 28 {
+        migrate_v28(&tx)?;
+    }
+    if version < 29 {
+        migrate_v29(&tx)?;
     }
     tx.commit()?;
     Ok(())
@@ -990,13 +1060,41 @@ fn migrate_v16(conn: &Connection) -> Result<()> {
 /// the update trigger only fires when the addresses could have changed, as an
 /// envelope upsert rewrites `json` on every resync.
 fn contacts_ddl() -> String {
+    format!(
+        "CREATE TABLE IF NOT EXISTS contacts (
+           account  TEXT NOT NULL,
+           addr_key TEXT NOT NULL,   -- lower(trim(addr))
+           name     TEXT NOT NULL,   -- '' when the address came without one
+           addr     TEXT NOT NULL,
+           count    INTEGER NOT NULL DEFAULT 0,
+           PRIMARY KEY (account, addr_key, name)
+         ) WITHOUT ROWID;
+         {}",
+        contacts_triggers(false)
+    )
+}
+
+/// The `messages` triggers that keep `contacts` in step. With `track_date`
+/// (migration v23) they also keep `last_date`, the newest message an entry was
+/// seen on. Removing a message can't lower it without rescanning that
+/// address's mail, so it only ever moves forward until the entry goes.
+fn contacts_triggers(track_date: bool) -> String {
     let add = |row: &str| {
+        let (date_col, date_val, date_set) = if track_date {
+            (
+                ", last_date",
+                format!(", {row}.date"),
+                ", last_date = max(last_date, excluded.last_date)",
+            )
+        } else {
+            ("", String::new(), "")
+        };
         format!(
-            "INSERT INTO contacts(account, addr_key, name, addr, count)
-               SELECT {row}.account, lower(trim(addr)), trim(COALESCE(name, '')), max(trim(addr)), 1
+            "INSERT INTO contacts(account, addr_key, name, addr, count{date_col})
+               SELECT {row}.account, lower(trim(addr)), trim(COALESCE(name, '')), max(trim(addr)), 1{date_val}
                FROM ({occurrences}) WHERE {row}.uid <> 0 AND trim(COALESCE(addr, '')) <> ''
                GROUP BY lower(trim(addr)), trim(COALESCE(name, ''))
-             ON CONFLICT(account, addr_key, name) DO UPDATE SET count = count + 1;",
+             ON CONFLICT(account, addr_key, name) DO UPDATE SET count = count + 1{date_set};",
             occurrences = contact_occurrences(row),
         )
     };
@@ -1014,28 +1112,28 @@ fn contacts_ddl() -> String {
         )
     };
     let addressees = |row: &str| format!("json_extract({row}.json, '$.to', '$.cc')");
+    // The date only matters to `last_date`, so without it a date change
+    // alone doesn't rewrite the directory.
+    let date_changed = if track_date {
+        "\n             OR old.date IS NOT new.date"
+    } else {
+        ""
+    };
+    let date_column = if track_date { ", date" } else { "" };
     format!(
-        "CREATE TABLE IF NOT EXISTS contacts (
-           account  TEXT NOT NULL,
-           addr_key TEXT NOT NULL,   -- lower(trim(addr))
-           name     TEXT NOT NULL,   -- '' when the address came without one
-           addr     TEXT NOT NULL,
-           count    INTEGER NOT NULL DEFAULT 0,
-           PRIMARY KEY (account, addr_key, name)
-         ) WITHOUT ROWID;
-         CREATE TRIGGER IF NOT EXISTS contacts_ai AFTER INSERT ON messages BEGIN
+        "CREATE TRIGGER IF NOT EXISTS contacts_ai AFTER INSERT ON messages BEGIN
            {add_new}
          END;
          CREATE TRIGGER IF NOT EXISTS contacts_ad AFTER DELETE ON messages BEGIN
            {remove_old}
          END;
          CREATE TRIGGER IF NOT EXISTS contacts_au
-           AFTER UPDATE OF account, uid, from_name, from_addr, json ON messages
+           AFTER UPDATE OF account, uid, from_name, from_addr, json{date_column} ON messages
            WHEN old.account IS NOT new.account
              OR (old.uid <> 0) IS NOT (new.uid <> 0)
              OR old.from_name IS NOT new.from_name
              OR old.from_addr IS NOT new.from_addr
-             OR {old_addressees} IS NOT {new_addressees}
+             OR {old_addressees} IS NOT {new_addressees}{date_changed}
          BEGIN
            {remove_old}
            {add_new}
@@ -1339,6 +1437,133 @@ mod tests {
         drop(open_at(&path).unwrap());
         assert!(!is_encrypted_database(&path), "plaintext file");
     }
+
+    fn contact_message(conn: &Connection, id: i64, folder: &str, date: i64) {
+        conn.execute(
+            "INSERT INTO messages(id, account, folder, msg_id, uid, from_name, from_addr, date, json)
+             VALUES(?1, 'a', ?2, ?1, ?1, 'Person', 'person@example.com', ?3,
+               '{\"to\":[{\"name\":\"Person\",\"addr\":\"person@example.com\"}],\"cc\":[]}')",
+            params![id, folder, date],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn contact_participants_track_moves_deletes_and_lower_dates() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        contact_message(&conn, 1, "INBOX", 10);
+        contact_message(&conn, 2, "INBOX", 20);
+        let tally = |folder: &str| {
+            conn.query_row(
+                "SELECT count, last_date FROM contacts WHERE account = 'a' AND folder = ?1",
+                [folder],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()
+            .unwrap()
+        };
+        // A sender repeated in To counts only once on each message.
+        assert_eq!(tally("INBOX"), Some((2, 20)));
+        conn.execute("UPDATE messages SET folder = 'Trash' WHERE id = 2", [])
+            .unwrap();
+        assert_eq!(tally("INBOX"), Some((1, 10)));
+        assert_eq!(tally("Trash"), Some((1, 20)));
+        conn.execute(
+            "UPDATE messages SET folder = 'INBOX', date = 5 WHERE id = 2",
+            [],
+        )
+        .unwrap();
+        assert_eq!(tally("Trash"), None);
+        assert_eq!(tally("INBOX"), Some((2, 10)));
+        conn.execute("DELETE FROM messages WHERE id = 1", [])
+            .unwrap();
+        assert_eq!(tally("INBOX"), Some((1, 5)));
+        conn.execute("UPDATE messages SET uid = 0 WHERE id = 2", [])
+            .unwrap();
+        assert_eq!(tally("INBOX"), None);
+    }
+
+    #[test]
+    fn contact_exclusion_uses_current_metadata_and_name_fallback() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        contact_message(&conn, 1, "Odd mailbox", 10);
+        let visible = || {
+            super::super::list_contacts(
+                &conn,
+                "a",
+                "",
+                20,
+                super::super::ContactSort::Frequent,
+                false,
+            )
+            .unwrap()
+            .len()
+        };
+        assert_eq!(visible(), 1);
+        conn.execute(
+            "INSERT INTO folders(account, name, special_use) VALUES('a', 'Odd mailbox', 'junk')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(visible(), 0);
+        conn.execute("UPDATE folders SET special_use = 'trash'", [])
+            .unwrap();
+        assert_eq!(visible(), 0);
+        conn.execute("UPDATE folders SET special_use = NULL", [])
+            .unwrap();
+        assert_eq!(visible(), 1);
+        conn.execute("UPDATE messages SET folder = 'Trash'", [])
+            .unwrap();
+        assert_eq!(visible(), 0);
+        conn.execute(
+            "INSERT INTO folders(account, name, special_use) VALUES('a', 'Trash', ?1)",
+            [super::super::LOCAL_SPECIAL_USE],
+        )
+        .unwrap();
+        assert_eq!(visible(), 1);
+    }
+
+    #[test]
+    fn contact_v24_backfills_existing_cache_and_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        // Restore the v23 shape without changing the message cache.
+        conn.execute_batch(
+            "DROP TRIGGER rule_tag_evaluations_ai; DROP TRIGGER rule_tag_evaluations_au; DROP TRIGGER rule_tag_evaluations_ad;
+             DROP TRIGGER rule_evaluations_au;
+             DROP TRIGGER rule_arrival_au;
+             DROP TABLE rule_activation; DROP TABLE rule_evaluations; DROP TABLE rule_event_sequence;
+             DROP TRIGGER rule_events_ai; DROP TRIGGER rule_events_au; DROP TRIGGER rule_events_ad;
+             DROP TABLE rule_events; DROP TABLE rule_firings;
+             DROP TRIGGER contacts_ai; DROP TRIGGER contacts_ad; DROP TRIGGER contacts_au;
+             DROP TABLE contact_participants; DROP TABLE contacts;
+             CREATE TABLE contacts(account TEXT, addr_key TEXT, name TEXT, addr TEXT,
+               count INTEGER, last_date INTEGER);
+             PRAGMA user_version = 23;",
+        )
+        .unwrap();
+        contact_message(&conn, 1, "INBOX", 10);
+        contact_message(&conn, 2, "Trash", 20);
+        run_migrations(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+        let entries: i64 = conn
+            .query_row("SELECT count(*) FROM contact_participants", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(entries, 2);
+        let contacts = super::super::suggest_contacts(&conn, "a", "person", 10).unwrap();
+        assert_eq!(contacts.len(), 1);
+        conn.execute("DELETE FROM messages WHERE folder = 'INBOX'", [])
+            .unwrap();
+        assert!(
+            super::super::suggest_contacts(&conn, "a", "person", 10)
+                .unwrap()
+                .is_empty()
+        );
+    }
 }
 
 /// Local notification delivery receipts; deliberately excluded from backups.
@@ -1363,10 +1588,332 @@ fn migrate_v21(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Tags (see `store::tags`). `server_tags` is what a mailbox copy last showed,
+/// NULL until it has been looked at. The key lives in an expression index
+/// rather than a column so every path that writes a message row is covered.
+/// Rules (see `store::rules`): `rule_actions` is what they still have to do on
+/// the server, so a failed sync keeps it, and `rule_log` what they did.
+fn migrate_v22(conn: &Connection) -> Result<()> {
+    conn.execute_batch(&format!(
+        "ALTER TABLE messages ADD COLUMN server_tags TEXT;
+         CREATE INDEX messages_tag_key_idx ON messages(account, {key}) WHERE uid <> 0;
+         CREATE TABLE message_tags (
+            account    TEXT NOT NULL,
+            tag_key    TEXT NOT NULL,
+            tag        TEXT NOT NULL,
+            state      INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account, tag_key, tag)
+         ) WITHOUT ROWID;
+         CREATE INDEX message_tags_tag_idx ON message_tags(account, tag);
+         CREATE TABLE rule_actions (
+            account     TEXT NOT NULL,
+            folder      TEXT NOT NULL,
+            uid         INTEGER NOT NULL,
+            uidvalidity INTEGER NOT NULL,
+            mark_read   INTEGER NOT NULL DEFAULT 0,
+            star        INTEGER NOT NULL DEFAULT 0,
+            trash       INTEGER NOT NULL DEFAULT 0,
+            target      TEXT NOT NULL DEFAULT '',
+            copies      TEXT NOT NULL DEFAULT '[]',
+            rule_ids    TEXT NOT NULL DEFAULT '[]',
+            run         INTEGER NOT NULL DEFAULT 0,
+            attempts    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account, folder, uid, run)
+         ) WITHOUT ROWID;
+         CREATE TABLE rule_log (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            at      INTEGER NOT NULL,
+            rule_id TEXT NOT NULL,
+            account TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            count   INTEGER NOT NULL DEFAULT 1,
+            failed  INTEGER NOT NULL DEFAULT 0,
+            detail  TEXT NOT NULL DEFAULT ''
+         );
+         PRAGMA user_version = 22;",
+        key = super::tags::TAG_KEY_SQL,
+    ))?;
+    Ok(())
+}
+
+/// When each contact was last seen (migration v23), so the Contacts panel can
+/// list the most recent correspondents first. The triggers are replaced with
+/// ones that keep `last_date`, and the directory is rebuilt the way v17 built
+/// it, now with each entry's newest message date.
+fn migrate_v23(conn: &Connection) -> Result<()> {
+    let list = |path: &str| {
+        format!(
+            "SELECT m.id, m.account, m.date, json_extract(e.value, '$.name'), json_extract(e.value, '$.addr')
+               FROM messages m, json_each(m.json, '{path}') e
+               WHERE m.uid <> 0 AND e.type = 'object'"
+        )
+    };
+    conn.execute_batch(&format!(
+        "DROP TRIGGER IF EXISTS contacts_ai;
+         DROP TRIGGER IF EXISTS contacts_ad;
+         DROP TRIGGER IF EXISTS contacts_au;
+         ALTER TABLE contacts ADD COLUMN last_date INTEGER NOT NULL DEFAULT 0;
+         {triggers}
+         DELETE FROM contacts;
+         INSERT INTO contacts(account, addr_key, name, addr, count, last_date)
+           SELECT account, addr_key, name, max(addr), count(*), max(date) FROM (
+             SELECT id, account, max(date) AS date, lower(trim(addr)) AS addr_key,
+                    trim(COALESCE(name, '')) AS name, max(trim(addr)) AS addr
+             FROM (
+               SELECT id, account, date, from_name AS name, from_addr AS addr FROM messages WHERE uid <> 0
+               UNION ALL {to} UNION ALL {cc}
+             )
+             WHERE trim(COALESCE(addr, '')) <> ''
+             GROUP BY id, lower(trim(addr)), trim(COALESCE(name, ''))
+           )
+           WHERE true
+           GROUP BY account, addr_key, name;
+         PRAGMA user_version = 23;",
+        triggers = contacts_triggers(true),
+        to = list("$.to"),
+        cc = list("$.cc"),
+    ))?;
+    Ok(())
+}
+
+/// Folder-scoped contacts let readers apply the *current* folder roles, even
+/// when LIST metadata arrives after the mail. Participant rows are a compact
+/// reverse index: removing the newest message can find the next date with an
+/// indexed lookup rather than scanning/parsing that correspondent's mail.
+fn migrate_v24(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DROP TRIGGER IF EXISTS contacts_ai;
+         DROP TRIGGER IF EXISTS contacts_ad;
+         DROP TRIGGER IF EXISTS contacts_au;
+         DROP TABLE contacts;
+         CREATE TABLE contacts (
+           account   TEXT NOT NULL,
+           folder    TEXT NOT NULL,
+           addr_key  TEXT NOT NULL,
+           name      TEXT NOT NULL,
+           addr      TEXT NOT NULL,
+           count     INTEGER NOT NULL,
+           last_date INTEGER NOT NULL,
+           PRIMARY KEY (account, folder, addr_key, name)
+         ) WITHOUT ROWID;
+         CREATE TABLE contact_participants (
+           message_id INTEGER NOT NULL,
+           account    TEXT NOT NULL,
+           folder     TEXT NOT NULL,
+           addr_key   TEXT NOT NULL,
+           name       TEXT NOT NULL,
+           addr       TEXT NOT NULL,
+           date       INTEGER NOT NULL,
+           PRIMARY KEY (message_id, addr_key, name)
+         ) WITHOUT ROWID;",
+    )?;
+    let list = |path: &str| {
+        format!(
+            "SELECT m.id, m.account, m.folder, m.date,
+                    json_extract(e.value, '$.name'), json_extract(e.value, '$.addr')
+             FROM messages m, json_each(m.json, '{path}') e
+             WHERE m.uid <> 0 AND e.type = 'object'"
+        )
+    };
+    // Build once from cached headers, before installing maintenance triggers.
+    conn.execute_batch(&format!(
+        "INSERT INTO contact_participants(message_id, account, folder, addr_key, name, addr, date)
+           SELECT id, account, folder, lower(trim(addr)), trim(COALESCE(name, '')),
+                  max(trim(addr)), date
+           FROM (
+             SELECT id, account, folder, date, from_name AS name, from_addr AS addr
+             FROM messages WHERE uid <> 0
+             UNION ALL {to} UNION ALL {cc}
+           )
+           WHERE trim(COALESCE(addr, '')) <> ''
+           GROUP BY id, lower(trim(addr)), trim(COALESCE(name, ''));
+         CREATE INDEX contact_participants_date_idx
+           ON contact_participants(account, folder, addr_key, name, date DESC);
+         INSERT INTO contacts(account, folder, addr_key, name, addr, count, last_date)
+           SELECT account, folder, addr_key, name, max(addr), count(*), max(date)
+           FROM contact_participants GROUP BY account, folder, addr_key, name;",
+        to = list("$.to"),
+        cc = list("$.cc"),
+    ))?;
+    let add = format!(
+        "INSERT INTO contact_participants(message_id, account, folder, addr_key, name, addr, date)
+           SELECT new.id, new.account, new.folder, lower(trim(addr)), trim(COALESCE(name, '')),
+                  max(trim(addr)), new.date
+           FROM ({}) WHERE new.uid <> 0 AND trim(COALESCE(addr, '')) <> ''
+           GROUP BY lower(trim(addr)), trim(COALESCE(name, ''));",
+        contact_occurrences("new"),
+    );
+    conn.execute_batch(&format!(
+        "CREATE TRIGGER contact_participants_ai AFTER INSERT ON contact_participants BEGIN
+           INSERT INTO contacts(account, folder, addr_key, name, addr, count, last_date)
+           VALUES(new.account, new.folder, new.addr_key, new.name, new.addr, 1, new.date)
+           ON CONFLICT(account, folder, addr_key, name) DO UPDATE SET
+             count = count + 1, addr = max(addr, excluded.addr),
+             last_date = max(last_date, excluded.last_date);
+         END;
+         CREATE TRIGGER contact_participants_ad AFTER DELETE ON contact_participants BEGIN
+           DELETE FROM contacts
+             WHERE account = old.account AND folder = old.folder
+               AND addr_key = old.addr_key AND name = old.name AND count = 1;
+           UPDATE contacts SET count = count - 1,
+             last_date = CASE WHEN last_date = old.date THEN (
+               SELECT date FROM contact_participants
+               WHERE account = old.account AND folder = old.folder
+                 AND addr_key = old.addr_key AND name = old.name
+               ORDER BY date DESC LIMIT 1
+             ) ELSE last_date END
+             WHERE account = old.account AND folder = old.folder
+               AND addr_key = old.addr_key AND name = old.name;
+         END;
+         CREATE TRIGGER contacts_ai AFTER INSERT ON messages BEGIN
+           {add}
+         END;
+         CREATE TRIGGER contacts_ad AFTER DELETE ON messages BEGIN
+           DELETE FROM contact_participants WHERE message_id = old.id;
+         END;
+         CREATE TRIGGER contacts_au
+           AFTER UPDATE OF id, account, folder, uid, from_name, from_addr, json, date ON messages
+           WHEN old.id IS NOT new.id OR old.account IS NOT new.account
+             OR old.folder IS NOT new.folder OR (old.uid <> 0) IS NOT (new.uid <> 0)
+             OR old.from_name IS NOT new.from_name OR old.from_addr IS NOT new.from_addr
+             OR json_extract(old.json, '$.to', '$.cc') IS NOT json_extract(new.json, '$.to', '$.cc')
+             OR old.date IS NOT new.date
+         BEGIN
+           DELETE FROM contact_participants WHERE message_id = old.id;
+           {add}
+         END;
+         PRAGMA user_version = 24;"
+    ))?;
+    Ok(())
+}
+
+/// Event clocks are independent of envelope JSON, which is replaced on sync.
+/// Read transitions include bulk updates and changes observed from other clients.
+fn migrate_v25(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE rule_events (
+            message INTEGER PRIMARY KEY,
+            arrived_at INTEGER,
+            read_at INTEGER
+         );
+         INSERT INTO rule_events (message) SELECT id FROM messages WHERE uid <> 0;
+         CREATE TABLE rule_firings (
+            message INTEGER NOT NULL,
+            rule_id TEXT NOT NULL,
+            PRIMARY KEY (message, rule_id)
+         ) WITHOUT ROWID;
+         CREATE TRIGGER rule_events_ai AFTER INSERT ON messages WHEN new.uid <> 0 BEGIN
+            INSERT INTO rule_events (message) VALUES (new.id);
+         END;
+         CREATE TRIGGER rule_events_au AFTER UPDATE OF seen ON messages
+         WHEN new.uid <> 0 AND old.seen <> new.seen BEGIN
+            UPDATE rule_events SET read_at = CASE WHEN new.seen <> 0
+                THEN unixepoch() ELSE NULL END WHERE message = new.id;
+         END;
+         CREATE TRIGGER rule_events_ad AFTER DELETE ON messages BEGIN
+            DELETE FROM rule_events WHERE message = old.id;
+            DELETE FROM rule_firings WHERE message = old.id;
+         END;
+         PRAGMA user_version = 25;",
+    )?;
+    Ok(())
+}
+
+/// Sequence numbers distinguish events before and after a rule is saved even
+/// within the same second. Existing v25 clocks remain eligible for saved rules.
+fn migrate_v26(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE rule_event_sequence (id INTEGER PRIMARY KEY CHECK (id = 1), value INTEGER NOT NULL);
+         INSERT INTO rule_event_sequence VALUES (1, 1);
+         ALTER TABLE rule_events ADD COLUMN arrived_sequence INTEGER NOT NULL DEFAULT 1;
+         ALTER TABLE rule_events ADD COLUMN read_sequence INTEGER NOT NULL DEFAULT 1;
+         CREATE TABLE rule_activation (rule_id TEXT PRIMARY KEY, event_sequence INTEGER NOT NULL) WITHOUT ROWID;
+         CREATE TABLE rule_evaluations (
+            message INTEGER NOT NULL,
+            rule_id TEXT NOT NULL,
+            event_sequence INTEGER NOT NULL,
+            query TEXT NOT NULL,
+            PRIMARY KEY (message, rule_id)
+         ) WITHOUT ROWID;
+         CREATE TRIGGER rule_arrival_au AFTER UPDATE OF arrived_at ON rule_events
+         WHEN old.arrived_at IS NULL AND new.arrived_at IS NOT NULL BEGIN
+            UPDATE rule_event_sequence SET value = value + 1;
+            UPDATE rule_events SET arrived_sequence = (SELECT value FROM rule_event_sequence) WHERE message = new.message;
+         END;
+         DROP TRIGGER rule_events_au;
+         CREATE TRIGGER rule_events_au AFTER UPDATE OF seen ON messages
+         WHEN new.uid <> 0 AND old.seen <> new.seen BEGIN
+            UPDATE rule_event_sequence SET value = value + 1 WHERE new.seen <> 0;
+            UPDATE rule_events SET
+                read_at = CASE WHEN new.seen <> 0 THEN unixepoch() ELSE NULL END,
+                read_sequence = (SELECT value FROM rule_event_sequence)
+            WHERE message = new.id;
+         END;
+         DROP TRIGGER rule_events_ad;
+         CREATE TRIGGER rule_events_ad AFTER DELETE ON messages BEGIN
+            DELETE FROM rule_events WHERE message = old.id;
+            DELETE FROM rule_firings WHERE message = old.id;
+            DELETE FROM rule_evaluations WHERE message = old.id;
+         END;
+         PRAGMA user_version = 26;",
+    )?;
+    Ok(())
+}
+
+/// A later envelope or metadata fill can correct headers used by a rule.
+/// Reuse negative checks only while those values remain unchanged.
+fn migrate_v27(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TRIGGER rule_evaluations_au AFTER UPDATE OF subject, from_name, from_addr, date, json, files ON messages
+         WHEN new.subject IS NOT old.subject OR new.from_name IS NOT old.from_name
+           OR new.from_addr IS NOT old.from_addr OR new.date IS NOT old.date
+           OR new.json IS NOT old.json OR new.files IS NOT old.files BEGIN
+            DELETE FROM rule_evaluations WHERE message = new.id;
+         END;
+         PRAGMA user_version = 27;",
+    )?;
+    Ok(())
+}
+
+/// Negative checks remain reusable for mutable conditions until their inputs
+/// change. Tag keys cover all mailbox copies carrying the same Message-ID.
+fn migrate_v28(conn: &Connection) -> Result<()> {
+    let key = super::tags::TAG_KEY_SQL;
+    conn.execute_batch(&format!(
+        "DROP TRIGGER rule_evaluations_au;
+         CREATE TRIGGER rule_evaluations_au AFTER UPDATE OF subject, from_name, from_addr, date, json, files, recipients, seen, starred ON messages
+         WHEN new.subject IS NOT old.subject OR new.from_name IS NOT old.from_name
+           OR new.from_addr IS NOT old.from_addr OR new.date IS NOT old.date
+           OR new.json IS NOT old.json OR new.files IS NOT old.files
+           OR new.recipients IS NOT old.recipients OR new.seen IS NOT old.seen
+           OR new.starred IS NOT old.starred BEGIN
+            DELETE FROM rule_evaluations WHERE message = new.id;
+         END;
+         CREATE TRIGGER rule_tag_evaluations_ai AFTER INSERT ON message_tags BEGIN
+            DELETE FROM rule_evaluations WHERE message IN
+                (SELECT id FROM messages WHERE uid <> 0 AND account = new.account AND {key} = new.tag_key);
+         END;
+         CREATE TRIGGER rule_tag_evaluations_ad AFTER DELETE ON message_tags BEGIN
+            DELETE FROM rule_evaluations WHERE message IN
+                (SELECT id FROM messages WHERE uid <> 0 AND account = old.account AND {key} = old.tag_key);
+         END;
+         CREATE TRIGGER rule_tag_evaluations_au AFTER UPDATE ON message_tags
+         WHEN new.state IS NOT old.state OR new.tag IS NOT old.tag
+           OR new.account IS NOT old.account OR new.tag_key IS NOT old.tag_key BEGIN
+            DELETE FROM rule_evaluations WHERE message IN
+                (SELECT id FROM messages WHERE uid <> 0 AND account = old.account AND {key} = old.tag_key
+                 UNION SELECT id FROM messages WHERE uid <> 0 AND account = new.account AND {key} = new.tag_key);
+         END;
+         PRAGMA user_version = 28;"
+    ))?;
+    Ok(())
+}
+
 /// OpenPGP keys (nonbili/meron#46): own and peer keys, per-account switch,
 /// dismissed encryption offers. See `openpgp::store`.
-fn migrate_v22(conn: &Connection) -> Result<()> {
+fn migrate_v29(conn: &Connection) -> Result<()> {
     conn.execute_batch(crate::openpgp::store::DDL)?;
-    conn.execute_batch("PRAGMA user_version = 22;")?;
+    conn.execute_batch("PRAGMA user_version = 29;")?;
     Ok(())
 }

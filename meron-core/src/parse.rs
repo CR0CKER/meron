@@ -870,6 +870,14 @@ fn sanitize_email_html(source: &str) -> String {
             {
                 return None;
             }
+            // A link without a scheme resolves against the app's own origin, so
+            // following it would load an app page or a cached attachment (a
+            // sender's `.html`, or a `cid:` link rewritten to `/media/<key>`)
+            // inside the frame with the app's privileges. Only in-page
+            // `#fragment` links stay.
+            if attribute == "href" && !is_fragment_or_absolute_url(value) {
+                return None;
+            }
             if value.trim_start().to_ascii_lowercase().starts_with("data:") {
                 // Keep `data:image/...` only on `<img src>`; drop it anywhere else
                 // (e.g. an `href`) so it can't become a navigable script document.
@@ -884,6 +892,27 @@ fn sanitize_email_html(source: &str) -> String {
             Some(Cow::Borrowed(value))
         });
     builder.clean(source).to_string()
+}
+
+/// True for an in-page `#fragment` or a URL that names its own scheme, read the
+/// way a browser does: surrounding whitespace and controls trimmed, tabs and
+/// newlines removed. Everything else (`/media/…`, `//host/…`, `x.html`) is
+/// relative to the document and resolves against the app's origin.
+fn is_fragment_or_absolute_url(value: &str) -> bool {
+    let value: String = value
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    if value.starts_with('#') {
+        return true;
+    }
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// What a message declares on its own `<body>` for the whole page.
@@ -1326,7 +1355,15 @@ fn write_media_with_cap(
             .extension()
             .and_then(|e| e.to_str())
             .filter(|e| !e.is_empty())
-            .or_else(|| mime.rsplit('/').next().filter(|e| !e.is_empty()))
+            // The MIME subtype without its structured-syntax suffix (RFC 6838):
+            // `image/svg+xml` is an `.svg`, which the desktop's file server
+            // serves as an image; `.svg_xml` would go out as text/plain.
+            .or_else(|| {
+                mime.rsplit('/')
+                    .next()
+                    .and_then(|sub| sub.split('+').next())
+                    .filter(|e| !e.is_empty())
+            })
             .unwrap_or("bin"),
     );
     let key = format!(
@@ -1377,11 +1414,18 @@ fn media_cache_cap() -> u64 {
         .unwrap_or(MEDIA_CAP_BYTES)
 }
 
+/// A media root for tests that fetch bodies: the fetch prunes it, which walks all
+/// of it and deletes from it, so it must never be the shared temp dir itself.
+#[cfg(test)]
+pub(crate) fn test_media_root() -> PathBuf {
+    std::env::temp_dir().join("meron-test-media")
+}
+
 pub fn prune_media_cache(root: &Path) {
     let cap = media_cache_cap();
     let mut files = Vec::new();
     let mut total = 0u64;
-    collect_media_files(root, &mut files, &mut total);
+    collect_media_files(root, &mut files, &mut total, true);
     if total <= cap {
         return;
     }
@@ -1402,15 +1446,21 @@ fn collect_media_files(
     dir: &Path,
     out: &mut Vec<(PathBuf, u64, std::time::SystemTime)>,
     total: &mut u64,
+    skip_document_sessions: bool,
 ) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
+        // Reader sessions have no refetchable mailbox source and are reclaimed
+        // on close/startup. Ordinary cache eviction must leave them intact.
+        if skip_document_sessions && entry.file_name() == "_eml" {
+            continue;
+        }
         let path = entry.path();
         let Ok(meta) = entry.metadata() else { continue };
         if meta.is_dir() {
-            collect_media_files(&path, out, total);
+            collect_media_files(&path, out, total, false);
         } else if meta.is_file() {
             *total += meta.len();
             out.push((
@@ -2421,6 +2471,43 @@ AQID\r\n\
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // An inline image without a filename (Meron's own composer sends them so)
+    // is keyed by its MIME type. `image/svg+xml` must give `.svg`, the type the
+    // desktop's file server knows: `.svg_xml` was served as text/plain, and a
+    // browser doesn't draw an SVG of that type.
+    #[test]
+    fn an_inline_svg_without_filename_is_keyed_svg() {
+        let raw = b"From: a@b.com\r\n\
+Subject: x\r\n\
+Content-Type: multipart/related; boundary=sep\r\n\
+\r\n\
+--sep\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<p><img src=\"cid:logo@x\"></p>\r\n\
+--sep\r\n\
+Content-Type: image/svg+xml\r\n\
+Content-Disposition: inline\r\n\
+Content-ID: <logo@x>\r\n\
+\r\n\
+<svg xmlns=\"http://www.w3.org/2000/svg\"/>\r\n\
+--sep--\r\n";
+        let root = std::env::temp_dir().join(format!("meron-svg-key-test-{}", std::process::id()));
+        let ctx = MediaCtx {
+            root: root.clone(),
+            account: "acct".to_string(),
+            folder: "INBOX".to_string(),
+            uid: 7,
+        };
+        let msg = parse_message(raw, Some(&ctx));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(msg.attachments.len(), 1);
+        assert_eq!(
+            msg.attachments[0].key.as_deref(),
+            Some("acct/INBOX/7/0.svg")
+        );
+    }
+
     #[test]
     fn rewrites_cid_refs_in_html_source_to_media_keys() {
         let raw = b"From: a@b.com\r\n\
@@ -2729,6 +2816,64 @@ AQID\r\n\
     }
 
     #[test]
+    fn prepare_html_strips_links_that_resolve_against_the_app() {
+        let out = prepare_html(
+            "<a href=\"/media/acct/inbox/1/0.html\">a</a>\
+             <a href=\"//wails/media/x.html\">b</a>\
+             <a href=\"0.html\">c</a>\
+             <a href=\"\t/wails/runtime\">d</a>\
+             <map><area href=\"/media/acct/inbox/1/0.html\"></map>\
+             <a href=\"#top\">e</a>\
+             <a href=\"https://example.com/x\">f</a>\
+             <a href=\"mailto:a@example.com\">g</a>\
+             <img src=\"/media/acct/inbox/1/1.png\">",
+            false,
+        );
+        assert!(!out.contains(".html"), "{out}");
+        assert!(!out.contains("/wails"), "{out}");
+        assert!(out.contains("href=\"#top\""), "{out}");
+        assert!(out.contains("href=\"https://example.com/x\""), "{out}");
+        assert!(out.contains("href=\"mailto:a@example.com\""), "{out}");
+        // Inline images still load from the media cache.
+        assert!(out.contains("src=\"/media/acct/inbox/1/1.png\""), "{out}");
+    }
+
+    #[test]
+    fn a_cid_link_to_an_attachment_does_not_survive_rendering() {
+        let raw = b"From: a@b.com\r\n\
+Subject: x\r\n\
+Content-Type: multipart/related; boundary=sep\r\n\
+\r\n\
+--sep\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<p><a href=\"cid:page\">open</a></p>\r\n\
+--sep\r\n\
+Content-Type: text/html\r\n\
+Content-ID: <page>\r\n\
+Content-Disposition: attachment; filename=\"page.html\"\r\n\
+\r\n\
+<script src=\"1.js\"></script>\r\n\
+--sep--\r\n";
+        let root = std::env::temp_dir().join(format!("meron-cid-link-test-{}", std::process::id()));
+        let ctx = MediaCtx {
+            root: root.clone(),
+            account: "acct".to_string(),
+            folder: "inbox".to_string(),
+            uid: 7,
+        };
+        let msg = parse_message(raw, Some(&ctx));
+        let _ = std::fs::remove_dir_all(&root);
+        let html = msg.body_html.as_deref().expect("html kept");
+        // The rewrite still points the link at the cached page...
+        assert!(html.contains("href=\"/media/acct/inbox/7/"), "{html}");
+        // ...and rendering drops it.
+        let out = prepare_html(html, false);
+        assert!(out.contains(">open</a>"), "{out}");
+        assert!(!out.contains("/media/"), "{out}");
+    }
+
+    #[test]
     fn cached_media_available_requires_keyed_files() {
         let root = std::env::temp_dir().join(format!(
             "meron-media-availability-test-{}",
@@ -2957,5 +3102,31 @@ Content-Type: text/html; charset=utf-8\r\n\
             sent_envelope_of(b"\x00not a message"),
             SentEnvelope::default()
         );
+    }
+}
+
+#[cfg(test)]
+mod document_media_cache_tests {
+    use super::*;
+
+    #[test]
+    fn pruning_preserves_open_document_media() {
+        let root =
+            std::env::temp_dir().join(format!("meron-reader-prune-{}", uuid::Uuid::new_v4()));
+        let document = root.join("_eml/reader/1/attachment.png");
+        let cached = root.join("account/INBOX/1/attachment.png");
+        for path in [&document, &cached] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        std::fs::write(&document, b"reader attachment").unwrap();
+        // A sparse file exceeds the cache cap without allocating a GiB of data.
+        std::fs::File::create(&cached)
+            .unwrap()
+            .set_len(media_cache_cap() + 1)
+            .unwrap();
+        prune_media_cache(&root);
+        assert_eq!(std::fs::read(&document).unwrap(), b"reader attachment");
+        assert!(!cached.exists());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

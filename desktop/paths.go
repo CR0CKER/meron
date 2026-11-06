@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,27 +77,6 @@ func loadDotEnvLocal() {
 	}
 }
 
-// mediaHandler serves attachment files written by the sidecar at `/media/<key>`,
-// so image bytes load straight into the webview instead of round-tripping as
-// base64 through the JSON bridge. The AssetServer tries embedded frontend assets
-// first and only falls through here for unmatched paths. http.Dir cleans the
-// path and blocks `..` traversal out of the media root.
-func mediaHandler() http.Handler {
-	fs := http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir())))
-	secure := http.StripPrefix("/media/"+secureMediaPrefix, http.FileServer(http.Dir(secureMediaDir())))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/media/") {
-			http.NotFound(w, r)
-			return
-		}
-		if strings.HasPrefix(r.URL.Path, "/media/"+secureMediaPrefix) {
-			secure.ServeHTTP(w, r)
-			return
-		}
-		fs.ServeHTTP(w, r)
-	})
-}
-
 // secureMediaPrefix marks media keys of decrypted (end-to-end encrypted)
 // mail. The sidecar writes those files under secureMediaDir, never in the
 // plain attachment cache (meron-core parse::SECURE_MEDIA_PREFIX).
@@ -164,15 +142,26 @@ func (a *App) storageUsage() (any, error) {
 	}, nil
 }
 
-// storageClearCache deletes the attachment cache and recreates the empty dir so
-// the sidecar can keep writing. It never touches the DB.
+// storageClearCache removes refetchable attachment media while preserving open
+// document sessions and the database.
 func (a *App) storageClearCache() (any, error) {
 	dir := mediaDir()
-	if err := os.RemoveAll(dir); err != nil {
-		return nil, err
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		// External reader media is the window's working copy, not a refetchable
+		// mailbox cache. Its owner removes it when the reader closes.
+		if entry.Name() == "_eml" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return nil, err
+		}
 	}
 	return a.storageUsage()
 }
@@ -230,7 +219,7 @@ func appUniqueID() string {
 }
 
 func isWailsDevLaunch() bool {
-	return os.Getenv("devserver") != "" || os.Getenv("frontenddevserverurl") != ""
+	return os.Getenv("FRONTEND_DEVSERVER_URL") != "" || os.Getenv("devserver") != "" || os.Getenv("frontenddevserverurl") != ""
 }
 
 func cacheHome() string {

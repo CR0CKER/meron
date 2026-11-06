@@ -53,6 +53,23 @@ type fakeWindow struct {
 	desktopFrame bool
 }
 
+func TestShouldQuitPreservesStateSavedBeforeWindowDestruction(t *testing.T) {
+	w := &fakeWindow{width: 1200, height: 800, maximised: true}
+	stubWindowState(t, w)
+	app := newWindowStateApp(t)
+	app.closeToTray.Store(false)
+	if app.beforeClose(app.ctx) {
+		t.Fatal("close should proceed")
+	}
+	w.width, w.height, w.maximised = 0, 0, false
+	if !app.shouldQuit() {
+		t.Fatal("quit should proceed")
+	}
+	if saved := loadWindowState(app.windowStatePath); !saved.Maximised {
+		t.Fatalf("destroyed window overwrote saved state: %+v", saved)
+	}
+}
+
 func stubWindowState(t *testing.T, w *fakeWindow) {
 	t.Helper()
 	size, isMaximised, isNormal, isTiled, drawsFrame := windowGetSize, windowIsMaximised, windowIsNormal, windowIsTiled, windowDrawsFrame
@@ -235,5 +252,39 @@ func TestRequestQuit(t *testing.T) {
 	app.requestQuit()
 	if *quits != 1 || !app.quitting.Load() || len(windowCalls) != 0 {
 		t.Fatalf("close-to-tray off: quits %d, quitting %v, window calls %v", *quits, app.quitting.Load(), windowCalls)
+	}
+}
+
+func TestMainWindowCloseQuitsWithDocumentWindowsOpen(t *testing.T) {
+	stubWindowState(t, &fakeWindow{width: 1000, height: 600, normal: true})
+	app := newWindowStateApp(t)
+	app.closeToTray.Store(false)
+	app.emlReaders = map[string]*emlReader{"reader": {window: &fakeEmlWindow{}}}
+	oldQuit := appQuit
+	defer func() { appQuit = oldQuit }()
+	quit := make(chan struct{}, 1)
+	appQuit = func(context.Context) { quit <- struct{}{} }
+	app.mainWindowCloseRequested()
+	select {
+	case <-quit:
+	case <-time.After(time.Second):
+		t.Fatal("closing main window did not quit while a reader was open")
+	}
+	if !app.quitting.Load() || !app.closing.Load() {
+		t.Fatal("quit did not preserve the main window lifecycle state")
+	}
+}
+
+func TestMainWindowCloseToTrayDoesNotQuitWithDocumentWindowsOpen(t *testing.T) {
+	defer stubWindowCalls(t)()
+	stubWindowState(t, &fakeWindow{width: 1000, height: 600, normal: true})
+	app := newWindowStateApp(t)
+	app.emlReaders = map[string]*emlReader{"reader": {window: &fakeEmlWindow{}}}
+	app.mainWindowCloseRequested()
+	if !app.windowHidden.Load() || app.closing.Load() || app.quitting.Load() {
+		t.Fatal("close-to-tray did not preserve the application")
+	}
+	if len(windowCalls) != 1 || windowCalls[0] != "hide" {
+		t.Fatalf("window calls: %v", windowCalls)
 	}
 }

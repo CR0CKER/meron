@@ -10,6 +10,7 @@ import {
   quickReplyCaretOffset,
   quickReplyDraftBelongsToThread,
   saveQuickReplyDraft,
+  saveQuickReplyDraftNow,
   scheduleQuickReplyDraftSave,
   seedQuickReplySignature,
 } from '../../states/quickReply'
@@ -18,6 +19,8 @@ import { confirmKeyChanges } from '../../states/crypto'
 import { quickReplyEncrypts, quickReplyRecipients, quickReplyTarget } from '../../states/composeReply'
 import { recipientAddresses } from '../crypto/EncryptToggle'
 import { showToast, ui$ } from '../../states/ui'
+import { kanban$ } from '../../states/kanban'
+import { closeConversationToCard } from '../kanban/closeConversationToCard'
 import {
   readAttachment,
   reportUnattachedFiles,
@@ -172,6 +175,7 @@ export function useQuickReply() {
     if (quickReplyDraftBelongsToThread(selectedThreadId)) return
     clearQuickReplyDraftOwnership()
     compose$.quickReplyFrom.set('')
+    compose$.quickReplyAdded.set([])
     // Starts the new thread's box on the replying account's signature rather
     // than blank — the box is what gets sent, so it shows what will go out.
     seedQuickReplySignature()
@@ -252,6 +256,16 @@ export function useQuickReply() {
       void handleSendReply()
       return
     }
+    if (isPaneEscape(e)) {
+      // Esc closes the kanban conversation from the box, as it does from
+      // anywhere else in the pane (AppHotkeys stands down while typing). The
+      // reply is kept: the pending autosave runs now, before closing clears it.
+      e.preventDefault()
+      const paneThreadId = kanban$.paneThreadId.peek()
+      await saveQuickReplyDraftNow()
+      if (kanban$.paneThreadId.peek() === paneThreadId) closeConversationToCard()
+      return
+    }
     const isPaste = (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')
     if (isPaste) {
       logComposerPaste('paste shortcut keydown', {
@@ -303,4 +317,13 @@ export function useQuickReply() {
     handleComposerPaste,
     handleComposerKeyDown,
   }
+}
+
+// A bare Esc in the box while a kanban board shows a card's conversation. With
+// a tab in front the pane belongs to the tab, which Esc doesn't close.
+function isPaneEscape(e: React.KeyboardEvent<HTMLTextAreaElement>): boolean {
+  if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false
+  // An Esc that ends an IME composition belongs to the IME.
+  if (e.nativeEvent.isComposing || e.keyCode === 229) return false
+  return Boolean(kanban$.activeBoardId.peek() && kanban$.paneThreadId.peek() && !compose$.activeTab.peek())
 }

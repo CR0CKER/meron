@@ -21,11 +21,11 @@ const RECENT_LIMIT = 3
 // The flyouts are portalled out of the menu that opens them, so that menu's
 // "click outside" check has to count them as inside: they carry this marker.
 // Above every menu that hosts them, the conversation's overlay included.
-const flyoutClass = 'fixed z-[62] max-h-[calc(100vh-1rem)] overflow-y-auto shadow-xl'
+export const flyoutClass = 'fixed z-[62] max-h-[calc(100vh-1rem)] overflow-y-auto shadow-xl'
 
 /** Where a flyout of `width` opens beside its menu row: to the right, or to the
  *  left when the window has no room there. Null while closed. */
-function useFlyoutPosition(open: boolean, anchorRef: RefObject<HTMLDivElement | null>, width: number) {
+export function useFlyoutPosition(open: boolean, anchorRef: RefObject<HTMLDivElement | null>, width: number) {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   useLayoutEffect(() => {
     if (!open) {
@@ -285,11 +285,11 @@ export function ThreadMoveCopyItems({
   )
 }
 
-function accountLabel(account: Account) {
+export function accountLabel(account: Account) {
   return account.display_name || account.email || account.id
 }
 
-function FolderListStatus({ loading }: { loading: boolean }) {
+export function FolderListStatus({ loading }: { loading: boolean }) {
   const { t } = useTranslation()
   return (
     <div className="px-3 py-2 text-xs font-semibold text-secondary">
@@ -300,7 +300,7 @@ function FolderListStatus({ loading }: { loading: boolean }) {
 
 /** A row in the folder flyout for one account, opening that account's
  *  folders one level further out. */
-function AccountFolderItem({
+export function AccountFolderItem({
   account,
   folders,
   excludedFolderIds,

@@ -78,8 +78,8 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-  // The dialog picks folders; saved search columns are not among its options,
-  // so they stay out of what it can add or remove.
+  // The dialog picks folders; saved searches are not among its options, so they
+  // stay out of what it can add or remove.
   const selectedKeys = useMemo(
     () => visibleColumns.filter((column) => !column.query).map((column) => kanbanColumnKey(column)),
     [visibleColumns],
@@ -143,24 +143,31 @@ export function KanbanView({ boardId, aside }: { boardId: string; aside?: ReactN
     focusGlobalSearch()
   }
 
+  // Saved searches keep their query in the key, past the folder.
+  function columnFromKey(key: string): KanbanColumn | null {
+    const [accountId, folderId, ...query] = key.split('\n')
+    if (!accountId || !folderId) return null
+    return query.length ? { accountId, folderId, query: query.join('\n') } : { accountId, folderId }
+  }
+
   function applyColumns(nextKeys: string[]) {
     const next = new Set(nextKeys)
     const current = new Set(selectedKeys)
 
     for (const key of nextKeys) {
       if (current.has(key)) continue
-      const [accountId, folderId] = key.split('\n')
-      if (!accountId || !folderId) continue
+      const column = columnFromKey(key)
+      if (!column) continue
       kanban$.threads[key].set([])
       kanban$.loading[key].set(true)
-      addKanbanColumn(boardId, { accountId, folderId })
-      void loadKanbanColumn({ accountId, folderId }, true)
+      addKanbanColumn(boardId, column)
+      void loadKanbanColumn(column, true)
     }
 
     for (const key of selectedKeys) {
       if (next.has(key)) continue
-      const [accountId, folderId] = key.split('\n')
-      if (accountId && folderId) removeKanbanColumn(boardId, { accountId, folderId })
+      const column = columnFromKey(key)
+      if (column) removeKanbanColumn(boardId, column)
     }
 
     setDialogOpen(false)

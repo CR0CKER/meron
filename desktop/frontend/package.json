@@ -9,7 +9,7 @@
     "prebuild": "bun ../../scripts/i18n/catalog.ts generate",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\""
@@ -25,10 +25,12 @@
     "@tiptap/pm": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
+    "@wailsio/runtime": "3.1.0",
     "intl-messageformat": "^11.2.8",
     "lucide-react": "^0.468.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.2",

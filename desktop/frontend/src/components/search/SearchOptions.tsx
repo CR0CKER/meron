@@ -11,33 +11,8 @@ import { Button } from '../button/Button'
 import { RecipientInput } from '../composer/RecipientInput'
 import { Checkbox } from '../field/Checkbox'
 import { ColumnAvatar, useColumnLabel } from '../kanban/ColumnLabel'
-
-/** The search options form, as the core's `search.parse` reads a query. */
-export type SearchFields = {
-  from: string
-  to: string
-  subject: string
-  words: string
-  /** `yyyy-mm-dd`, or empty. */
-  after: string
-  /** `yyyy-mm-dd`, or empty. */
-  before: string
-  unread: boolean
-  starred: boolean
-  has_attachment: boolean
-}
-
-const EMPTY_FIELDS: SearchFields = {
-  from: '',
-  to: '',
-  subject: '',
-  words: '',
-  after: '',
-  before: '',
-  unread: false,
-  starred: false,
-  has_attachment: false,
-}
+import { EMPTY_FIELDS, fieldsEmpty, type SearchFields } from './searchFields'
+import { TagInput } from './TagInput'
 
 /** A board's part of the form: which column to search, and saving the search as a column. */
 export type BoardSearchOptions = {
@@ -143,12 +118,7 @@ export function SearchOptions({
   }
 
   // Nothing to save until some field is filled in.
-  const empty =
-    !fields ||
-    (!fields.unread &&
-      !fields.starred &&
-      !fields.has_attachment &&
-      [fields.from, fields.to, fields.subject, fields.words, fields.after, fields.before].every((v) => !v.trim()))
+  const empty = !fields || fieldsEmpty(fields)
 
   const set = <K extends keyof SearchFields>(key: K, value: SearchFields[K]) =>
     setFields((current) => (current ? { ...current, [key]: value } : current))
@@ -228,9 +198,15 @@ export function SearchOptions({
             {address('from', t('composer.fields.from'), true)}
             {address('to', t('composer.fields.to'))}
             {text('subject', t('composer.fields.subject'))}
+            <Row label={t('tags.title')} menu>
+              <TagInput value={fields.tags} onChange={(value) => set('tags', value)} />
+            </Row>
             {text('words', t('search.hasWords'))}
-            {date('after', t('search.after'))}
-            {date('before', t('search.before'))}
+            {/* Side by side where they fit, to keep the form wider than it is tall. */}
+            <div className="flex flex-wrap gap-x-3 gap-y-2">
+              <div className="min-w-56 flex-1">{date('after', t('search.after'))}</div>
+              <div className="min-w-56 flex-1">{date('before', t('search.before'))}</div>
+            </div>
             <div className="flex items-center gap-5 pt-1 text-xs text-primary">
               <label className="flex cursor-pointer items-center gap-2 select-none">
                 <Checkbox checked={fields.unread} onChange={(event) => set('unread', event.target.checked)} />
@@ -287,7 +263,7 @@ export function SearchOptions({
   )
 }
 
-const inputClass =
+export const inputClass =
   'min-w-0 flex-1 rounded-lg bg-app px-2 py-1.5 text-xs text-primary outline-none ring-1 ring-border focus:ring-accent'
 
 /**
@@ -295,7 +271,7 @@ const inputClass =
  * `<label>` would forward a click on one of them to the first, reopening a
  * menu the click just closed.
  */
-function Row({ label, menu = false, children }: { label: string; menu?: boolean; children: ReactNode }) {
+export function Row({ label, menu = false, children }: { label: string; menu?: boolean; children: ReactNode }) {
   const Wrapper = menu ? 'div' : 'label'
   return (
     <Wrapper className="flex items-center gap-3">

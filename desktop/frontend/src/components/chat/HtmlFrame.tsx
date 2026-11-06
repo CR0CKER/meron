@@ -3,10 +3,14 @@ import type { CSSProperties, Ref } from 'react'
 import { clearMediaSession } from '../../lib/mediaSession'
 import { chordFromEvent, isArrowKey, shortcutForChord, spaceActivatesTarget } from '../../lib/shortcuts'
 import { openExternal } from '../../lib/native'
-import { mediaKeyFromSrc } from './messageHelpers'
+import { imageSource } from './messageHelpers'
 import { trackInternalDrags } from '../../lib/useFileDrop'
 
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
+// Image-map `<area>`s navigate like `<a>`s.
+const LINK_SELECTOR = 'a[href], area[href]'
+
+type FrameLink = HTMLAnchorElement | HTMLAreaElement
 
 type FrameClickHandler = (event: MouseEvent, doc: Document) => boolean | void
 type FrameReadyHandler = (doc: Document, iframe: HTMLIFrameElement) => void | (() => void)
@@ -26,10 +30,10 @@ interface HtmlFrameProps {
   // When set, right-clicks inside the frame are blocked from showing WebKit's
   // native menu and re-dispatched as a `contextmenu` event on the iframe
   // element, so a custom menu registered on a parent element fires instead.
-  // A cached picture's right-click carries its media key as `meronImageKey`,
-  // for the menu's save and copy actions. 'except-images' leaves any other picture's
-  // right-click to the native menu.
+  // Pictures carry `meronImage` for save/copy, plus `meronImageKey` when cached.
+  // 'except-images' leaves unsupported sources (e.g. data URLs) native.
   forwardContextMenu?: boolean | 'except-images'
+  allowRemoteImages?: boolean
   // Call `onReady` as soon as the document is parsed instead of waiting for
   // its `load` event, which waits for every picture: one slow image would
   // otherwise hold back whatever `onReady` does. For handlers that cope with
@@ -37,7 +41,7 @@ interface HtmlFrameProps {
   readyWhenParsed?: boolean
 }
 
-function anchorUrl(anchor: HTMLAnchorElement): string | null {
+function anchorUrl(anchor: FrameLink): string | null {
   const rawHref = anchor.getAttribute('href') ?? ''
   if (!rawHref || rawHref.startsWith('#')) return null
 
@@ -52,7 +56,15 @@ function anchorUrl(anchor: HTMLAnchorElement): string | null {
   return url.href
 }
 
-function openAnchor(anchor: HTMLAnchorElement, event: MouseEvent) {
+// Whether following the link would load something into the frame. Anything but
+// an in-page `#fragment` resolves against the app's own origin (or leaves it),
+// and a message must never navigate its frame: a page loaded there would run
+// with the app's privileges. External links open in the browser instead.
+function navigatesFrame(anchor: FrameLink): boolean {
+  return !(anchor.getAttribute('href') ?? '').trim().startsWith('#')
+}
+
+function openAnchor(anchor: FrameLink, event: MouseEvent) {
   const href = anchorUrl(anchor)
   if (!href) return
 
@@ -114,6 +126,7 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
     onUserScrollIntent,
     onScroll,
     forwardContextMenu,
+    allowRemoteImages = false,
     readyWhenParsed,
   }: HtmlFrameProps,
   forwardedRef: Ref<HTMLIFrameElement>,
@@ -146,6 +159,8 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
   const onScrollRef = useRef(onScroll)
   const onUserScrollIntentRef = useRef(onUserScrollIntent)
   const forwardContextMenuRef = useRef(forwardContextMenu)
+  const allowRemoteImagesRef = useRef(allowRemoteImages)
+  allowRemoteImagesRef.current = allowRemoteImages
 
   useEffect(() => {
     onFrameClickRef.current = onFrameClick
@@ -207,10 +222,13 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
       doc.documentElement.dataset.meronFrameLinkWired = '1'
       const handleClick = (event: MouseEvent) => {
         if (event.button === 2) return
+        const target = event.target as Element | null
+        const anchor = target?.closest?.(LINK_SELECTOR) as FrameLink | null
+        // Cancelled up front so no path below (an image click handled by the
+        // host, a link that isn't external) lets the frame follow it.
+        if (anchor && navigatesFrame(anchor)) event.preventDefault()
         if (onFrameClickRef.current?.(event, doc)) return
 
-        const target = event.target as Element | null
-        const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
         if (anchor) openAnchor(anchor, event)
       }
       doc.addEventListener('click', handleClick, true)
@@ -221,12 +239,12 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
       doc.documentElement.dataset.meronFrameLinkHoverWired = '1'
       const handleLinkEnter = (event: MouseEvent | FocusEvent) => {
         const target = event.target as Element | null
-        const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
+        const anchor = target?.closest?.(LINK_SELECTOR) as FrameLink | null
         onLinkHoverRef.current?.(anchor ? anchorUrl(anchor) : null)
       }
       const handleLinkLeave = (event: MouseEvent | FocusEvent) => {
         const target = event.target as Element | null
-        const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
+        const anchor = target?.closest?.(LINK_SELECTOR) as FrameLink | null
         if (!anchor) return
         const related = 'relatedTarget' in event ? (event.relatedTarget as Node | null) : null
         if (related && anchor.contains(related)) return
@@ -246,23 +264,12 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
 
         const target = event.target as Element | null
         const img = target?.closest?.('img') as HTMLImageElement | null
-        const imageKey = img ? mediaKeyFromSrc(img.currentSrc || img.src) : null
-        if (forwardContextMenuRef.current === 'except-images' && img && !imageKey) return
-        const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
-        let linkUrl: string | undefined = undefined
-        if (anchor) {
-          const rawHref = anchor.getAttribute('href') ?? ''
-          if (rawHref && !rawHref.startsWith('#')) {
-            try {
-              const url = new URL(rawHref, anchor.ownerDocument.baseURI)
-              if (EXTERNAL_PROTOCOLS.has(url.protocol)) {
-                linkUrl = url.href
-              }
-            } catch {
-              // Ignore invalid url
-            }
-          }
-        }
+        const source = img ? imageSource(img.currentSrc || img.src) : null
+        const blocked = !!source?.url && !allowRemoteImagesRef.current
+        const image = blocked ? null : source
+        if (forwardContextMenuRef.current === 'except-images' && img && !image && !blocked) return
+        const anchor = target?.closest?.(LINK_SELECTOR) as FrameLink | null
+        const linkUrl = (anchor && anchorUrl(anchor)) || undefined
 
         // Block WebKit's native frame menu and re-fire on the iframe element so
         // a parent-registered onContextMenu (e.g. the message menu) handles it.
@@ -279,8 +286,9 @@ export const HtmlFrame = forwardRef(function HtmlFrame(
         if (linkUrl) {
           ;(customEvent as any).meronLinkUrl = linkUrl
         }
-        if (imageKey) {
-          ;(customEvent as any).meronImageKey = imageKey
+        if (image) {
+          ;(customEvent as any).meronImageKey = image.key
+          ;(customEvent as any).meronImage = image
         }
         frame.dispatchEvent(customEvent)
       })

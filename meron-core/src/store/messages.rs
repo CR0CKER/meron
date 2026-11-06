@@ -104,6 +104,9 @@ pub fn upsert_messages(
                 m.files.as_ref().filter(|files| !files.is_empty()).map(|files| json!(files).to_string()),
                 m.files.is_some() as i64
         ])?;
+        if let Some(server_tags) = &m.server_tags {
+            observe_server_tags(&tx, account, folder, m.uid, server_tags)?;
+        }
     }
     reconcile_thread_keys_from(&tx, account, upserted_ids)?;
     tx.commit()?;
@@ -332,7 +335,8 @@ pub fn get_recent_page(
     // (two messages can share a second), so it gives a stable, gap-free walk.
     let mut stmt = conn.prepare(
         "SELECT uid, subject, from_name, from_addr, date, seen, starred, thread_key,
-                json_extract(json, '$.to') FROM messages
+                json_extract(json, '$.to'),
+                COALESCE(json_extract(json, '$.message_id'), '') FROM messages
          WHERE account = ?1 AND folder = ?2
            AND (?6 = 0 OR seen = 0)
            AND (?7 = 0 OR files IS NOT NULL
@@ -373,6 +377,9 @@ pub fn get_recent_page(
                     .filter(|key| !key.is_empty())
                     .unwrap_or_else(|| format!("uid:{}", uid)),
                 to: parse_recipients_json(row.get::<_, Option<String>>(8)?),
+                // Lets card grouping fold two deliveries of one message in this
+                // folder, as the cached tally and the reader do.
+                message_id: row.get(9)?,
                 folder: String::new(),
                 ..Default::default()
             })
@@ -478,6 +485,25 @@ pub fn classify_arrivals(
     after: u32,
     messages: &[MessageHeader],
 ) -> Result<Vec<MessageHeader>> {
+    let unread = messages
+        .iter()
+        .filter(|message| !message.seen)
+        .cloned()
+        .collect::<Vec<_>>();
+    first_seen_messages(conn, account, folder, before, after, &unread)
+}
+
+/// Messages in the UID range of the last sync that the account has not observed
+/// anywhere before, newest first, read or not. Mail filed here from another
+/// folder got a new UID, but it has not arrived.
+pub fn first_seen_messages(
+    conn: &Connection,
+    account: &str,
+    folder: &str,
+    before: u32,
+    after: u32,
+    messages: &[MessageHeader],
+) -> Result<Vec<MessageHeader>> {
     let mut arrivals = Vec::new();
     if before == 0 || after <= before {
         return Ok(arrivals);
@@ -486,7 +512,7 @@ pub fn classify_arrivals(
         .prepare("SELECT 1 FROM observed_mail_identities WHERE account = ?1 AND identity = ?2")?;
     let mut identities = HashSet::new();
     for message in messages {
-        if message.seen || message.uid < before || message.uid >= after {
+        if message.uid < before || message.uid >= after {
             continue;
         }
         let identity = message_identity(message, folder);
@@ -570,11 +596,12 @@ pub fn get_starred(
 ) -> Result<Vec<MessageHeader>> {
     let mut stmt = conn.prepare(
         "SELECT uid, subject, from_name, from_addr, date, seen, starred, thread_key,
-                json_extract(json, '$.to') FROM messages
+                json_extract(json, '$.to'),
+                COALESCE(json_extract(json, '$.message_id'), '') FROM messages
          WHERE account = ?1 AND folder = ?2 AND starred <> 0 AND uid <> 0
          ORDER BY date DESC, uid DESC LIMIT ?3",
     )?;
-    let rows = stmt.query_map(params![account, folder, limit], message_header_from_row)?;
+    let rows = stmt.query_map(params![account, folder, limit], search_header_from_row)?;
     let mut out = rows.collect::<rusqlite::Result<Vec<_>>>()?;
     for header in &mut out {
         header.folder = folder.to_string();
@@ -971,6 +998,7 @@ pub fn clear_folder_messages(conn: &Connection, account: &str, folder: &str) -> 
         "DELETE FROM messages WHERE account = ?1 AND folder = ?2",
         params![account, folder],
     )?;
+    clear_location_tags(conn, account, folder)?;
     conn.execute(
         "DELETE FROM uncached_unseen WHERE account = ?1 AND folder = ?2",
         params![account, folder],

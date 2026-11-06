@@ -92,6 +92,9 @@ pub fn dispatch_protocol_request(req: &Request) -> Result<Value, String> {
         "app.proxySet" => Ok(json!({ "ok": true })),
         "account.reorder" => Ok(json!({ "ok": true })),
         "contacts.suggest" | "mail.suggestContacts" => Ok(json!({ "contacts": [] })),
+        "contacts.threads" | "mail.contactThreads" => {
+            Ok(json!({ "threads": [], "next_cursor": null }))
+        }
         "feed.add" | "rss.addFeed" => Ok(json!({ "ok": true })),
         "feed.remove" | "rss.removeFeed" => Ok(json!({ "ok": true })),
         "feed.move" | "rss.moveFeed" => Ok(json!({ "ok": true, "moved": 0 })),
@@ -125,6 +128,13 @@ pub fn dispatch_protocol_request(req: &Request) -> Result<Value, String> {
         "mail.markAllRead" => Ok(json!({ "ok": true })),
         "mail.emptyFolder" => Ok(json!({ "ok": true, "deleted": 0, "expunged": 0 })),
         "mail.markStarred" => Ok(json!({ "ok": true })),
+        "mail.setTags" => Ok(json!({ "ok": true })),
+        "mail.tagList" => Ok(json!({ "tags": [] })),
+        "mail.replaceTag" => Ok(json!({ "ok": true, "rules": [], "queries": [] })),
+        "mail.rules" | "mail.setRules" => Ok(json!({ "rules": [] })),
+        "mail.ruleMatches" | "mail.runRule" => Ok(json!({ "count": 0 })),
+        "mail.ruleStatus" => Ok(json!({ "log": [], "running": {} })),
+        "mail.stopRule" => Ok(json!({ "ok": true })),
         "rss.thread" => Ok(json!({ "messages": [] })),
         "rss.markRead" => Ok(json!({ "ok": true })),
         "rss.markStarred" => Ok(json!({ "ok": true })),
@@ -202,6 +212,9 @@ pub fn dispatch_mobile_protocol_request(req: &Request, data_dir: &str) -> Result
         "contacts.suggest" | "mail.suggestContacts" => {
             suggest_mobile_contacts(data_dir, &req.params)
         }
+        "contacts.threads" | "mail.contactThreads" => {
+            list_mobile_contact_threads(data_dir, &req.params)
+        }
         "feed.add" | "rss.addFeed" => add_mobile_rss_feed(data_dir, &req.params),
         "feed.remove" | "rss.removeFeed" => remove_mobile_rss_feed(data_dir, &req.params),
         "feed.move" | "rss.moveFeed" => move_mobile_rss_feed(data_dir, &req.params),
@@ -249,6 +262,15 @@ pub fn dispatch_mobile_protocol_request(req: &Request, data_dir: &str) -> Result
         "mail.markAllRead" => mark_mobile_folder_all_read(data_dir, &req.params),
         "mail.emptyFolder" => empty_mobile_folder(data_dir, &req.params),
         "mail.markStarred" => mark_mobile_thread_starred(data_dir, &req.params),
+        "mail.setTags" => set_mobile_thread_tags(data_dir, &req.params),
+        "mail.tagList" => list_mobile_tags(data_dir),
+        "mail.replaceTag" => replace_mobile_tag(data_dir, &req.params),
+        "mail.rules" => mobile_rules(data_dir),
+        "mail.setRules" => set_mobile_rules(data_dir, &req.params),
+        "mail.ruleMatches" => mobile_rule_matches(data_dir, &req.params),
+        "mail.runRule" => run_mobile_rule(data_dir, &req.params),
+        "mail.ruleStatus" => mobile_rule_status(data_dir),
+        "mail.stopRule" => stop_mobile_rule(data_dir, &req.params),
         "rss.sync" => sync_mobile_rss(data_dir, &req.params),
         "rss.thread" => read_mobile_rss_thread(data_dir, &req.params),
         "rss.markRead" => mark_mobile_rss_thread_read(data_dir, &req.params),

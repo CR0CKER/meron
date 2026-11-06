@@ -166,12 +166,23 @@ pub struct BackupTask {
     pub message_id: String,
 }
 
+/// One tag on one message, keyed the way `store::tags` keys it.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BackupTag {
+    pub account: String,
+    pub key: String,
+    pub tag: String,
+}
+
 /// The decrypted body of a backup. Not `Debug`, for the same reason as
 /// [`BackupAccount`].
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct BackupData {
     #[serde(default)]
     pub accounts: Vec<BackupAccount>,
+    /// Tags on mail. Older backups have none.
+    #[serde(default)]
+    pub tags: Vec<BackupTag>,
     /// The `settings` table, key -> parsed JSON value.
     #[serde(default)]
     pub settings: Map<String, Value>,
@@ -277,9 +288,23 @@ pub fn collect(
         redact_settings(&mut settings);
     }
 
+    let mut tags = Vec::new();
+    for account in &accounts {
+        tags.extend(
+            store::account_tags(conn, &account.id)?
+                .into_iter()
+                .map(|(key, tag)| BackupTag {
+                    account: account.id.clone(),
+                    key,
+                    tag,
+                }),
+        );
+    }
+
     Ok(BackupData {
         accounts,
         settings,
+        tags,
         task_lists: collect_task_lists(conn)?,
         events: store::all_events(conn)?,
         openpgp_keys: crate::openpgp::store::backup_collect(conn, include_secrets)?,
@@ -645,7 +670,13 @@ pub fn apply(
     }
 
     for (key, value) in &data.settings {
-        store::setting_set(&tx, key, value)?;
+        if key == "rules" {
+            // Restored event rules start at import, just as rules created in
+            // settings do; they must not act on this device's older events.
+            store::set_rules(&tx, serde_json::from_value(value.clone())?)?;
+        } else {
+            store::setting_set(&tx, key, value)?;
+        }
         summary.settings += 1;
     }
 
@@ -663,6 +694,18 @@ pub fn apply(
 
     if !data.openpgp_keys.is_empty() {
         summary.openpgp_missing_secret = crate::openpgp::store::backup_apply(&tx, &data.openpgp_keys)?;
+    }
+
+    // Keyed by Message-ID, so they rejoin their mail as it syncs back in.
+    for entry in &data.tags {
+        let known: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ?1)",
+            params![entry.account],
+            |row| row.get(0),
+        )?;
+        if known {
+            store::restore_tag(&tx, &entry.account, &entry.key, &entry.tag)?;
+        }
     }
 
     tx.commit()?;

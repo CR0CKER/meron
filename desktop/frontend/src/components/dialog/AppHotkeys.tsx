@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { leaveNarrowContacts } from '../../states/contacts'
 import {
   clearBulkSelection,
   selectedBulkItems,
@@ -17,9 +18,11 @@ import {
   selectKanbanBoard,
   closeKanbanBoard,
   openMailAccount,
-  closeCurrentConversation,
   kanbanPaneThreadId,
+  kanbanKeyboardThreadId,
+  type KanbanCardRef,
 } from '../../states/kanban'
+import { closeConversationToCard } from '../kanban/closeConversationToCard'
 import { openThreadSearch, thread$ } from '../../states/thread'
 import { getActiveThread, syncMail, selectAdjacentThread } from '../../states/mail'
 import {
@@ -31,8 +34,10 @@ import {
 import { archiveThread, deleteThread, bulkArchiveSelected, bulkDeleteSelected } from '../../states/mailMoves'
 import { openComposeTab, openReplyInFullEditor, closeMessageTab, toggleConversationMode } from '../../states/compose'
 import { compose$ } from '../../states/composeState'
+import { closeComposeSessionKeepingDraft } from '../../states/composeSessions'
 import { calendar$ } from '../../states/calendar'
 import { handleEditUndoKeyDown } from '../../lib/editUndo'
+import { closeTopEscapeLayer } from '../../lib/useEscapeKey'
 import { inMessageScroller, pageOpenMessage, stepOpenMessage } from '../chat/messagePaging'
 import {
   isArrowKey,
@@ -90,23 +95,37 @@ const MAIL_VIEW_ACTIONS = new Set<ShortcutId>([
   'thread.details',
   'thread.viewMode',
   'reply.focus',
+  'reply.all',
   'compose.replyFull',
   'search.thread',
 ])
 
 // The thread a bare action applies to. On a board it's the one the pane shows:
 // an RSS card opens in a reader tab without retargeting ui$.selectedThread,
-// which would otherwise leave a stale chat-list selection as the target.
+// which would otherwise leave a stale chat-list selection as the target. With
+// nothing in the pane, it's the card selected from the keyboard.
 function activeThreadId(): string {
-  if (kanban$.activeBoardId.peek()) return kanbanPaneThreadId() || ui$.selectedThread.peek()
+  if (kanban$.activeBoardId.peek()) return kanbanPaneThreadId() || kanbanKeyboardThreadId() || ui$.selectedThread.peek()
   return ui$.selectedThread.peek()
 }
 
 // j/k (and the arrow keys) step through whichever list is on screen: the chat
 // thread list, or the active board's cards.
 function selectAdjacentThreadForView(delta: number) {
-  if (kanban$.activeBoardId.peek()) selectAdjacentKanbanThread(delta)
+  if (kanban$.activeBoardId.peek()) selectAdjacentKanbanThread(delta, focusedKanbanCard())
   else selectAdjacentThread(delta)
+}
+
+// The card keyboard focus is on (Esc puts it on the card whose conversation it
+// closed), for stepping on from there while no conversation is open.
+function focusedKanbanCard(): KanbanCardRef | undefined {
+  const card = document.activeElement?.closest<HTMLElement>('[data-kanban-thread]')
+  const column = card?.closest<HTMLElement>('[data-kanban-column]')
+  const threadId = card?.dataset.kanbanThread
+  const columnKey = column?.dataset.kanbanColumn
+  const itemId = card?.dataset.kanbanItem
+  if (!threadId || !columnKey) return undefined
+  return itemId ? { threadId, columnKey, itemId } : { threadId, columnKey }
 }
 
 function handleKanbanArrowNavigation(key: string, target: EventTarget | null): boolean {
@@ -118,7 +137,7 @@ function handleKanbanArrowNavigation(key: string, target: EventTarget | null): b
   ) {
     return false
   }
-  selectAdjacentKanbanThread(key === 'ArrowDown' ? 1 : -1)
+  selectAdjacentKanbanThread(key === 'ArrowDown' ? 1 : -1, focusedKanbanCard())
   return true
 }
 
@@ -261,6 +280,21 @@ export function AppHotkeys() {
         return
       }
 
+      // Esc with a compose tab in front closes it and keeps the message in
+      // Drafts, before anything behind it closes. The composer handles the key
+      // itself while focus is inside it; this covers focus left elsewhere,
+      // e.g. on a footer button WebKit doesn't focus when clicked.
+      if (
+        event.key === 'Escape' &&
+        !isTyping(event.target) &&
+        !modalOpen() &&
+        !mailCovered() &&
+        closeComposeSessionKeepingDraft(compose$.activeTab.peek())
+      ) {
+        event.preventDefault()
+        return
+      }
+
       // Esc closes the open kanban conversation pane (it has no thread list to
       // fall back to). Skip while typing or when a modal owns the keystroke;
       // in-thread search handles its own Esc via the input's onKeyDown.
@@ -272,7 +306,7 @@ export function AppHotkeys() {
         kanban$.paneThreadId.peek()
       ) {
         event.preventDefault()
-        closeCurrentConversation()
+        closeConversationToCard()
         return
       }
 
@@ -359,6 +393,7 @@ export function AppHotkeys() {
           event.preventDefault()
           const activeBoard = kanban$.activeBoardId.peek()
           if (activeBoard) {
+            leaveNarrowContacts()
             closeKanbanBoard()
           } else {
             const board = settings$.kanbanBoards.peek()[0]
@@ -469,6 +504,11 @@ export function AppHotkeys() {
           event.preventDefault()
           focusQuickReply()
           break
+        case 'reply.all':
+          if (!threadSearchVisible()) return
+          event.preventDefault()
+          openReplyInFullEditor({ replyAll: true })
+          break
       }
     }
 
@@ -486,8 +526,14 @@ export function AppHotkeys() {
       // Esc from inside the message: back to the list, as from the pane around
       // the frame. On a board that closes the conversation pane.
       if (chord.key === 'Escape') {
+        // A preview or menu open over the conversation closes first: focus in
+        // the frame kept the key from its own Escape listener.
+        if (closeTopEscapeLayer()) {
+          event.preventDefault()
+          return
+        }
         if (modalOpen() || mailCovered()) return
-        if (kanban$.activeBoardId.peek() && kanban$.paneThreadId.peek()) closeCurrentConversation()
+        if (kanban$.activeBoardId.peek() && kanban$.paneThreadId.peek()) closeConversationToCard()
         else if (!focusActiveThreadRow()) return
         event.preventDefault()
         return

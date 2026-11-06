@@ -7,6 +7,8 @@
 //! and empty values stay free text, so `re:foo` or a URL still searches as
 //! typed.
 //!
+//! `tag:name` matches a tag, and is answered by the local store alone.
+//!
 //! `from:`, `to:` and `subject:` take alternatives the Gmail way — any of them
 //! matches: `from:{a b}`, `from:(a OR b)`, `from:a,b`, or `from:a OR from:b`.
 //! `OR` between other terms, negation and general grouping are not supported.
@@ -43,6 +45,8 @@ pub struct SearchQuery {
     pub starred: bool,
     /// `has:attachment`.
     pub has_attachment: bool,
+    /// `tag:` terms, each normalized; a message must carry them all.
+    pub tags: Vec<String>,
     /// `after:` — sent on or after this day.
     pub after: Option<NaiveDate>,
     /// `before:` — sent before this day.
@@ -71,6 +75,7 @@ impl SearchQuery {
             || self.unread
             || self.starred
             || self.has_attachment
+            || !self.tags.is_empty()
             || self.after.is_some()
             || self.before.is_some()
     }
@@ -95,6 +100,7 @@ impl SearchQuery {
                 Some(Operator::Seen(value)) => seen = Some(value),
                 Some(Operator::Starred) => self.starred = true,
                 Some(Operator::HasAttachment) => self.has_attachment = true,
+                Some(Operator::Tag(tag)) => self.tags.push(tag),
                 Some(Operator::After(date)) => self.after = self.after.max(Some(date)),
                 Some(Operator::Before(date)) => {
                     self.before = Some(self.before.map_or(date, |before| before.min(date)))
@@ -145,6 +151,7 @@ enum Operator {
     Seen(bool),
     Starred,
     HasAttachment,
+    Tag(String),
     After(NaiveDate),
     Before(NaiveDate),
 }
@@ -168,6 +175,7 @@ impl Operator {
                 _ => return None,
             },
             "has" if value.eq_ignore_ascii_case("attachment") => Operator::HasAttachment,
+            "tag" => Operator::Tag(crate::tags::normalize_tag(value)?),
             "after" => Operator::After(parse_date(value)?),
             "before" => Operator::Before(parse_date(value)?),
             _ => return None,
@@ -230,6 +238,25 @@ fn clauses(query: &str) -> Vec<Clause<'_>> {
         });
     }
     clauses
+}
+
+/// `query` with each `tag:` term for `tag` naming `to` instead. Read as a search
+/// reads it: a quoted term's text and anything else that only looks like one are
+/// left alone, and every spelling of the term counts. The rest stays as written.
+pub fn rename_tag_terms(query: &str, tag: &str, to: &str) -> String {
+    let mut renamed = String::with_capacity(query.len());
+    let mut copied = 0;
+    for term in terms(query) {
+        if matches!(Operator::parse(term), Some(Operator::Tag(name)) if name == tag) {
+            let start = term.as_ptr() as usize - query.as_ptr() as usize;
+            renamed.push_str(&query[copied..start]);
+            renamed.push_str("tag:");
+            renamed.push_str(to);
+            copied = start + term.len();
+        }
+    }
+    renamed.push_str(&query[copied..]);
+    renamed
 }
 
 /// The slice of `query` from the start of `first` to the end of `last`, both
@@ -357,6 +384,8 @@ pub struct SearchFields {
     pub from: String,
     pub to: String,
     pub subject: String,
+    /// Tags a thread must all carry, separated by spaces or commas.
+    pub tags: String,
     /// Free text, plus any terms the other fields can't hold.
     pub words: String,
     /// `yyyy-mm-dd`, or empty.
@@ -408,6 +437,13 @@ impl SearchFields {
                     fields.has_attachment = true;
                     true
                 }
+                Some(Operator::Tag(tag)) => {
+                    if !fields.tags.is_empty() {
+                        fields.tags.push(' ');
+                    }
+                    fields.tags.push_str(&tag);
+                    true
+                }
                 None => false,
             };
             if slot {
@@ -454,6 +490,12 @@ impl SearchFields {
                 any => terms.push(format!("{key}:{{{}}}", any.join(" "))),
             }
         }
+        terms.extend(
+            self.tags
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|tag| !tag.is_empty())
+                .map(|tag| format!("tag:{tag}")),
+        );
         if self.starred {
             terms.push("is:starred".to_string());
         }
@@ -661,6 +703,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn renaming_a_tag_changes_only_terms_that_search_it() {
+        let rename = |query| rename_tag_terms(query, "old", "new");
+        assert_eq!(rename("tag:old"), "tag:new");
+        assert_eq!(
+            rename("from:a  TAG:Old tag:\"old\" tag:#old"),
+            "from:a  tag:new tag:new tag:new"
+        );
+        assert_eq!(rename("tag:old AND is:unread"), "tag:new AND is:unread");
+        for untouched in [
+            "tag:older",
+            "-tag:old",
+            "subject:\"Discuss tag:old tomorrow\"",
+            "from:(tag:old OR b)",
+            "\"tag:old\"",
+            "tag:",
+        ] {
+            assert_eq!(rename(untouched), untouched);
+        }
+    }
+
+    #[test]
     fn plain_query_is_unchanged_free_text() {
         let q = SearchQuery::parse("  quarterly  report ");
         assert_eq!(q.text, ["quarterly  report"]);
@@ -776,6 +839,10 @@ mod tests {
 
     #[test]
     fn flags_and_dates() {
+        let q = SearchQuery::parse("tag:Work tag:\"to do\" tag:a:b");
+        assert_eq!(q.tags, ["work", "to-do"]);
+        assert_eq!(q.text, ["tag:a:b"]);
+
         let q = SearchQuery::parse("is:starred is:read after:2026/01/02 before:2026-02-03");
         assert!(q.starred);
         assert!(q.read && !q.unread);
@@ -892,7 +959,7 @@ mod tests {
     #[test]
     fn fields_round_trip_through_query_text() {
         let fields = SearchFields::parse(
-            r#"budget from:"Ann Lee" to:d@e.f is:unread is:starred has:attachment after:2026/01/02 before:2026-02-03"#,
+            r#"budget tag:work from:"Ann Lee" tag:to-do to:d@e.f is:unread is:starred has:attachment after:2026/01/02 before:2026-02-03"#,
         );
         assert_eq!(
             fields,
@@ -900,6 +967,7 @@ mod tests {
                 from: "Ann Lee".into(),
                 to: "d@e.f".into(),
                 subject: String::new(),
+                tags: "work to-do".into(),
                 words: "budget".into(),
                 after: "2026-01-02".into(),
                 before: "2026-02-03".into(),
@@ -910,9 +978,19 @@ mod tests {
         );
         assert_eq!(
             fields.to_query(),
-            r#"from:"Ann Lee" to:d@e.f is:starred has:attachment after:2026/01/02 before:2026/02/03 budget is:unread"#
+            r#"from:"Ann Lee" to:d@e.f tag:work tag:to-do is:starred has:attachment after:2026/01/02 before:2026/02/03 budget is:unread"#
         );
         assert_eq!(SearchFields::parse(&fields.to_query()), fields);
+    }
+
+    #[test]
+    fn the_tag_field_takes_commas_and_builds_a_query_saved_as_a_tag_column() {
+        let fields = SearchFields {
+            tags: "work, to-do".into(),
+            ..Default::default()
+        };
+        assert_eq!(fields.to_query(), "tag:work tag:to-do");
+        assert_eq!(SearchFields::parse("tag:work").to_query(), "tag:work");
     }
 
     #[test]

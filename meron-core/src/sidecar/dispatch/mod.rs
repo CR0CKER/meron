@@ -37,6 +37,19 @@ pub(crate) async fn dispatch(
         "mcp.delete" => meron_core::mcp_mail::delete(engine, p.clone()).await,
         "mcp.organize" => meron_core::mcp_mail::organize(engine, p.clone()).await,
         "ping" => Ok(ping_response()),
+        "eml.read" => {
+            let path = crate::sidecar::params::req_str(p, "path")?;
+            let session = crate::sidecar::params::req_str(p, "session")?;
+            let message = tokio::task::spawn_blocking(move || {
+                meron_core::eml::read(
+                    std::path::Path::new(&path),
+                    &session,
+                    &meron_core::parse::media_root(),
+                )
+            })
+            .await??;
+            Ok(serde_json::to_value(message)?)
+        }
         "reminders.list" | "reminders.claim" | "reminders.skipPast" | "reminders.acknowledge" => {
             meron_core::reminders::dispatch(&engine.db.lock().unwrap(), &req.method, p)
         }
@@ -134,6 +147,7 @@ pub(crate) async fn dispatch(
         | "messages.stillUnread"
         | "identity.allocate"
         | "contacts.suggest"
+        | "contacts.threads"
         | "messages.sync"
         | "messages.read"
         | "messages.thread"
@@ -149,11 +163,16 @@ pub(crate) async fn dispatch(
 
         "messages.markRead"
         | "messages.markStarred"
+        | "messages.setTags"
+        | "tags.replace"
         | "messages.delete"
         | "messages.move"
         | "messages.copy"
         | "messages.markAllRead"
         | "messages.markAllReadUnified" => actions::dispatch(engine, req, out).await,
+
+        "tags.list" | "rules.list" | "rules.set" | "rules.matches" | "rules.run"
+        | "rules.status" | "rules.stop" => messages::dispatch(engine, req, out).await,
 
         "watch.start" | "watch.stop" | "system.resumed" => watch::dispatch(engine, req, out).await,
 

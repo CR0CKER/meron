@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
@@ -254,6 +255,7 @@ internal fun MailDrawer(
     onAddAccount: () -> Unit,
     onOpenSettings: () -> Unit,
     onShowAbout: () -> Unit,
+    onOpenContacts: () -> Unit,
     googleReauthAccountId: String? = null,
     onReconnectGoogle: (AccountSummary) -> Unit = {},
 ) {
@@ -331,7 +333,7 @@ internal fun MailDrawer(
                         )
                     }
                 }
-                if (accounts.isNotEmpty() && (kanbanBoards.isNotEmpty() || tasksEnabled || calendarEnabled)) {
+                if (accounts.isNotEmpty()) {
                     item { DrawerLabel(tr("drawer.views"), chat) }
                 }
                 if (accounts.isNotEmpty() && kanbanBoards.isNotEmpty()) {
@@ -357,6 +359,16 @@ internal fun MailDrawer(
                     }
                 }
                 // Calendar and Tasks follow the boards, so toggling them never shifts the boards.
+                item {
+                    SidebarRow(
+                        selected = currentScreen == Screen.Contacts,
+                        chat = chat,
+                        onClick = onOpenContacts,
+                        leading = { Icon(Icons.Filled.Contacts, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        title = tr("contacts.title"),
+                        trailing = null,
+                    )
+                }
                 if (calendarEnabled) {
                     item {
                         SidebarRow(
@@ -461,17 +473,22 @@ internal fun AboutDialog(
                         AboutLinkButton(
                             icon = Icons.Filled.Favorite,
                             label = tr("about.githubSponsors"),
-                            onClick = { onOpenUrl("https://github.com/sponsors/nonbili") },
+                            onClick = { onOpenUrl("https://github.com/sponsors/rnons") },
                         )
                         AboutLinkButton(
                             icon = Icons.Filled.Favorite,
                             label = tr("about.liberapay"),
-                            onClick = { onOpenUrl("https://liberapay.com/nonbili") },
+                            onClick = { onOpenUrl("https://liberapay.com/rnons") },
                         )
                         AboutLinkButton(
                             icon = Icons.Filled.CreditCard,
                             label = tr("about.paypal"),
                             onClick = { onOpenUrl("https://www.paypal.com/paypalme/nonbili") },
+                        )
+                        AboutLinkButton(
+                            icon = Icons.Filled.CreditCard,
+                            label = tr("about.stripe"),
+                            onClick = { onOpenUrl("https://donate.stripe.com/dRm8wP0PJ94K4F9a9P48003") },
                         )
                     }
                 }

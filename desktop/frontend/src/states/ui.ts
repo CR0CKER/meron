@@ -73,6 +73,7 @@ export const ui$ = observable({
   accountSettingsId: '',
   addFeedAccount: '',
   editFeed: null as EditFeed | null,
+  tagThreadId: '',
   // The optional Tasks panel: whether the right-hand panel is showing, and
   // which list it is showing. Unlike a board it does not own the main pane —
   // it sits beside mail or kanban, so both stay visible while you work through
@@ -87,6 +88,7 @@ export const ui$ = observable({
   // for it.
   calendarPanelOpen: false,
   calendarOpen: false,
+  contactsOpen: false,
   // Command palette (⌘/Ctrl+K). Ephemeral: open flag, search query, and the
   // highlighted row index.
   paletteOpen: false,
@@ -111,6 +113,8 @@ export const ui$ = observable({
   // Optional one-shot undo paired with the current toast. Set by reversible
   // actions (archive/star/unread) so an accidental keystroke is recoverable.
   toastUndo: null as null | (() => void),
+  // The action button's label when it isn't Undo.
+  toastActionLabel: '',
   toastPlacement: 'app' as ToastPlacement,
   confirm: null as ConfirmState | null,
 })
@@ -129,6 +133,7 @@ export function modalOpen(): boolean {
     ui$.setupOpen.peek() ||
     !!ui$.addFeedAccount.peek() ||
     !!ui$.editFeed.peek() ||
+    !!ui$.tagThreadId.peek() ||
     !!ui$.confirm.peek()
   )
 }
@@ -180,11 +185,15 @@ export function showToast(
 
 // Like showToast but pairs the message with an Undo affordance. Given a longer
 // (5s) window since the whole point is to catch an accidental action.
-export function showUndoToast(msg: string, undo: () => void, placement: ToastPlacement = 'app') {
+export function showUndoToast(msg: string, undo: () => void, placement: ToastPlacement = 'app', actionLabel = '') {
   clearTimeout(toastTimer)
+  ui$.toastActionLabel.set(actionLabel)
   ui$.toastTone.set('success')
   ui$.toastPlacement.set(placement)
   ui$.toast.set(msg)
+  // Cleared first: over a function already there, the observable would store
+  // the updater itself, leaving a button that does nothing.
+  ui$.toastUndo.set(null)
   ui$.toastUndo.set(() => undo)
   toastTimer = setTimeout(() => {
     if (ui$.toast.get() === msg) {

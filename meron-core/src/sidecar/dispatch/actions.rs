@@ -4,6 +4,7 @@ use std::sync::Arc;
 use meron_core::engine::Engine;
 use meron_core::engine::*;
 use meron_core::protocol::Request;
+use meron_core::tags::{parse_tag_list, parse_tag_replacement, renamed_queries};
 use meron_core::{imap, mail_model, store};
 
 use crate::Writer;
@@ -184,6 +185,41 @@ pub(crate) async fn dispatch(
                 Some(starred),
                 false,
             )
+        }
+
+        "messages.setTags" => {
+            let account = req_str(p, "account")?;
+            let folder =
+                canon_folder(&req_str(p, "folder").unwrap_or_else(|_| "INBOX".to_string()));
+            let add = parse_tag_list(p.get("add")).map_err(anyhow::Error::msg)?;
+            let remove = parse_tag_list(p.get("remove")).map_err(anyhow::Error::msg)?;
+            let tags = {
+                let db = engine.db.lock().unwrap();
+                let targets = store::tag_targets(
+                    &db,
+                    &account,
+                    &folder,
+                    &req_str(p, "thread_key").unwrap_or_default(),
+                    &tag_uids(p),
+                )?;
+                store::retag(&db, &account, &targets, &add, &remove, true)?
+            };
+            spawn_tag_push(&engine, &account);
+            Ok(json!({ "ok": true, "tags": tags }))
+        }
+
+        // Rename a tag everywhere, or delete it. The archive goes first, as
+        // opening it reads the store.
+        "tags.replace" => {
+            let (tag, to) = parse_tag_replacement(p).map_err(anyhow::Error::msg)?;
+            crate::sidecar::local::replace_tag(engine, &tag, to.as_deref())?;
+            let (accounts, rules) =
+                store::replace_tag_and_rules(&engine.db.lock().unwrap(), &tag, to.as_deref())?;
+            for account in &accounts {
+                spawn_tag_push(&engine, account);
+            }
+            let queries = renamed_queries(p, &tag, to.as_deref());
+            Ok(json!({ "ok": true, "tag": to, "rules": rules, "queries": queries }))
         }
 
         "messages.delete" => {
@@ -386,34 +422,8 @@ pub(crate) async fn dispatch(
                 .await;
             }
 
-            let cached_ids =
-                store::cached_message_ids(&engine.db.lock().unwrap(), &account, &folder, &uids)?;
-            let moved_ids = moved_message_ids(engine, &account, &folder, &uids, cached_ids).await;
-            let uid_next_before = engine
-                .with_write_session(&account, |session| {
-                    let folder = folder.clone();
-                    let target_folder = target_folder.clone();
-                    let uids = uids.clone();
-                    Box::pin(async move {
-                        imap::move_to_folder(session, &folder, &target_folder, &uids).await
-                    })
-                })
-                .await?;
-            let copies = refresh_moved_copies(
-                engine,
-                &account,
-                &target_folder,
-                uids.len(),
-                uid_next_before,
-                moved_ids.as_deref(),
-            )
-            .await;
-
-            {
-                let db = engine.db.lock().unwrap();
-                copies.store(&db, &account, &target_folder)?;
-                store::delete_messages_by_uid(&db, &account, &folder, &uids)?;
-            }
+            let copies =
+                move_within_account(engine, &account, &folder, &target_folder, &uids).await?;
             // The IMAP MOVE above completed for every resolved UID. A concurrent
             // source-folder refresh may already have pruned those rows locally,
             // so the cache DELETE count is not the number moved on the server.
@@ -511,6 +521,12 @@ pub(crate) async fn dispatch(
                     })
                 })
                 .await?;
+            {
+                let db = engine.db.lock().unwrap();
+                let copies = std::collections::BTreeMap::from([(folder.clone(), uids.clone())]);
+                let tags = store::carried_tags(&db, &account, &copies)?;
+                store::apply_carried_tags(&db, &target_account, tags, true)?;
+            }
             // Read-only refresh, on its own session; see the move handler above.
             let copied_result = json!({
                 "ok": true,

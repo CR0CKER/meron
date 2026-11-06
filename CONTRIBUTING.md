@@ -2,11 +2,16 @@
 
 ## Prerequisites
 
-- [Go](https://go.dev) 1.25+
+- [Go](https://go.dev) 1.26+
 - [Rust](https://www.rust-lang.org) (with `cargo`)
 - [Bun](https://bun.sh)
-- The [Wails CLI](https://wails.io): `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+- The [Wails v3 CLI](https://wails.io): `go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0` (the `gtk3` tag preserves Meron's Linux native integrations).
 - SQLite, and on Linux: GTK 3 + WebKitGTK 4.1
+
+Desktop builds use `desktop/Taskfile.yml` and `scripts/build-desktop.ts`.
+`desktop/wails.json` is retained only as shared release/version metadata; it is
+not a Wails v2 build configuration. Linux Go commands must include `-tags gtk3`
+to use the same GTK/WebKit backend as Meron's native integrations.
 
 A [Nix shell](shell.nix) is provided with these dependencies:
 
@@ -26,7 +31,7 @@ Run the desktop app in dev mode (Vite HMR for the frontend). The root command
 enters [`desktop/`](desktop/) for you:
 
 ```sh
-bun run dev           # wails dev
+bun run dev           # wails3 dev
 ```
 
 ## Build
@@ -59,6 +64,13 @@ Package-managed builds should launch Meron with
 `MERON_DISABLE_SELF_UPDATE=1`. This disables release polling and self-update
 controls so updates remain owned by the package manager.
 
+For standalone tarball and AppImage installations in a root-owned directory
+(for example `/opt/meron`), the updater requests administrator authorization
+through PolicyKit. This requires `pkexec` and a running desktop PolicyKit
+authentication agent. Only the binary replacement runs as root; Meron restarts
+as the original user. Cancelling authorization leaves the download available
+for another attempt. No custom PolicyKit rules are needed.
+
 ## Testing
 
 Run the full suite (Go, Rust, i18n, and frontend):
@@ -85,5 +97,5 @@ generated message types with:
 ```sh
 bun run i18n:validate
 bun run i18n:generate
-bun run i18n:check
+bun run test:i18n
 ```

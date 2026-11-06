@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "meron/internal/desktopruntime"
 )
 
 // installDesktopEntry writes a .desktop file and icon into the user's
@@ -50,12 +50,12 @@ func installDesktopEntry() {
 Type=Application
 Name=Meron
 Comment=Messages that spark joy
-Exec=%s %%u
+Exec=%s %%U
 Icon=meron
 Terminal=false
 Categories=Office;Network;Email;
 StartupWMClass=meron
-MimeType=x-scheme-handler/mailto;
+MimeType=x-scheme-handler/mailto;message/rfc822;
 `, desktopExecArg(exe))
 	writeIfChanged(desktopPath, []byte(desktop))
 

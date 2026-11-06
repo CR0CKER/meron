@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "meron/internal/desktopruntime"
 )
 
 func (a *App) mailSync(payload map[string]any) (any, error) {
@@ -625,6 +625,95 @@ func (a *App) markStarred(payload map[string]any) (any, error) {
 		return a.sidecar.Call("messages.markStarred", params)
 	}
 	return map[string]any{"ok": true}, nil
+}
+
+// setTags adds and removes tags on a thread and answers with the tags it now
+// carries. Tags are saved locally, so this never waits for the server.
+func (a *App) setTags(payload map[string]any) (any, error) {
+	threadID, _ := payload["thread_id"].(string)
+	ids, ok := parseImapThreadID(threadID)
+	if !ok {
+		return nil, fmt.Errorf("not a mail thread: %s", threadID)
+	}
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	params := map[string]any{
+		"account":    ids.Account,
+		"folder":     deleteFolder(payload, ids.Folder),
+		"thread_key": ids.ThreadKey,
+		"add":        payload["add"],
+		"remove":     payload["remove"],
+	}
+	if ids.ThreadKey == "" && ids.UID > 0 {
+		delete(params, "thread_key")
+		params["uid"] = ids.UID
+	}
+	return a.sidecar.Call("messages.setTags", params)
+}
+
+// tagList lists every tag in use, for pickers.
+func (a *App) tagList() (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return map[string]any{"tags": []any{}}, nil
+	}
+	return a.sidecar.Call("tags.list", map[string]any{})
+}
+
+// replaceTag renames a tag everywhere, or deletes it when "to" is left out.
+func (a *App) replaceTag(payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	return a.sidecar.Call("tags.replace", map[string]any{"tag": payload["tag"], "to": payload["to"], "queries": payload["queries"]})
+}
+
+// rules lists what to do with new mail.
+func (a *App) rules() (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return map[string]any{"rules": []any{}}, nil
+	}
+	return a.sidecar.Call("rules.list", map[string]any{})
+}
+
+// setRules replaces those rules, answering with what the core kept.
+func (a *App) setRules(payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	return a.sidecar.Call("rules.set", map[string]any{"rules": payload["rules"]})
+}
+
+// ruleMatches counts the mail already in the Inbox that a saved rule would run on.
+func (a *App) ruleMatches(payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	return a.sidecar.Call("rules.matches", map[string]any{"id": payload["id"]})
+}
+
+// runRule runs a saved rule over the mail already in the Inbox.
+func (a *App) runRule(payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	return a.sidecar.Call("rules.run", map[string]any{"id": payload["id"]})
+}
+
+// ruleStatus answers with what rules did lately and what runs by hand have left.
+func (a *App) ruleStatus() (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return map[string]any{"log": []any{}, "running": map[string]any{}}, nil
+	}
+	return a.sidecar.Call("rules.status", map[string]any{})
+}
+
+// stopRule drops what is left of a rule run by hand.
+func (a *App) stopRule(payload map[string]any) (any, error) {
+	if a.sidecar == nil || !a.sidecar.Started() {
+		return nil, fmt.Errorf("mail core is not running")
+	}
+	return a.sidecar.Call("rules.stop", map[string]any{"id": payload["id"]})
 }
 
 // markAllRead marks every message in one mail folder as read. An RSS account has

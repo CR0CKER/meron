@@ -40,7 +40,7 @@ struct DesktopHost;
 
 impl EngineHost for DesktopHost {
     fn open_db(&self) -> anyhow::Result<rusqlite::Connection> {
-        store::open()
+        store::open_notifying(announce_store_upgrade)
     }
 
     fn apply_secret(&self, conn: &rusqlite::Connection, account: &str, creds: &mut imap::Creds) {
@@ -76,6 +76,18 @@ impl EngineHost for DesktopHost {
     }
 }
 
+/// Tell the bridge the store is being upgraded, so it holds request timeouts and
+/// the UI can say why nothing is loading. This runs inside the synchronous
+/// `Engine::new`, before anything else has written to stdout, so it goes straight
+/// to the std handle rather than through [`Writer`].
+fn announce_store_upgrade() {
+    use std::io::Write;
+    let line = json!({ "event": "core.migrating", "detail": {} });
+    let mut stdout = std::io::stdout().lock();
+    let _ = writeln!(stdout, "{line}");
+    let _ = stdout.flush();
+}
+
 #[tokio::main]
 async fn main() {
     // Tag panics consistently on stderr, which the desktop bridge copies into
@@ -83,7 +95,15 @@ async fn main() {
     meron_core::log::install_panic_hook();
     let out: Writer = Arc::new(Mutex::new(tokio::io::stdout()));
     let engine = match Engine::new(Box::new(DesktopHost)) {
-        Ok(engine) => Arc::new(engine),
+        Ok(engine) => {
+            let writer = out.clone();
+            let _ = engine.rule_progress.set(Arc::new(move |account, folder| {
+                let writer = writer.clone();
+                let detail = json!({ "account": account, "folder": folder });
+                tokio::spawn(async move { emit(&writer, "mail.synced", detail).await });
+            }));
+            Arc::new(engine)
+        }
         Err(e) => {
             // Storage is unusable (an unreachable keychain, a store encrypted
             // with a key we no longer hold). Keep serving stdin anyway: exiting

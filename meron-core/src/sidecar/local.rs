@@ -40,6 +40,8 @@ const LOCAL_MAIL_METHODS: &[&str] = &[
     "messages.threadHeaders",
     "messages.markRead",
     "messages.markStarred",
+    "messages.setTags",
+    "tags.list",
     "messages.markAllRead",
     "messages.delete",
     "messages.move",
@@ -423,10 +425,11 @@ async fn local_mail(
                     filter,
                 )?,
                 thread_list::MailSource::Search => {
+                    let folders = engine::query_folders(&db, account, &folder, &request.query);
                     let messages = store::search_messages_in_folders(
                         &db,
                         account,
-                        std::slice::from_ref(&folder),
+                        &folders,
                         &request.query,
                         request.limit,
                         request.search_before_cursor.as_ref(),
@@ -562,6 +565,28 @@ async fn local_mail(
             Ok(result)
         }
 
+        "tags.list" => {
+            let counts = store::tag_counts(&archive.db.lock().unwrap(), Some(account))?;
+            Ok(store::tag_counts_json(counts))
+        }
+
+        "messages.setTags" => {
+            let folder = canon_local(p);
+            let add = meron_core::tags::parse_tag_list(p.get("add")).map_err(anyhow::Error::msg)?;
+            let remove =
+                meron_core::tags::parse_tag_list(p.get("remove")).map_err(anyhow::Error::msg)?;
+            let db = archive.db.lock().unwrap();
+            let targets = store::tag_targets(
+                &db,
+                account,
+                &folder,
+                &req_str(p, "thread_key").unwrap_or_default(),
+                &tag_uids(p),
+            )?;
+            let tags = store::retag(&db, account, &targets, &add, &remove, false)?;
+            Ok(json!({ "ok": true, "tags": tags }))
+        }
+
         "messages.markAllRead" => {
             let folder = canon_local(p);
             let db = archive.db.lock().unwrap();
@@ -668,6 +693,9 @@ async fn local_mail(
                 })
             })
             .await?;
+            let copies = std::collections::BTreeMap::from([(folder.clone(), uids.clone())]);
+            let tags = store::carried_tags(&archive.db.lock().unwrap(), account, &copies)?;
+            store::apply_carried_tags(&main.db.lock().unwrap(), &target_account, tags, true)?;
             if moving {
                 let db = archive.db.lock().unwrap();
                 store::delete_local_messages(&db, &folder, &uids)?;
@@ -752,6 +780,24 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> anyhow::Result<()> {
 /// under (see `store::normalize_local_folder_name`).
 fn canon_local(p: &Value) -> String {
     store::canon_local_folder(&req_str(p, "folder").unwrap_or_default())
+}
+
+/// Tag counts in local folders, for the tag list.
+pub(crate) fn tag_counts(main: &Arc<Engine>) -> std::collections::BTreeMap<String, u32> {
+    let counts = archive(main)
+        .and_then(|archive| store::tag_counts(&archive.db.lock().unwrap(), Some(LOCAL_ACCOUNT_ID)));
+    counts.unwrap_or_default()
+}
+
+/// Rename or delete a tag in local folders. See [`store::replace_tag`]. Nothing
+/// to do without local folders, and the archive is not created for it.
+pub(crate) fn replace_tag(main: &Arc<Engine>, tag: &str, to: Option<&str>) -> anyhow::Result<()> {
+    if !store::has_local_account(&main.db.lock().unwrap())? {
+        return Ok(());
+    }
+    let archive = archive(main)?;
+    store::replace_tag(&archive.db.lock().unwrap(), tag, to, false)?;
+    Ok(())
 }
 
 /// Starred threads kept in local folders, for the cross-account Starred view.
@@ -867,6 +913,9 @@ async fn archive_from_server(main: &Arc<Engine>, req: &Request) -> anyhow::Resul
             .await??
         };
         target_uids.extend(stored);
+        let copies = std::collections::BTreeMap::from([(folder.clone(), chunk.to_vec())]);
+        let tags = store::carried_tags(&main.db.lock().unwrap(), &account, &copies)?;
+        store::apply_carried_tags(&archive.db.lock().unwrap(), LOCAL_ACCOUNT_ID, tags, false)?;
         if moving {
             let removed = engine::delete_to_trash(main, &account, &folder, chunk)
                 .await

@@ -1,15 +1,19 @@
+import { forgetThreadView } from './threadView'
+import { arrayMove } from '@dnd-kit/sortable'
 import { t } from '../lib/i18n'
+import { isNarrowWindow } from '../lib/useNarrowWindow'
 import type { Account, Attachment, ComposeDraft, ComposerAttachment, Message, MessageTab } from '../types'
 import { invoke } from '../lib/bridge'
 import { CONVERSATION_PAGE_SIZE } from '../lib/pagination'
-import { ui$, showToast } from './ui'
+import { ui$, showToast, showUndoToast } from './ui'
+import { contextualErrorMessage } from '../lib/errors'
+import { inlineRichStyles, prepareInlineImages } from '../components/composer/composerHelpers'
 import { accounts$, isSendableAccount, accountIdentities } from './accounts'
 import { getActiveThread, normalizeMessageId } from './mail'
 // From the leaf module: this one subscribes to it while loading, which can be
 // inside an import cycle through mail.ts.
 import { mail$ } from './mailState'
 import { isDraftFolder } from './mailFolders'
-import { discardSavedDraftCopy } from './mailMoves'
 import { LOCAL_SEND_PREFIX } from './pendingSends'
 import { mayQuoteOriginal, ownSentCrypto } from '../lib/crypto'
 import { htmlToText, resolveInlineCids } from '../lib/html'
@@ -18,6 +22,7 @@ import {
   bodyWithSignature,
   bodyWithSwappedSignature,
   type ComposeBody,
+  isBodyBlankWithoutSignature,
   resolveSignature,
   signatureForms,
   type Signature,
@@ -25,13 +30,24 @@ import {
   type SignatureTracking,
 } from '../lib/signature'
 import { settings$ } from './settings'
+import { closeCurrentConversation, kanban$ } from './kanban'
 import { resolveConversationMode, revealRemote, thread$ } from './thread'
 import { formatFullTimestamp } from '../components/chat/messageHelpers'
-import { closeComposeSession, forgetComposeSession, pruneComposeSessions } from './composeSessions'
+import {
+  closeComposeSession,
+  draftSavesSettled,
+  forgetComposeSession,
+  getComposeSession,
+  pruneComposeSessions,
+  type SavedDraft,
+  trackDraftSave,
+} from './composeSessions'
 import {
   buildReplyRecipients,
+  quickReplyAddressing,
   buildReplyThreading,
   detectAliasFrom,
+  detectSenderFrom,
   pickReplyTarget,
   quickReplyEncrypts,
   resolveQuickReplyFrom,
@@ -43,11 +59,14 @@ import {
   COMPOSE_TABS_KEY,
   hasExtraComposeHeaders,
   newDraftMessageId,
+  TAB_VIEW_KEY,
   type PersistedComposeTab,
+  type PersistedMailTab,
 } from './composeState'
 import {
   cancelQuickReplyDraftSave,
   clearQuickReplyDraftOwnership,
+  discardClosedDraft,
   discardingDraftIds,
   quickReplyAbandonedSaves,
   nextQuickReplyOwnershipTick,
@@ -270,25 +289,49 @@ export function pruneComposerMedia() {
   invoke('composer.pruneMedia', { keys: [...keys] }).catch(() => {})
 }
 
-// Persist compose tabs (full editor) on every tab change. We only store the
-// text portion of each compose draft — attachments are dropped because their
-// base64 payloads can blow past localStorage's quota. On boot the tabs come
-// back; the user reattaches files if needed.
+// Persist the tabs on every tab change. We only store the text portion of each
+// compose draft — attachments are dropped because their base64 payloads can blow
+// past localStorage's quota. On boot the tabs come back; the user reattaches
+// files if needed. Thread and reader tabs are stored as references.
+const threadTabScopes = (tabs: MessageTab[]) =>
+  new Set(tabs.filter((tab) => tab.kind === 'thread').map((tab) => `${tab.id}:${tab.threadId}`))
+let previousThreadTabScopes = threadTabScopes(compose$.tabs.peek())
 compose$.tabs.onChange(({ value: tabs }) => {
+  const scopes = threadTabScopes(tabs)
+  for (const key of previousThreadTabScopes) if (!scopes.has(key)) forgetThreadView(key)
+  previousThreadTabScopes = scopes
+
   pruneComposeSessions(new Set(tabs.map((tab) => tab.id)))
-  const persisted: PersistedComposeTab[] = tabs
-    .filter((t) => t.kind === 'compose' && t.compose)
-    .map((t) => ({
-      id: t.id,
-      subject: t.subject,
-      compose: { ...(t.compose as ComposeDraft), attachments: [] },
-    }))
+  const persisted = tabs.flatMap<PersistedComposeTab | PersistedMailTab>((t) => {
+    if (t.kind !== 'compose') {
+      const { id, kind, messageId, threadId, accountId, folderId, subject, from, fromAddr, feedIcon, viewMode } = t
+      return [{ id, kind, messageId, threadId, accountId, folderId, subject, from, fromAddr, feedIcon, viewMode }]
+    }
+    if (!t.compose) return []
+    return [{ id: t.id, subject: t.subject, compose: { ...t.compose, attachments: [] } }]
+  })
   try {
     localStorage.setItem(COMPOSE_TABS_KEY, JSON.stringify(persisted))
   } catch {
     // localStorage quota exceeded — drop silently.
   }
 })
+
+function persistTabView() {
+  try {
+    localStorage.setItem(
+      TAB_VIEW_KEY,
+      JSON.stringify({
+        activeTab: compose$.activeTab.peek(),
+        conversationThread: compose$.conversationThread.peek(),
+      }),
+    )
+  } catch {
+    // localStorage quota exceeded — drop silently.
+  }
+}
+compose$.activeTab.onChange(persistTabView)
+compose$.conversationThread.onChange(persistTabView)
 
 // Keep reader snapshots in sync with the loaded conversation: the body when
 // background fetching completes, and the read and star flags whenever they
@@ -326,15 +369,10 @@ function tabAvatar(message: Message): Pick<MessageTab, 'fromAddr' | 'feedIcon'> 
   return { fromAddr: message.from_addr }
 }
 
-export function openMessageTab(message: Message) {
-  const existing = compose$.tabs.get().find((tab) => tab.messageId === message.id)
-  if (existing) {
-    compose$.activeTab.set(existing.id)
-    return
-  }
+function readerTab(message: Message): MessageTab {
   const account = accounts$.get().find((acc) => acc.id === message.account_id)
   const preferHtml = account?.conversation_html ?? true
-  const tab: MessageTab = {
+  return {
     id: message.id,
     kind: 'reader',
     messageId: message.id,
@@ -368,13 +406,104 @@ export function openMessageTab(message: Message) {
     viewMode: message.body_html && preferHtml ? 'html' : 'plain',
     message,
   }
+}
+
+export function openMessageTab(message: Message) {
+  if (isNarrowWindow()) ui$.contactsOpen.set(false)
+  const existing = compose$.tabs.get().find((tab) => tab.messageId === message.id)
+  if (existing) {
+    compose$.activeTab.set(existing.id)
+    return
+  }
+  const tab = readerTab(message)
   compose$.tabs.push(tab)
   compose$.activeTab.set(tab.id)
+}
+
+// Put the persisted view back on screen. Call once at boot, after the kanban
+// session: a board's conversation is its open card. The conversation behind a
+// reader or compose tab stays unloaded until the user returns to it, so
+// restoring never reads a thread that isn't on screen.
+export function restoreTabSession() {
+  const onBoard = !!kanban$.activeBoardId.peek()
+  if (onBoard) {
+    compose$.conversationThread.set(kanban$.paneThreadId.peek())
+  } else {
+    kanban$.paneThreadId.set('')
+    kanban$.paneColumnKey.set('')
+  }
+  const active = compose$.tabs.peek().find((tab) => tab.id === compose$.activeTab.peek())
+  const conversation = compose$.conversationThread.peek()
+  if (active?.kind === 'thread') ui$.selectedThread.set(active.threadId)
+  else if (!active && conversation) ui$.selectedThread.set(conversation)
+  else if (!active) closeCurrentConversation()
+  if (compose$.activeTab.peek() || conversation) ui$.mobilePane.set('conversation')
+  void reconcileRestoredTabs()
+}
+
+async function restoredThreadPage(threadId: string, cursor: string) {
+  return invoke<{ messages: Message[]; next_cursor?: string }>('mail.threadRead', {
+    thread_id: threadId,
+    limit: CONVERSATION_PAGE_SIZE,
+    ...(cursor ? { before_cursor: cursor } : {}),
+  })
+}
+
+// Check each restored conversation against the mailbox, one at a time: anything
+// deleted or moved while the app was closed closes, and reader tabs get their
+// bodies back. A failed read proves nothing (offline, say), so it closes nothing.
+async function reconcileRestoredTabs() {
+  const threadIds = new Set(
+    compose$.tabs
+      .peek()
+      .filter((tab) => tab.kind !== 'compose')
+      .map((tab) => tab.threadId),
+  )
+  if (compose$.conversationThread.peek()) threadIds.add(compose$.conversationThread.peek())
+  for (const threadId of threadIds) {
+    try {
+      const wanted = new Set(
+        compose$.tabs
+          .peek()
+          .filter((tab) => tab.kind === 'reader' && tab.threadId === threadId)
+          .map((tab) => tab.messageId),
+      )
+      const found = new Map<string, Message>()
+      const cursors = new Set<string>()
+      let cursor = ''
+      let empty = true
+      do {
+        cursors.add(cursor)
+        const page = await restoredThreadPage(threadId, cursor)
+        if (page.messages.length > 0) empty = false
+        for (const message of page.messages) if (wanted.has(message.id)) found.set(message.id, message)
+        cursor = page.next_cursor ?? ''
+      } while (cursor && !cursors.has(cursor) && found.size < wanted.size)
+
+      const tabs = compose$.tabs.peek()
+      closeMessageTabs(
+        tabs
+          .filter((tab) => tab.threadId === threadId && (empty || (tab.kind === 'reader' && !found.has(tab.messageId))))
+          .map((tab) => tab.id),
+      )
+      if (empty && compose$.conversationThread.peek() === threadId) closeCurrentConversation()
+      for (const [index, tab] of compose$.tabs.peek().entries()) {
+        const message = tab.kind === 'reader' ? found.get(tab.messageId) : undefined
+        if (message) compose$.tabs[index].assign({ ...readerTab(message), viewMode: tab.viewMode })
+      }
+    } catch (error) {
+      console.error('restoring tab failed', error)
+    }
+  }
 }
 
 // Open a conversation itself as a tab. The tab stores enough thread metadata to
 // render even when the current mailbox/rail selection does not contain it.
 export function openThreadTab(thread: Message) {
+  if (isNarrowWindow()) ui$.contactsOpen.set(false)
+  // The conversation shows in the mail pane, which the calendar replaces —
+  // even when its tab is the active one already, so no tab change says so.
+  ui$.calendarOpen.set(false)
   const id = `thread-${thread.thread_id}`
   const existing = compose$.tabs.get().find((tab) => tab.id === id)
   if (!existing) {
@@ -417,6 +546,7 @@ export async function openThreadTabById(
   notFoundMessage = t('compose.toast.couldNotOpenNotificationThread'),
 ) {
   if (!threadId) return
+  if (isNarrowWindow()) ui$.contactsOpen.set(false)
   // The conversation shows in the mail pane, which the calendar replaces —
   // even when its tab is the active one already, so no tab change says so.
   ui$.calendarOpen.set(false)
@@ -501,6 +631,7 @@ type ComposeSeed = Partial<ComposeDraft> & {
 }
 
 export function openComposeTab(seed?: ComposeSeed): string | undefined {
+  if (isNarrowWindow()) ui$.contactsOpen.set(false)
   const sendable = accounts$.get().filter(isSendableAccount)
   if (sendable.length === 0) return undefined
   // The composer opens in the mail pane, which the calendar replaces.
@@ -589,7 +720,8 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
   const target = pickReplyTarget(t)
   const subject = replySubject(t.subject, target)
   const accounts = accounts$.get()
-  const { to, cc } = buildReplyRecipients(target, options?.replyAll)
+  // Everyone the quick reply was already going to, when it was.
+  const { to, cc } = options?.replyAll ? buildReplyRecipients(target, true) : quickReplyAddressing(target)
   const { in_reply_to, references } = buildReplyThreading(target)
   const replyAcc = accounts.find((acc) => acc.id === t.account_id)
   // Hand off any draft already saved for this quick reply so the full editor
@@ -638,6 +770,7 @@ export function openReplyInFullEditor(options?: { replyAll?: boolean }) {
   compose$.composerAttachments.set([])
   clearQuickReplyDraftOwnership()
   compose$.quickReplyFrom.set('')
+  compose$.quickReplyAdded.set([])
   // The thread stays open behind the new tab, so the box the user comes back to
   // is a fresh quick reply — signature and all.
   seedQuickReplySignature()
@@ -682,8 +815,10 @@ export async function editAsNewMessage(message: Message) {
   }
   const rich = !!message.body_html
   const html = message.body_html ?? ''
+  const acc = accounts$.get().find((a) => a.id === message.account_id)
   const id = openComposeTab({
     accountId: message.account_id || undefined,
+    fromEmail: acc ? detectSenderFrom(message, acc) : '',
     to: message.to ?? '',
     cc: message.cc ?? '',
     showCcBcc: !!message.cc?.trim(),
@@ -696,11 +831,20 @@ export async function editAsNewMessage(message: Message) {
   })
   if (!id) return
 
-  const valid = await readComposerAttachments(message.attachments ?? [], rich ? html : '')
-  if (valid.length === 0) return
+  await fetchComposeTabAttachments(id, message.attachments ?? [], rich ? html : '')
+}
 
-  // The tab may have been edited/closed while we fetched; bail if it's gone,
-  // otherwise merge onto whatever attachments it now holds.
+// Fill a tab just opened with a message's attachments. Until they land the
+// session holds the fetch, so an Esc save can wait for them: it would otherwise
+// keep the message without its attachments, and a saved draft replaced with
+// that copy would lose them for good. The tab may have been edited or closed
+// meanwhile; bail if it's gone, otherwise merge onto what it now holds.
+async function fetchComposeTabAttachments(id: string, attachments: Attachment[], inlineHtml: string) {
+  const session = getComposeSession(id)
+  const fetch = readComposerAttachments(attachments, inlineHtml)
+  session.attachmentFetches.add(fetch)
+  const valid = await fetch.finally(() => session.attachmentFetches.delete(fetch))
+  if (valid.length === 0) return
   const tab = compose$.tabs.get().find((t) => t.id === id)
   if (!tab?.compose) return
   updateComposeDraft(id, { attachments: [...tab.compose.attachments, ...valid] })
@@ -743,22 +887,36 @@ function composeFromDraftMessage(message: Message): ComposeSeed {
   }
 }
 
+/** Whether a compose draft is the one this Drafts row holds a copy of. */
+function composeHoldsDraft(compose: ComposeDraft, draft: Message): boolean {
+  const source = compose.sourceDraft
+  return (
+    (!!draft.message_id && normalizeMessageId(compose.draftMessageId) === normalizeMessageId(draft.message_id)) ||
+    source?.messageId === draft.id ||
+    (source?.threadId === draft.thread_id && source?.folderId === draft.folder_id)
+  )
+}
+
 function activateOpenDraftCompose(draft: Message): boolean {
   const existing = compose$.tabs
     .get()
-    .find(
-      (tab) =>
-        tab.kind === 'compose' &&
-        tab.compose?.sourceDraft &&
-        (tab.compose.sourceDraft.messageId === draft.id ||
-          (!!draft.message_id &&
-            normalizeMessageId(tab.compose.draftMessageId) === normalizeMessageId(draft.message_id)) ||
-          (tab.compose.sourceDraft.threadId === draft.thread_id &&
-            tab.compose.sourceDraft.folderId === draft.folder_id)),
-    )
+    .find((tab) => tab.kind === 'compose' && !!tab.compose && composeHoldsDraft(tab.compose, draft))
   if (!existing) return false
   compose$.activeTab.set(existing.id)
   return true
+}
+
+/**
+ * Before opening a Drafts row, let this draft's Esc save finish. The row can be
+ * the copy that save is replacing, and a tab opened from it would autosave the
+ * older text over the newer. The tab comes back as it closed, as the store may
+ * not hold the new copy yet; when the save failed, the tab is already back.
+ * True when a tab now holds the draft.
+ */
+async function reopenAfterDraftSaves(draft: Message): Promise<boolean> {
+  const [saved] = await draftSavesSettled((compose) => composeHoldsDraft(compose, draft))
+  saved?.reopen()
+  return !!saved || activateOpenDraftCompose(draft)
 }
 
 export function draftShouldOpenConversation(messages: Message[], draft: Message): boolean {
@@ -774,11 +932,7 @@ async function openDraftMessageInCompose(draft: Message) {
   const id = openComposeTab(composeFromDraftMessage(draft))
   if (!id) return true
 
-  const valid = await readComposerAttachments(draft.attachments ?? [], draft.body_html ?? '')
-  if (valid.length > 0) {
-    const tab = compose$.tabs.get().find((t) => t.id === id)
-    if (tab?.compose) updateComposeDraft(id, { attachments: [...tab.compose.attachments, ...valid] })
-  }
+  await fetchComposeTabAttachments(id, draft.attachments ?? [], draft.body_html ?? '')
   return true
 }
 
@@ -796,6 +950,7 @@ export async function openDraftCompose(thread: Message) {
 
   const release = reserveOpeningDraft(thread)
   try {
+    if (await reopenAfterDraftSaves(thread)) return true
     const result = await invoke<{ messages: Message[] }>('mail.threadRead', {
       thread_id: thread.thread_id,
       limit: CONVERSATION_PAGE_SIZE,
@@ -825,6 +980,7 @@ export async function openDraftConversationOrCompose(thread: Message) {
 
   const release = reserveOpeningDraft(thread)
   try {
+    if (await reopenAfterDraftSaves(thread)) return true
     const result = await invoke<{ messages: Message[] }>('mail.threadRead', {
       thread_id: thread.thread_id,
       limit: CONVERSATION_PAGE_SIZE,
@@ -938,12 +1094,7 @@ export async function forwardMessage(message: Message) {
   })
   if (!id) return
 
-  const valid = await readComposerAttachments(message.attachments ?? [], html)
-  if (valid.length === 0) return
-
-  const tab = compose$.tabs.get().find((t) => t.id === id)
-  if (!tab?.compose) return
-  updateComposeDraft(id, { attachments: [...tab.compose.attachments, ...valid] })
+  await fetchComposeTabAttachments(id, message.attachments ?? [], html)
 }
 
 export async function readComposerAttachments(
@@ -1015,6 +1166,33 @@ export function finishClosingMessageTab(id: string) {
   }
 }
 
+// Bring a closed compose tab back as it was, or go to the tab already holding
+// that draft: it may have been reopened from Drafts in the meantime.
+export function reopenComposeTab(tab: MessageTab, compose: ComposeDraft) {
+  if (isNarrowWindow()) ui$.contactsOpen.set(false)
+  // The composer opens in the mail pane, which the calendar replaces.
+  ui$.calendarOpen.set(false)
+  const draftId = normalizeMessageId(compose.draftMessageId)
+  const open = compose$.tabs
+    .peek()
+    .find((t) => t.id === tab.id || (t.compose && normalizeMessageId(t.compose.draftMessageId) === draftId))
+  if (!open) compose$.tabs.set([...compose$.tabs.peek(), { ...tab, compose }])
+  compose$.activeTab.set(open?.id ?? tab.id)
+}
+
+// Bring back a compose tab whose last save failed. The tab is the only copy of
+// these edits, so it always comes back. If the draft was reopened from Drafts
+// meanwhile, that tab holds an older copy under the same id: this one becomes a
+// draft of its own, so neither can overwrite or discard the other.
+export function restoreComposeTabAfterFailedSave(tab: MessageTab, compose: ComposeDraft) {
+  ui$.calendarOpen.set(false)
+  const draftId = normalizeMessageId(compose.draftMessageId)
+  const held = compose$.tabs.peek().some((t) => t.compose && normalizeMessageId(t.compose.draftMessageId) === draftId)
+  const restored = held ? { ...compose, draftMessageId: newDraftMessageId(), sourceDraft: undefined } : compose
+  compose$.tabs.set([...compose$.tabs.peek(), { ...tab, compose: restored }])
+  compose$.activeTab.set(tab.id)
+}
+
 // The single close entry point used by tab buttons, hotkeys and the palette.
 // Mounted composers register their save queue here so no caller can bypass it.
 export async function closeMessageTab(id: string) {
@@ -1027,38 +1205,26 @@ export async function closeMessageTab(id: string) {
   return closeComposeSession(id, async () => {
     const remoteId = draft.draftMessageId?.startsWith('local-draft-') ? undefined : draft.draftMessageId
     finishClosingMessageTab(id)
-    try {
-      if (remoteId || draft.sourceDraft) {
-        await discardSavedDraftCopy(
-          {
-            threadId: draft.sourceDraft?.threadId ?? '',
-            messageId: draft.sourceDraft?.messageId ?? '',
-            folderId: draft.sourceDraft?.folderId ?? '',
-            accountId: draft.accountId,
-            draftMessageId: remoteId,
-            // A reply escalated out of a conversation has no draft row of its
-            // own to take the card away with it; the conversation's card stays
-            // and only its Draft badge goes.
-            replyThreadId: draft.sourceDraft ? '' : tabs[index].threadId,
-          },
-          { throwOnError: true },
-        )
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : ''
-      showToast(
-        message
-          ? `${t('composer.status.couldNotDiscardDraft')}: ${message}`
-          : t('composer.status.couldNotDiscardDraft'),
-        'error',
-      )
+    if (remoteId || draft.sourceDraft) {
+      await discardClosedDraft({
+        threadId: draft.sourceDraft?.threadId ?? '',
+        messageId: draft.sourceDraft?.messageId ?? '',
+        folderId: draft.sourceDraft?.folderId ?? '',
+        accountId: draft.accountId,
+        draftMessageId: remoteId,
+        // A reply escalated out of a conversation has no draft row of its
+        // own to take the card away with it; the conversation's card stays
+        // and only its Draft badge goes.
+        replyThreadId: draft.sourceDraft ? '' : tabs[index].threadId,
+      })
     }
   })
 }
 
-// Close several tabs at once (the tab strip's close others/left/right/all).
+// Close several tabs at once, e.g. those showing a renamed folder's mail.
 // Compose tabs are skipped: closing one discards its draft, which a bulk close
-// must never do behind the user's back.
+// must never do behind the user's back. (The tab strip's bulk close uses
+// closeMessageTabsKeepingDrafts, which saves them to Drafts instead.)
 export function closeMessageTabs(ids: string[]) {
   const wanted = new Set(ids)
   const closing = compose$.tabs
@@ -1071,10 +1237,148 @@ export function closeMessageTabs(ids: string[]) {
   if (closing.includes(active)) finishClosingMessageTab(active)
 }
 
+/**
+ * A new message (not a reply, forward or reopened draft) with no recipients,
+ * subject or attachments and nothing in its body but the signature, if any.
+ */
+export function isUnwrittenNewMessage(draft: ComposeDraft): boolean {
+  return (
+    !draft.sourceDraft &&
+    !draft.inReplyTo &&
+    !draft.quote &&
+    !draft.to.trim() &&
+    !draft.cc.trim() &&
+    !draft.bcc.trim() &&
+    !draft.subject.trim() &&
+    draft.attachments.length === 0 &&
+    isBodyBlankWithoutSignature(draft, draft.signature)
+  )
+}
+
+/**
+ * Close a compose tab but keep the message in Drafts (Esc, and the tab strip's
+ * bulk close). This works whether or not the tab's composer is mounted: the
+ * save runs from the draft the tab holds. The tab closes at once, since a
+ * Drafts server can take seconds. The last save then runs from a copy of the
+ * draft, after any save already running (which, finding the tab gone, cleans
+ * up any copy it allocated). If the save fails, the tab comes back with the
+ * error, so nothing typed is lost.
+ *
+ * A new message with nothing written in it goes through `discard` instead of
+ * filling Drafts with empty mail. Returns the save, which resolves to the
+ * saved draft (null when nothing was saved), or null when the tab can't
+ * close this way (no account, or already sending or closing).
+ */
+export function closeComposeTabKeepingDraft(
+  tabId: string,
+  discard: () => Promise<void>,
+): Promise<SavedDraft | null> | null {
+  const session = getComposeSession(tabId)
+  const closed = compose$.tabs.peek().find((t) => t.id === tabId)
+  const current = closed?.compose
+  if (!closed || !current?.accountId || session.savesStopped) return null
+  const fetches = [...session.attachmentFetches]
+  if (fetches.length === 0 && isUnwrittenNewMessage(current)) return discard().then(() => null)
+  // Stop autosaving and let whatever is already running finish first.
+  session.savesStopped = true
+  const drained = session.saveChain
+  finishClosingMessageTab(tabId)
+  const save = drained.then(async (): Promise<SavedDraft | null> => {
+    // The attachments still on their way, which the closed tab can't take in.
+    const fetched = (await Promise.all(fetches)).flat()
+    const closing = { ...current, attachments: [...current.attachments, ...fetched] }
+    try {
+      let content = composedContent(current)
+      let attachments = closing.attachments
+      if (current.rich) {
+        const prepared = await prepareInlineImages(content, attachments)
+        content = inlineRichStyles(prepared.html)
+        attachments = prepared.attachments
+      }
+      const draftMessageId = await saveComposedDraft({
+        accountId: current.accountId,
+        from: current.fromEmail,
+        to: current.to.trim(),
+        cc: current.cc.trim(),
+        bcc: current.bcc.trim(),
+        replyTo: current.replyTo.trim(),
+        subject: current.subject.trim(),
+        rich: current.rich,
+        content,
+        inReplyTo: current.inReplyTo,
+        references: current.references,
+        draftMessageId: current.draftMessageId,
+        attachments,
+        encrypt: current.encrypt,
+      })
+      return { draftMessageId, reopen: () => reopenComposeTab(closed, { ...closing, draftMessageId }) }
+    } catch (err) {
+      console.error('Saving the draft on close failed:', err)
+      // Reopened under the id the failed save was writing, so a copy that
+      // landed anyway is replaced by the next save rather than duplicated.
+      const draftMessageId = draftIdOfFailedSave(err) ?? current.draftMessageId
+      restoreComposeTabAfterFailedSave(closed, { ...closing, draftMessageId })
+      showToast(contextualErrorMessage(err, t('composer.status.draftAutosaveFailed')), 'error')
+      return null
+    }
+  })
+  trackDraftSave(save, current)
+  return save
+}
+
+/** Says where closed drafts went, with a way to bring them all back. */
+export function announceSavedDrafts(saved: SavedDraft[]) {
+  if (saved.length === 0) return
+  showUndoToast(
+    t('composer.status.savedToDrafts'),
+    () => {
+      for (const draft of saved) draft.reopen()
+    },
+    'app',
+    t('composer.actions.openDraft'),
+  )
+}
+
+/**
+ * The tab strip's close others/left/right/all. Unlike closeMessageTabs, this
+ * closes compose tabs too, keeping their messages in Drafts as Esc does (never
+ * discarding them, as the × does). One toast covers every saved draft.
+ */
+export function closeMessageTabsKeepingDrafts(ids: string[]) {
+  const wanted = new Set(ids)
+  const closing = compose$.tabs.get().filter((tab) => wanted.has(tab.id))
+  // Close the active tab last, so it falls back to a tab that stays open.
+  const active = compose$.activeTab.get()
+  const ordered = [...closing.filter((tab) => tab.id !== active), ...closing.filter((tab) => tab.id === active)]
+  const saves: Promise<SavedDraft | null>[] = []
+  for (const tab of ordered) {
+    if (tab.kind !== 'compose' || !tab.compose) {
+      finishClosingMessageTab(tab.id)
+      continue
+    }
+    // A tab already closing (its × or Esc) is left to that close.
+    if (getComposeSession(tab.id).closing) continue
+    const save = closeComposeTabKeepingDraft(tab.id, () => closeMessageTab(tab.id))
+    if (save) saves.push(save)
+  }
+  if (saves.length === 0) return
+  void Promise.all(saves).then((results) => announceSavedDrafts(results.filter((saved) => saved !== null)))
+}
+
+// Put a tab where another one sits, for reordering the strip. Either may have
+// closed during the drag, in which case the order stands.
+export function moveMessageTab(id: string, overId: string) {
+  const tabs = compose$.tabs.get()
+  const from = tabs.findIndex((tab) => tab.id === id)
+  const to = tabs.findIndex((tab) => tab.id === overId)
+  if (from === -1 || to === -1 || from === to) return
+  compose$.tabs.set(arrayMove(tabs, from, to))
+}
+
 // Reveal a message's remote content in the conversation and on any reader tab
-// already open for it. The tab needs its own copy because `resetThreadView`
-// clears the conversation's reveal map on the next thread switch while the tab
-// stays open — and an inactive tab is unmounted, so it cannot copy this itself.
+// already open for it. The tab keeps its own copy, which printing reads, and
+// which outlives the session map being cleared when an account is removed — an
+// inactive tab is unmounted, so it cannot copy this itself.
 export function revealMessageRemote(messageId: string) {
   revealRemote(messageId)
   compose$.tabs.set(

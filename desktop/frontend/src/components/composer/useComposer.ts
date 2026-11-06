@@ -17,6 +17,8 @@ import {
   updateComposeDraft,
   finishClosingMessageTab,
   composedContent,
+  closeComposeTabKeepingDraft,
+  announceSavedDrafts,
 } from '../../states/compose'
 import { compose$, newDraftMessageId } from '../../states/composeState'
 import { htmlToText } from '../../lib/html'
@@ -30,7 +32,7 @@ import {
 } from '../../lib/attachFiles'
 import { contextualErrorMessage } from '../../lib/errors'
 import { discardSavedDraftCopy } from '../../states/mailMoves'
-import { discardSentDraft } from '../../states/quickReply'
+import { discardClosedDraft, discardSentDraft } from '../../states/quickReply'
 import { pickFiles, pickImageFiles } from '../../lib/nativeFilePicker'
 import { getComposeSession, registerComposeSession } from '../../states/composeSessions'
 import { accounts$, isSendableAccount } from '../../states/accounts'
@@ -124,7 +126,7 @@ export function useComposer(tabId: string) {
   }
   const discardRemoteDraft = async (target: ComposeDraft) => {
     const remote = remoteDraftOf(target)
-    if (remote) await discardSavedDraftCopy(remote, { throwOnError: true })
+    if (remote) await discardClosedDraft(remote)
   }
 
   /**
@@ -149,6 +151,19 @@ export function useComposer(tabId: string) {
     }
   }
   const [saveError, setSaveError] = useState('')
+
+  /**
+   * Esc: close the tab but keep the message in Drafts, unlike the × and
+   * Discard (see closeComposeTabKeepingDraft). If the save lands, a toast says
+   * where the message went and can reopen the tab, as Esc is easily pressed
+   * by accident.
+   */
+  const closeKeepingDraft = async () => {
+    const save = closeComposeTabKeepingDraft(tabId, discardAndClose)
+    void save?.then((saved) => {
+      if (saved) announceSavedDrafts([saved])
+    })
+  }
   const lastImagePasteAtRef = useRef(0)
   const previousFromEmailRef = useRef(draft?.fromEmail)
   // Captured once so the editor isn't reset on every keystroke / re-render.
@@ -219,7 +234,13 @@ export function useComposer(tabId: string) {
   })
 
   useEffect(() => {
-    if (draft) registerComposeSession(tabId, discardAndClose)
+    if (!draft) return
+    registerComposeSession(tabId, discardAndClose, closeKeepingDraft)
+    // Esc needs this composer's last save, so it goes with the composer; the
+    // × still discards a tab whose composer is gone.
+    return () => {
+      if (session.closeKeepingDraft === closeKeepingDraft) session.closeKeepingDraft = undefined
+    }
   }, [draft, session, tabId])
 
   useEffect(() => {
@@ -349,7 +370,7 @@ export function useComposer(tabId: string) {
           references: current.references,
           draftMessageId,
           attachments,
-          encrypt: !!current.encrypt,
+          encrypt: current.encrypt,
         })
         // A tab closed mid-save lands here too (no latest draft): nothing will
         // adopt the id, so a freshly allocated copy has to go now.
@@ -734,7 +755,7 @@ export function useComposer(tabId: string) {
         inReplyTo: current.inReplyTo,
         references: current.references,
         attachments,
-        encrypt: !!current.encrypt,
+        encrypt: current.encrypt,
       })
       // When this tab is a reply to the open conversation, drop the sent message
       // into the thread immediately so it shows without waiting for the next sync.
@@ -751,7 +772,7 @@ export function useComposer(tabId: string) {
           content,
           references: current.references,
           attachments,
-          encrypt: !!current.encrypt,
+          encrypt: current.encrypt,
         })
       }
       // The message is out, so the tab closes now rather than after the draft
@@ -794,5 +815,6 @@ export function useComposer(tabId: string) {
     handleKeyDown,
     setLink,
     submit,
+    closeKeepingDraft,
   }
 }

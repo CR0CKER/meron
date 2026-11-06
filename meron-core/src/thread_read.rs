@@ -455,6 +455,12 @@ pub async fn read_thread_page(
             &mine,
             &ours,
         );
+        message["tags"] = json!(store::message_tags(
+            &engine.db.lock().unwrap(),
+            account,
+            &slot.folder,
+            header.uid,
+        )?);
         // A paged read answers before pruned attachment files are back. The
         // body and its `/media` URLs are the same before and after, so this is
         // what tells a client its pictures are worth asking for again. A count,
@@ -987,7 +993,7 @@ mod tests {
             &engine,
             "acc",
             vec![("INBOX".into(), 1)],
-            std::env::temp_dir(),
+            crate::parse::test_media_root(),
             Some(Box::new(move || {
                 if let Some(notify) = notify.lock().unwrap().take() {
                     let _ = notify.send(());
@@ -1006,7 +1012,7 @@ mod tests {
                     limit: Some(20),
                     for_print: false,
                     before_cursor: None,
-                    media_root: std::env::temp_dir(),
+                    media_root: crate::parse::test_media_root(),
                 },
                 None,
             )
@@ -1069,7 +1075,7 @@ mod tests {
                 limit: Some(20),
                 for_print: false,
                 before_cursor: None,
-                media_root: std::env::temp_dir(),
+                media_root: crate::parse::test_media_root(),
             },
             None,
         )
@@ -1152,7 +1158,7 @@ mod tests {
                     limit: Some(20),
                     for_print: false,
                     before_cursor: None,
-                    media_root: std::env::temp_dir(),
+                    media_root: crate::parse::test_media_root(),
                 },
                 None,
             ),
@@ -1200,7 +1206,7 @@ mod tests {
                 limit: Some(20),
                 for_print: false,
                 before_cursor: None,
-                media_root: std::env::temp_dir(),
+                media_root: crate::parse::test_media_root(),
             },
             None,
         )
@@ -1246,7 +1252,7 @@ mod tests {
                 limit: Some(1),
                 for_print: false,
                 before_cursor: None,
-                media_root: std::env::temp_dir(),
+                media_root: crate::parse::test_media_root(),
             },
             None,
         )
@@ -1267,7 +1273,7 @@ mod tests {
         let engine = crate::engine::Engine::new(Box::new(Host)).unwrap();
         let asked = std::collections::BTreeMap::from([("INBOX".to_string(), vec![1, 2])]);
         let attempted = HashSet::from(["INBOX".to_string()]);
-        let root = std::env::temp_dir();
+        let root = crate::parse::test_media_root();
         let cached = Message {
             message_id: "cached-1".into(),
             body: "Cached text".into(),

@@ -170,6 +170,8 @@ internal class MeronMobileState(
     var blockingMailboxLoadSlow by mutableStateOf(false)
     var selectedMailThreadIds by mutableStateOf(emptySet<String>())
     var selectedMailMoveThread by mutableStateOf<ThreadSummary?>(null)
+    var selectedTagThread by mutableStateOf<ThreadSummary?>(null)
+    var showTagsDialog by mutableStateOf(false)
 
     // Set while the "empty trash/junk" confirmation is on screen; the delete only
     // runs if the user confirms.
@@ -181,6 +183,9 @@ internal class MeronMobileState(
     // show a loading indicator instead of an empty state on cold start.
     var initialThreadsLoaded by mutableStateOf(false)
     var initialAccountsLoaded by mutableStateOf(false)
+
+    /** The core is upgrading its store, which holds up every other command. */
+    var coreMigrating by mutableStateOf(false)
     var mailboxCursor by mutableStateOf("")
     var mailboxAccountCursors by mutableStateOf(emptyMap<String, String>())
 
@@ -441,7 +446,7 @@ internal class MeronMobileState(
         get() = screenState
         set(value) {
             screenState = value
-            if (value == Screen.Mail || value == Screen.Kanban || value == Screen.Tasks || value == Screen.Calendar) {
+            if (value == Screen.Mail || value == Screen.Kanban || value == Screen.Tasks || value == Screen.Calendar || value == Screen.Contacts) {
                 saveLastTopScreen(prefs, value)
             }
         }

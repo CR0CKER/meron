@@ -231,7 +231,14 @@ fn thread_cards_json_keyed(
     let mut senders: HashMap<(String, String), Vec<store::CardSender>> = HashMap::new();
     // And which files it carries, which the page's headers cannot say.
     let mut files: HashMap<(String, String), Vec<store::CardFile>> = HashMap::new();
+    // Same for its tags, which any message of the thread may carry.
+    let mut tags: HashMap<(String, String), Vec<String>> = HashMap::new();
     for (folder, keys) in keys_by_folder {
+        tags.extend(
+            store::card_tags(conn, account_id, folder, &keys)?
+                .into_iter()
+                .map(|(key, list)| ((folder.to_string(), key), list)),
+        );
         files.extend(
             store::card_attachments(conn, account_id, folder, &keys)?
                 .into_iter()
@@ -306,6 +313,10 @@ fn thread_cards_json_keyed(
                 .get(&(folder.to_string(), card.thread_key.clone()))
                 .map(Vec::as_slice)
                 .unwrap_or_default();
+            let tags = tags
+                .get(&(folder.to_string(), card.thread_key.clone()))
+                .map(Vec::as_slice)
+                .unwrap_or_default();
             let folder_role = store::folder_role(conn, account_id, folder)?;
             let thread_id = format_thread_id(account_id, folder, &card.thread_key);
             let original_thread_id = card
@@ -332,6 +343,7 @@ fn thread_cards_json_keyed(
                 "unread_count": card.unread_count,
                 "message_count": message_count,
                 "starred": card.header.starred,
+                "tags": tags,
                 "has_draft": card.has_draft,
                 "has_attachments": !files.is_empty(),
                 "files": files,
@@ -704,6 +716,48 @@ mod tests {
 
         let both = starred_thread_cards(&conn, 2).unwrap();
         assert_eq!(both.len(), 2, "{both:?}");
+    }
+
+    // A sender can deliver one message twice to the same folder (GitHub sends a
+    // notification once per reason). The reader shows it once, so the card read
+    // off the folder's page must count it once too, not floor the cached tally
+    // with an unfolded page.
+    #[test]
+    fn a_message_delivered_twice_to_one_folder_counts_once_on_its_card() {
+        let conn = Connection::open_in_memory().unwrap();
+        store::run_migrations(&conn).unwrap();
+        store::ensure_folder(&conn, "me@example.com", "INBOX").unwrap();
+        let delivery = |uid: u32, date: i64| MessageHeader {
+            uid,
+            subject: "Issue".to_string(),
+            date,
+            thread_key: "gmthrid:1".to_string(),
+            message_id: "issue@example.com".to_string(),
+            ..Default::default()
+        };
+        store::upsert_messages(
+            &conn,
+            "me@example.com",
+            "INBOX",
+            &[delivery(1, 100), delivery(2, 105)],
+        )
+        .unwrap();
+
+        let (page, _) = store::get_recent_page(
+            &conn,
+            "me@example.com",
+            "INBOX",
+            50,
+            None,
+            store::RecentFilter::default(),
+        )
+        .unwrap();
+        assert_eq!(page.len(), 2);
+        let cards =
+            thread_cards_json(&conn, "me@example.com", "INBOX", page, &HashSet::new()).unwrap();
+
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0]["message_count"], 1);
     }
 
     // A search page is a slice of the merged mailbox+Sent results. When the

@@ -29,6 +29,7 @@ import type { Account, Message } from '../../types'
 import { targetWithin, useDismissOnOutside } from '../menu/useDismissOnOutside'
 import { MessageContextMenu } from '../chat/MessageContextMenu'
 import { ThreadMoveCopyItems } from './ThreadMoveCopyItems'
+import { ThreadTagItem } from './ThreadTagItem'
 
 export type ThreadMenuState =
   | {
@@ -341,6 +342,7 @@ export function ThreadContextMenu({
           void starThread(threadId, starred).then(() => after(action, threadId))
         }}
       />
+      <ThreadTagItem key={menu.threadId} threadId={menu.threadId} close={close} />
       <MenuItem
         icon={<MessageSquare size={13} className="text-secondary" />}
         label={t('threads.actions.openInNewTab')}

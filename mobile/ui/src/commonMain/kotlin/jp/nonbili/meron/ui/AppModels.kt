@@ -6,13 +6,14 @@ import jp.nonbili.meron.shared.FolderSummary
 import jp.nonbili.meron.shared.ThreadReadPage
 import jp.nonbili.meron.shared.ThreadSummary
 
-internal enum class Screen { Mail, Kanban, Tasks, Calendar, Thread, Compose, AddAccount, Settings }
+internal enum class Screen { Mail, Kanban, Tasks, Calendar, Contacts, Thread, Compose, AddAccount, Settings }
 
 internal object AppRoutes {
     const val Mail = "mail"
     const val Kanban = "kanban"
     const val Tasks = "tasks"
     const val Calendar = "calendar"
+    const val Contacts = "contacts"
     const val Compose = "compose"
     const val AddAccount = "add-account"
     const val Settings = "settings"
@@ -26,6 +27,7 @@ internal fun Screen.route(): String =
         Screen.Kanban -> AppRoutes.Kanban
         Screen.Tasks -> AppRoutes.Tasks
         Screen.Calendar -> AppRoutes.Calendar
+        Screen.Contacts -> AppRoutes.Contacts
         Screen.Thread -> AppRoutes.Mail
         Screen.Compose -> AppRoutes.Compose
         Screen.AddAccount -> AppRoutes.AddAccount
@@ -38,6 +40,7 @@ internal fun appRouteToScreen(route: String?): Screen? =
         AppRoutes.Kanban -> Screen.Kanban
         AppRoutes.Tasks -> Screen.Tasks
         AppRoutes.Calendar -> Screen.Calendar
+        AppRoutes.Contacts -> Screen.Contacts
         AppRoutes.Compose -> Screen.Compose
         AppRoutes.AddAccount -> Screen.AddAccount
         AppRoutes.Settings -> Screen.Settings
@@ -233,6 +236,20 @@ internal data class KanbanColumnSpec(
     /** Set on a saved search column: it always lists this folder's matches. */
     val query: String = "",
 )
+
+/** The tag a column lists, when its saved search is exactly one `tag:` term. */
+internal fun kanbanColumnTag(column: KanbanColumnSpec): String? {
+    // The unified Starred view filters its own list: a tag alone can't join it.
+    if (isUnifiedStarredColumn(column)) return null
+    return Regex("""^tag:([^\s"]+)$""")
+        .find(column.query)
+        ?.groupValues
+        ?.get(1)
+        ?.lowercase()
+}
+
+/** Whether a column's saved search uses tags at all, alone or among other terms. */
+internal fun kanbanColumnReadsTags(column: KanbanColumnSpec): Boolean = Regex("""(^|\s)tag:\S""", RegexOption.IGNORE_CASE).containsMatchIn(column.query)
 
 /** A Trash or Junk folder awaiting "empty folder" confirmation. [column] is set
  *  when the action came from a Kanban column, so that column is refreshed after. */

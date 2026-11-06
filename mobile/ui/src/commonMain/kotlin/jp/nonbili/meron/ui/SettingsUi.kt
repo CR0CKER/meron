@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatSize
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.UnfoldMore
@@ -103,6 +105,8 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun SettingsScreen(
+    rulesPage: @Composable (Modifier, (RuleEditorBar?) -> Unit) -> Unit,
+    onOpenTags: () -> Unit,
     onBack: () -> Unit,
     initialGeneral: Boolean,
     onConsumeInitialGeneral: () -> Unit,
@@ -228,11 +232,14 @@ internal fun SettingsScreen(
     var selectedSettingsBoardId by remember { mutableStateOf<String?>(null) }
     var focusAccountProxy by remember { mutableStateOf(false) }
     var directOpenRoute by remember { mutableStateOf<String?>(null) }
+    // An open rule takes over the Rules page, and back closes it first.
+    var ruleEditor by remember { mutableStateOf<RuleEditorBar?>(null) }
     val page =
         when (settingsBackStackEntry?.destination?.route ?: SettingsRoutes.Root) {
             SettingsRoutes.General -> SettingsPage.General
             SettingsRoutes.Messages -> SettingsPage.Messages
             SettingsRoutes.Composer -> SettingsPage.Composer
+            SettingsRoutes.Rules -> SettingsPage.Rules
             SettingsRoutes.Account -> selectedSettingsAccountId?.let { SettingsPage.AccountDetail(it) } ?: SettingsPage.Root
             SettingsRoutes.AccountWallpaper -> selectedSettingsAccountId?.let { SettingsPage.AccountWallpaper(it) } ?: SettingsPage.Root
             SettingsRoutes.KanbanBoard -> selectedSettingsBoardId?.let { SettingsPage.KanbanBoardDetail(it) } ?: SettingsPage.Root
@@ -287,7 +294,10 @@ internal fun SettingsScreen(
         )
     }
     val handleBack: () -> Unit = {
-        if (settingsBackStackEntry?.destination?.route == directOpenRoute) {
+        val editor = ruleEditor
+        if (page == SettingsPage.Rules && editor != null) {
+            editor.close()
+        } else if (settingsBackStackEntry?.destination?.route == directOpenRoute) {
             directOpenRoute = null
             onBack()
         } else if (!settingsNavController.popBackStack()) {
@@ -305,6 +315,7 @@ internal fun SettingsScreen(
                             SettingsPage.General -> tr("settings.sections.general")
                             SettingsPage.Messages -> tr("settings.sections.messages")
                             SettingsPage.Composer -> tr("settings.sections.composer")
+                            SettingsPage.Rules -> ruleEditor?.title ?: tr("rules.title")
                             is SettingsPage.AccountDetail -> tr("settings.account.account")
                             is SettingsPage.AccountWallpaper -> tr("settings.account.chatBackground")
                             is SettingsPage.KanbanBoardDetail -> tr("kanban.board.label")
@@ -404,8 +415,13 @@ internal fun SettingsScreen(
                     onToggleReaderBottomActions = onToggleReaderBottomActions,
                     remoteImageSenderCount = remoteImageSenders.size,
                     onOpenRemoteSenders = { settingsNavController.navigate(SettingsRoutes.RemoteSenders) },
+                    onOpenTags = onOpenTags,
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+
+            composable(SettingsRoutes.Rules) {
+                rulesPage(Modifier.fillMaxSize()) { ruleEditor = it }
             }
 
             composable(SettingsRoutes.Composer) {
@@ -622,6 +638,14 @@ internal fun SettingsScreen(
                             onClick = { settingsNavController.navigate(SettingsRoutes.Composer) },
                         )
                     }
+                    item {
+                        SettingsRow(
+                            icon = Icons.Filled.FilterList,
+                            title = tr("rules.title"),
+                            subtitle = null,
+                            onClick = { settingsNavController.navigate(SettingsRoutes.Rules) },
+                        )
+                    }
                     item { SettingsSectionLabel(tr("settings.sections.kanbanBoards")) }
                     items(kanbanBoards, key = { it.id }) { board ->
                         SettingsRow(
@@ -759,6 +783,8 @@ private sealed class SettingsPage {
 
     data object Composer : SettingsPage()
 
+    data object Rules : SettingsPage()
+
     data object RemoteSenders : SettingsPage()
 
     data object Theme : SettingsPage()
@@ -787,6 +813,7 @@ private object SettingsRoutes {
     const val General = "settings/general"
     const val Messages = "settings/messages"
     const val Composer = "settings/composer"
+    const val Rules = "settings/rules"
     const val Account = "settings/account"
     const val AccountWallpaper = "settings/account-wallpaper"
     const val KanbanBoard = "settings/kanban-board"
@@ -1116,6 +1143,7 @@ internal fun SettingsMessagesPage(
     onToggleReaderBottomActions: () -> Unit,
     remoteImageSenderCount: Int,
     onOpenRemoteSenders: () -> Unit,
+    onOpenTags: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -1181,6 +1209,16 @@ internal fun SettingsMessagesPage(
                 hint = tr("settings.appearance.readerBottomActionsHint"),
                 checked = readerBottomActions,
                 onToggle = onToggleReaderBottomActions,
+            )
+        }
+
+        item { SettingsSectionLabel(tr("tags.title")) }
+        item {
+            SettingsRow(
+                icon = Icons.Filled.Sell,
+                title = tr("tags.title"),
+                hint = tr("tags.manage.hint"),
+                onClick = onOpenTags,
             )
         }
 
@@ -1409,12 +1447,14 @@ internal fun SettingsToggleRow(
     subtitle: String? = null,
     hint: String? = null,
     checked: Boolean,
+    /** Shown in place of [icon], such as an account's avatar. */
+    leading: (@Composable () -> Unit)? = null,
     onToggle: () -> Unit,
 ) {
     ListItem(
         headlineContent = { SettingsHeadline(title = title, hint = hint) },
         supportingContent = subtitle?.let { { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) } },
-        leadingContent = { Icon(icon, contentDescription = null) },
+        leadingContent = leading ?: { Icon(icon, contentDescription = null) },
         trailingContent = {
             Switch(
                 checked = checked,

@@ -362,6 +362,8 @@ fun parseThreadListPage(responseJson: String): ThreadListPage {
                 sendersTruncated =
                     item.jsonObjectEntries().firstOrNull { it.first == "senders_truncated" }?.second == "true",
                 starred = item.findJsonBooleanProperty("starred") ?: false,
+                // Top-level key, like senders: subjects are sender-written text.
+                tags = item.topLevelStringArray("tags"),
                 hasStarredItems = item.findJsonBooleanProperty("has_starred_items") ?: false,
                 hasDraft = item.findJsonBooleanProperty("has_draft") ?: false,
                 hasAttachments = item.jsonObjectEntries().firstOrNull { it.first == "has_attachments" }?.second == "true",
@@ -394,6 +396,9 @@ fun parseThreadListPage(responseJson: String): ThreadListPage {
 }
 
 fun parseThreadListResponse(responseJson: String): List<ThreadSummary> = parseThreadListPage(responseJson).threads
+
+/** Contact history uses the mailbox card shape and an opaque paging cursor. */
+fun parseContactThreadsPage(responseJson: String): ThreadListPage = parseThreadListPage(responseJson)
 
 data class ThreadReadPage(
     val messages: List<MessageBody>,
@@ -714,6 +719,7 @@ fun parseSearchFieldsResponse(responseJson: String): SearchFields =
         from = responseJson.findJsonStringProperty("from").orEmpty(),
         to = responseJson.findJsonStringProperty("to").orEmpty(),
         subject = responseJson.findJsonStringProperty("subject").orEmpty(),
+        tags = responseJson.findJsonStringProperty("tags").orEmpty(),
         words = responseJson.findJsonStringProperty("words").orEmpty(),
         after = responseJson.findJsonStringProperty("after").orEmpty(),
         before = responseJson.findJsonStringProperty("before").orEmpty(),
@@ -751,6 +757,103 @@ fun parseStorageUsageResponse(responseJson: String): StorageUsage =
         cacheBytes = responseJson.findJsonLongProperty("cacheBytes") ?: 0,
         dbBytes = responseJson.findJsonLongProperty("dbBytes") ?: 0,
     )
+
+/** The tags a `mail.setTags` answer says the thread now carries. */
+fun parseSetTagsResponse(responseJson: String): List<String> = responseJson.topLevelStringArray("tags")
+
+/** Every tag in use, as `mail.tagList` answers, most used first. */
+fun parseTagListResponse(responseJson: String): List<String> = parseTagCountsResponse(responseJson).map { it.tag }
+
+data class TagCount(
+    val tag: String,
+    val count: Long,
+)
+
+/** Every tag in use and how many messages carry it, as `mail.tagList` answers, most used first. */
+fun parseTagCountsResponse(responseJson: String): List<TagCount> =
+    responseJson
+        .jsonObjectEntries()
+        .firstOrNull { it.first == "tags" }
+        ?.second
+        ?.takeIf { it.startsWith("[") }
+        ?.jsonArrayElements()
+        ?.mapNotNull { entry ->
+            entry.findJsonStringProperty("tag")?.let { TagCount(it, entry.findJsonLongProperty("count") ?: 0) }
+        }?.sortedByDescending { it.count }
+        .orEmpty()
+
+/** The name a `mail.replaceTag` answer kept: null after a delete. */
+fun parseReplaceTagResponse(responseJson: String): String? = responseJson.findJsonStringProperty("tag")
+
+/** The saved searches sent with a `mail.replaceTag`, in order, as they now read. */
+fun parseReplacedQueries(responseJson: String): List<String> = responseJson.topLevelStringArray("queries")
+
+/** The rules a `mail.rules` or `mail.setRules` answer lists. */
+fun parseRulesResponse(responseJson: String): List<Rule> =
+    responseJson
+        .jsonObjectEntries()
+        .firstOrNull { it.first == "rules" }
+        ?.second
+        ?.takeIf { it.startsWith("[") }
+        ?.jsonArrayElements()
+        ?.map { rule ->
+            Rule(
+                id = rule.findJsonStringProperty("id").orEmpty(),
+                query = rule.findJsonStringProperty("query").orEmpty(),
+                tags = rule.topLevelStringArray("tags"),
+                trigger = rule.findJsonStringProperty("trigger") ?: "arrival",
+                delaySeconds = rule.findJsonLongProperty("delay_seconds") ?: 0,
+                markRead = rule.findJsonBooleanProperty("mark_read") ?: false,
+                star = rule.findJsonBooleanProperty("star") ?: false,
+                moveTo = rule.findJsonStringProperty("move_to").orEmpty(),
+                folder = rule.findJsonStringProperty("folder").orEmpty(),
+                folderAccount = rule.findJsonStringProperty("folder_account").orEmpty(),
+                accounts = rule.topLevelStringArray("accounts"),
+                copyFolder = rule.findJsonStringProperty("copy_folder").orEmpty(),
+                copyAccount = rule.findJsonStringProperty("copy_account").orEmpty(),
+                disabled = rule.findJsonBooleanProperty("disabled") ?: false,
+            )
+        }.orEmpty()
+
+fun parseRuleStatusResponse(responseJson: String): RuleStatus {
+    val entries = responseJson.jsonObjectEntries()
+
+    fun property(name: String) = entries.firstOrNull { it.first == name }?.second
+    return RuleStatus(
+        log =
+            property("log")
+                ?.takeIf { it.startsWith("[") }
+                ?.jsonArrayElements()
+                ?.map { entry ->
+                    RuleLogEntry(
+                        at = entry.findJsonLongProperty("at") ?: 0,
+                        ruleId = entry.findJsonStringProperty("rule_id").orEmpty(),
+                        subject = entry.findJsonStringProperty("subject").orEmpty(),
+                        count = entry.findJsonLongProperty("count")?.toInt() ?: 1,
+                        failed = entry.findJsonBooleanProperty("failed") ?: false,
+                        detail = entry.findJsonStringProperty("detail").orEmpty(),
+                    )
+                }.orEmpty(),
+        running =
+            property("running")
+                ?.takeIf { it.startsWith("{") }
+                ?.jsonObjectEntries()
+                ?.associate { (id, left) -> id to (left.toIntOrNull() ?: 0) }
+                .orEmpty(),
+    )
+}
+
+/** The `count` answering `mail.ruleMatches` and `mail.runRule`. */
+fun parseRuleCountResponse(responseJson: String): Int = responseJson.findJsonLongProperty("count")?.toInt() ?: 0
+
+private fun String.topLevelStringArray(name: String): List<String> =
+    jsonObjectEntries()
+        .firstOrNull { it.first == name }
+        ?.second
+        ?.takeIf { it.startsWith("[") }
+        ?.jsonArrayElements()
+        ?.mapNotNull { element -> "{\"value\":$element}".findJsonStringProperty("value") }
+        .orEmpty()
 
 private fun String.findJsonArrayProperty(name: String): String? {
     val key = name.jsonString()

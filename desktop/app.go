@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "meron/internal/desktopruntime"
 )
 
 type App struct {
@@ -42,8 +42,16 @@ type App struct {
 	windowSaveTimer *time.Timer
 	windowStatePath string
 
-	// At most one bulk .eml export runs at a time; emlExportCancel is non-nil
-	// for as long as it does.
+	// Document windows have their own lifecycle and never use the main window's
+	// close-to-tray or persisted geometry.
+	emlStartOnce sync.Once
+	emlOpenMu    sync.Mutex
+	emlMu        sync.Mutex
+	emlReaders   map[string]*emlReader
+	emlReady     bool
+	pendingEml   []string
+
+	// At most one bulk .eml export runs at a time.
 	emlExportMu     sync.Mutex
 	emlExportCancel context.CancelFunc
 
@@ -138,6 +146,7 @@ func (a *App) Startup(ctx context.Context) {
 	} else {
 		a.logf("core started")
 	}
+	_ = os.RemoveAll(filepath.Join(mediaDir(), "_eml"))
 	a.startMCP()
 	a.setupNotificationListener()
 	go a.runReminders()
@@ -163,8 +172,9 @@ func (a *App) onSystemResumed() {
 // launched again, so a window closed to the tray is found again from the app
 // launcher instead of the launch appearing to do nothing.
 func (a *App) HandleSecondInstanceLaunch(args []string) {
+	eml := a.openEmlArguments(args)
 	urls := mailtoURLs(args)
-	if len(urls) == 0 {
+	if len(urls) == 0 && !eml {
 		a.showMainWindow()
 		return
 	}
@@ -184,6 +194,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	// Decrypted attachments exist only while Meron runs (audit M2).
 	wipeSecureMedia()
+	_ = os.RemoveAll(filepath.Join(mediaDir(), "_eml"))
 	a.closeNotificationListener()
 	a.closeResumeListener()
 	a.closeAppearanceListener()
@@ -233,12 +244,25 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.pickFiles(payload, true, true)
 	case "system.readDroppedFiles":
 		return a.readDroppedFilesCommand(payload)
+	case "eml.open", "eml.get", "eml.close", "eml.saveAttachment":
+		return a.emlCommand(command, payload)
 	case "mailto.consumePending":
 		return a.consumePendingMailto(), nil
+	case "core.status":
+		return map[string]any{"migrating": a.sidecar != nil && a.sidecar.Migrating()}, nil
 	case "app.prefsGet":
 		return a.appPrefsGet(payload)
 	case "app.prefsSet":
 		return a.appPrefsSet(payload)
+	case "contacts.noteGet", "contacts.noteSet":
+		if a.sidecar == nil || !a.sidecar.Started() {
+			return nil, a.engineUnavailable()
+		}
+		method := "app.prefsGet"
+		if command == "contacts.noteSet" {
+			method = "app.prefsSet"
+		}
+		return a.sidecar.Call(method, payload)
 	case "tray.setUnread":
 		return a.traySetUnread(payload)
 	case "tray.getStyle":
@@ -389,6 +413,15 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.sidecar.Call("identity.allocate", payload)
 	case "mail.suggestContacts":
 		return a.suggestContacts(payload)
+	case "mail.contactThreads":
+		if a.sidecar == nil || !a.sidecar.Started() {
+			return nil, a.engineUnavailable()
+		}
+		res, err := a.sidecar.Call("contacts.threads", payload)
+		if err != nil {
+			return nil, err
+		}
+		return threadsJSON("", "INBOX", res), nil
 	case "mail.threadRead":
 		return a.threadRead(payload)
 	case "mail.send":
@@ -401,6 +434,24 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.markRead(payload)
 	case "mail.markStarred":
 		return a.markStarred(payload)
+	case "mail.setTags":
+		return a.setTags(payload)
+	case "mail.tagList":
+		return a.tagList()
+	case "mail.replaceTag":
+		return a.replaceTag(payload)
+	case "mail.rules":
+		return a.rules()
+	case "mail.setRules":
+		return a.setRules(payload)
+	case "mail.ruleMatches":
+		return a.ruleMatches(payload)
+	case "mail.runRule":
+		return a.runRule(payload)
+	case "mail.ruleStatus":
+		return a.ruleStatus()
+	case "mail.stopRule":
+		return a.stopRule(payload)
 	case "mail.markAllRead":
 		return a.markAllRead(payload)
 	case "mail.emptyFolder":
@@ -417,6 +468,8 @@ func (a *App) invoke(command string, payload map[string]any) (any, error) {
 		return a.mailCopy(payload)
 	case "mail.saveAttachment":
 		return a.saveAttachment(payload)
+	case "mail.cacheRemoteImage":
+		return a.cacheRemoteImage(payload)
 	case "mail.openAttachment":
 		return a.openAttachment(payload)
 	case "mail.print":

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -88,6 +89,13 @@ import kotlinx.coroutines.withContext
 // the unified inbox plus a few accounts' folders; beyond that the oldest are
 // dropped rather than held for the lifetime of the process.
 private const val MAX_REMEMBERED_MAIL_LIST_STATES = 12
+
+// Contacts can be restored as the root. Its history return target is Contacts,
+// not the destination to leave the directory for when no earlier route exists.
+internal fun rootBackDestination(
+    screen: Screen,
+    threadReturnScreen: Screen,
+): Screen = if (screen == Screen.Contacts) Screen.Mail else threadReturnScreen
 
 internal fun rememberedMailListKeysToEvict(
     existingKeys: List<MailboxCacheKey>,
@@ -257,6 +265,11 @@ internal fun KanbanRouteContent(
                         screen = Screen.Settings
                         scope.launch { drawerState.close() }
                     },
+                    onOpenContacts = {
+                        previousTopScreen = screen
+                        screen = Screen.Contacts
+                        scope.launch { drawerState.close() }
+                    },
                     onShowAbout = {
                         showAboutDialog = true
                         scope.launch { drawerState.close() }
@@ -388,6 +401,16 @@ internal fun KanbanRouteContent(
                                                 ?.takeUnless { threadIdIsRss(it.id) }
                                         if (singleSelectedMailThread != null) {
                                             HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                                            if (!threadIdIsRss(singleSelectedMailThread.id)) {
+                                                DropdownMenuItem(
+                                                    text = { Text(tr("tags.title")) },
+                                                    leadingIcon = { Icon(Icons.Filled.Sell, contentDescription = null) },
+                                                    onClick = {
+                                                        mailSelectionMenuOpen = false
+                                                        selectedTagThread = singleSelectedMailThread
+                                                    },
+                                                )
+                                            }
                                             DropdownMenuItem(
                                                 text = { Text(tr("threads.actions.moveTo")) },
                                                 leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
@@ -743,6 +766,11 @@ internal fun MailRouteContent(
                         screen = Screen.Settings
                         scope.launch { drawerState.close() }
                     },
+                    onOpenContacts = {
+                        previousTopScreen = screen
+                        screen = Screen.Contacts
+                        scope.launch { drawerState.close() }
+                    },
                     onShowAbout = {
                         showAboutDialog = true
                         scope.launch { drawerState.close() }
@@ -921,6 +949,16 @@ internal fun MailRouteContent(
                                                 ?.takeUnless { threadIdIsRss(it.id) }
                                         if (singleSelectedMailThread != null) {
                                             HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                                            if (!threadIdIsRss(singleSelectedMailThread.id)) {
+                                                DropdownMenuItem(
+                                                    text = { Text(tr("tags.title")) },
+                                                    leadingIcon = { Icon(Icons.Filled.Sell, contentDescription = null) },
+                                                    onClick = {
+                                                        mailSelectionMenuOpen = false
+                                                        selectedTagThread = singleSelectedMailThread
+                                                    },
+                                                )
+                                            }
                                             DropdownMenuItem(
                                                 text = { Text(tr("threads.actions.moveTo")) },
                                                 leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
@@ -1490,7 +1528,9 @@ internal fun MailRouteContent(
                     ) {
                         when {
                             !initialAccountsLoaded || accountsLoading -> {
-                                LoadingState(tr("mobile.status.loadingInbox"))
+                                LoadingState(
+                                    tr(if (coreMigrating) "connectivity.upgradingStore" else "mobile.status.loadingInbox"),
+                                )
                             }
 
                             coreAccounts.isEmpty() -> {

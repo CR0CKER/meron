@@ -2,11 +2,15 @@ import { StrictMode, useEffect, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './lib/i18n'
 import App from './App'
+import { EmlReader } from './EmlReader'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { windowChromeReady } from './lib/windowChrome'
 import { invoke } from './lib/bridge'
 import { usesNativeScrollbars } from './lib/nativeScrollbars'
 import './index.css'
+import { installDesktopRuntime } from './lib/wails'
+
+installDesktopRuntime()
 
 document.documentElement.classList.toggle('native-scrollbars', usesNativeScrollbars(navigator.userAgent))
 
@@ -36,14 +40,19 @@ function StartupWindow({ children }: { children: ReactNode }) {
 
 // Rendering before the title bar is known would draw the system-title-bar
 // layout first and then move everything when Meron's own title bar arrives.
-void windowChromeReady().then(() => {
+const emlSession = new URLSearchParams(window.location.search).get('eml')
+void (emlSession ? Promise.resolve() : windowChromeReady()).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <StartupWindow>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </StartupWindow>
+      <ErrorBoundary>
+        {emlSession ? (
+          <EmlReader session={emlSession} />
+        ) : (
+          <StartupWindow>
+            <App />
+          </StartupWindow>
+        )}
+      </ErrorBoundary>
     </StrictMode>,
   )
 })
