@@ -331,6 +331,12 @@ pub fn import_own(
         keys::Unlock::NeedsPassphrase => Ok(ImportOwn::NeedsPassphrase { key: info }),
         keys::Unlock::OnCard => Ok(ImportOwn::OnCard),
         keys::Unlock::Ok(secret) => {
+            // Meron signs with the primary key; a key whose primary can't sign
+            // (offline primary + signing subkey) would make signatures strict
+            // verifiers reject, so refuse it rather than sign invalid mail (L1).
+            if !keys::primary_can_sign(&secret.to_public_key()) {
+                bail!("this key's primary key cannot make signatures; Meron signs with the primary key, so this key can't be used");
+            }
             store_default_key(conn, account_id, &secret)?;
             reload(conn)?;
             let lower: Vec<String> = account_addrs.iter().map(|a| a.to_ascii_lowercase()).collect();

@@ -223,11 +223,17 @@ pub fn unlock(mut key: SignedSecretKey, passphrase: Option<&str>) -> Result<Unlo
 /// ("gnu-dummy" or "divert-to-card"). rPGP keeps it as an encrypted part it
 /// can never open, which looks like a wrong passphrase unless detected here.
 fn is_stub(key: &SignedSecretKey) -> bool {
-    use pgp::types::SecretParams;
-    match key.primary_key.secret_params() {
-        SecretParams::Encrypted(enc) => format!("{:?}", enc.string_to_key_params()).contains("Private"),
-        SecretParams::Plain(_) => false,
-    }
+    use pgp::types::{S2kParams, SecretParams, StringToKey};
+    let SecretParams::Encrypted(enc) = key.primary_key.secret_params() else {
+        return false;
+    };
+    // GnuPG's gnu-dummy / divert-to-card uses a Private (100-110) S2K type.
+    // Match the parsed S2K structurally rather than its debug string (audit G5).
+    let s2k = match enc.string_to_key_params() {
+        S2kParams::Cfb { s2k, .. } | S2kParams::MalleableCfb { s2k, .. } | S2kParams::Aead { s2k, .. } => s2k,
+        S2kParams::Unprotected | S2kParams::LegacyCfb { .. } => return false,
+    };
+    matches!(s2k, StringToKey::Private { .. })
 }
 
 /// Signs a nonce with every signing-capable secret part and verifies it with
@@ -364,6 +370,15 @@ fn self_signatures(key: &SignedPublicKey) -> impl Iterator<Item = &Signature> {
             .filter(move |s| s.verify_certification(&key.primary_key, pgp::types::Tag::UserId, &u.id).is_ok())
     });
     direct.chain(certs)
+}
+
+/// Whether the key's primary is flagged to make data signatures, read from its
+/// newest verified self-signature. Meron signs with the primary key, so a key
+/// whose primary lacks this flag (an offline-primary + signing-subkey setup)
+/// would produce signatures strict verifiers reject; such a key is refused on
+/// import rather than used to sign silently-invalid mail (audit L1).
+pub fn primary_can_sign(key: &SignedPublicKey) -> bool {
+    newest(self_signatures(key)).is_some_and(|s| s.key_flags().sign())
 }
 
 /// When the primary key expires, from its newest valid user-ID binding
@@ -907,6 +922,49 @@ pub(crate) mod tests {
         assert!(real_expiry.is_some(), "baseline: expired-public has a real expiry");
         let spiked = forge_user_sig_by(&mallory, &expired, 2_000_000_000, false);
         assert_eq!(primary_expiry(&spiked), real_expiry, "a forged signature must not change the expiry");
+    }
+
+    /// A user-ID self-certification of `secret`'s own primary, signed by it,
+    /// carrying key flags with or without the sign capability, created now so
+    /// it is the newest self-signature. Lets a test make a key whose primary
+    /// can or cannot sign (audit L1).
+    fn self_cert_with_sign_flag(secret: &SignedSecretKey, sign: bool) -> Signature {
+        use pgp::packet::{KeyFlags, SignatureConfig, SignatureType, Subpacket, SubpacketData};
+        use pgp::types::Timestamp;
+        let mut flags = KeyFlags::default();
+        flags.set_certify(true);
+        flags.set_encrypt_comms(true);
+        flags.set_encrypt_storage(true);
+        flags.set_sign(sign);
+        let pubkey = secret.to_public_key();
+        let user = &pubkey.details.users[0];
+        let mut config = SignatureConfig::v4(SignatureType::CertPositive, secret.primary_key.algorithm(), HashAlgorithm::Sha256);
+        config.hashed_subpackets = vec![
+            Subpacket::critical(SubpacketData::SignatureCreationTime(Timestamp::now())).unwrap(),
+            Subpacket::regular(SubpacketData::IssuerFingerprint(secret.primary_key.fingerprint())).unwrap(),
+            Subpacket::regular(SubpacketData::KeyFlags(flags)).unwrap(),
+        ];
+        config
+            .sign_certification(&secret.primary_key, &pubkey.primary_key, &Password::empty(), pgp::types::Tag::UserId, &user.id)
+            .unwrap()
+    }
+
+    // L1: Meron signs with the primary key, so a key whose primary is not
+    // flagged to sign (an offline-primary + signing-subkey setup) must be
+    // detected — signing with it would make signatures strict verifiers reject.
+    #[test]
+    fn primary_can_sign_reads_the_newest_self_signature() {
+        let secret = secret("alice-secret.asc");
+        // Alice's generated key signs.
+        assert!(primary_can_sign(&secret.to_public_key()));
+
+        let mut cannot = secret.to_public_key();
+        cannot.details.users[0].signatures.push(self_cert_with_sign_flag(&secret, false));
+        assert!(!primary_can_sign(&cannot), "a newer self-sig without the sign flag is respected");
+
+        let mut still_can = secret.to_public_key();
+        still_can.details.users[0].signatures.push(self_cert_with_sign_flag(&secret, true));
+        assert!(primary_can_sign(&still_can));
     }
 
     // K1 (store side): a key is minimized before it is stored, so a third
